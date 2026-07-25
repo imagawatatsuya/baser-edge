@@ -124,8 +124,8 @@ R2 `baser-edge-assets-trial` が空でない場合は [cloudflare-teardown.md](c
 
 ## 製品ギャップ（次回以降）
 
-- 管理コンソールから **ワンクリック削除**（OAuth）
-- スタートページに **片付け** への誘導（コンソール実装後）
+- 管理コンソールから **お試しをやめる** → [ADR-0022](adr/0022-cloud-operations-worker-security.md) の Cloud Operations Worker
+- スタートページは **コンソール／公式 Operations URL への誘導**（OAuth 削除は Operations 側）
 
 実証レポートはこのファイル末尾に日付・結果を追記してよい。
 

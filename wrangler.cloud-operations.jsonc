@@ -1,0 +1,23 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "baser-edge-cloud-operations",
+  "main": "apps/cloud-operations-worker/src/index.ts",
+  "compatibility_date": "2026-07-24",
+  "compatibility_flags": ["nodejs_compat"],
+  "kv_namespaces": [
+    {
+      "binding": "OPS_KV",
+      "id": "REPLACE_WITH_KV_ID"
+    }
+  ],
+  "vars": {
+    "BASER_CF_OAUTH_SCOPES": "account:read workers_scripts:edit d1:edit",
+    "BASER_OPS_GLOBAL_TEARDOWN_PER_DAY": "500",
+    "BASER_OPS_IP_OAUTH_START_PER_HOUR": "20",
+    "BASER_OPS_IP_OAUTH_CALLBACK_PER_HOUR": "30",
+    "BASER_OPS_ACCOUNT_TEARDOWN_PER_DAY": "3",
+    "BASER_OPS_MAX_R2_DELETES": "200",
+    "BASER_OPS_MAX_CF_API_CALLS": "50",
+    "TURNSTILE_SITE_KEY": "REPLACE_WITH_SITE_KEY"
+  }
+}

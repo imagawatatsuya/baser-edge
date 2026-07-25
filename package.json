@@ -16,7 +16,7 @@
     "test": "npm run build && node --test tests/*.test.mjs",
     "demo": "npm run build && node scripts/demo.mjs",
     "verify:schema": "node scripts/verify-schema.mjs",
-    "check": "npm run test && npm run verify:schema && npm run check:onboarding-worker",
+    "check": "npm run test && npm run verify:schema && npm run check:onboarding-worker && npm run check:cloud-operations-worker",
     "smoke:stack": "node scripts/smoke-local-flow.mjs",
     "prove:local": "npm run build && npm run build:admin-web && node scripts/prove-local.mjs",
     "dev:api": "npm run build && node scripts/serve-api.mjs",
@@ -41,6 +41,8 @@
     "start:onboarding": "npm run build:onboarding-web && node scripts/onboarding/server.mjs",
     "deploy:trial-host": "npm run build:onboarding-web && wrangler deploy -c wrangler.onboarding-host.jsonc",
     "check:onboarding-worker": "npm run check -w @baser-edge/onboarding-worker",
+    "check:cloud-operations-worker": "npm run check -w @baser-edge/cloud-operations-worker",
+    "deploy:cloud-operations": "wrangler deploy -c wrangler.cloud-operations.jsonc",
     "prepare:public-snapshot": "node scripts/release/prepare-public-snapshot.mjs",
     "prepare:public-snapshot:git": "node scripts/release/prepare-public-snapshot.mjs --init-git"
   },

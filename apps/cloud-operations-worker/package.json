@@ -1,0 +1,16 @@
+{
+  "name": "@baser-edge/cloud-operations-worker",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "check": "tsc --noEmit -p tsconfig.json"
+  },
+  "dependencies": {
+    "@baser-edge/cf-stack-destroy": "0.1.0"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20250725.0",
+    "typescript": "^5.8.3"
+  }
+}

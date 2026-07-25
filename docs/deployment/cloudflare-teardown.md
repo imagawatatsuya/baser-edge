@@ -2,7 +2,7 @@
 
 開発者が **CLI で** baserEdge の prove / Deploy 試行で作ったリソースを削除するときの正本です。
 
-**一般ユーザー向け:** GitHub Pages の `/start/` には削除ボタンはない（開設は Deploy のみ）。**今後**は管理コンソールから OAuth でワンクリック削除を予定。現状は本ドキュメント（開発者）か [Cloudflare ダッシュボード](https://dash.cloudflare.com/) の手動削除。
+**一般ユーザー向け:** GitHub Pages の `/start/` には削除ボタンはない（開設は Deploy のみ）。**方式1（公式 Operations Worker）** を採用 — セキュリティ・クラウド破産防止は **[ADR-0022](../adr/0022-cloud-operations-worker-security.md)**。実装までは本ドキュメント（開発者）か [Cloudflare ダッシュボード](https://dash.cloudflare.com/) の手動削除。
 
 関連: [baseredge-cloudflare.md](baseredge-cloudflare.md) · [cloudflare-prove-troubleshooting.md](cloudflare-prove-troubleshooting.md) · [cloudflare-r2-and-media.md](cloudflare-r2-and-media.md)
 
@@ -93,7 +93,10 @@ Wrangler 終了時のノイズとして報告がある。**削除成否は直前
 | 時期 | 片付け導線 |
 |------|------------|
 | 現状 | 開発者: `destroy:cloudflare` / ダッシュボード手動 |
-| 予定 | 一般ユーザー: `/console/` から Cloudflare OAuth でワンクリック削除（`runDestroy` 共通化） |
+| v1 実装 | `apps/cloud-operations-worker` + `npm run deploy:cloud-operations`（KV・OAuth・Turnstile シークレット要設定） |
+| 採用方針 | **方式1:** メンテナ運用の **Cloud Operations Worker**（固定 URL）。設計・コスト上限は **[ADR-0022](../adr/0022-cloud-operations-worker-security.md)** |
+
+一般ユーザー向け OAuth 削除は Operations Worker の URL 公開後に `/start/` から案内。未デプロイ時は本ドキュメント（CLI）とダッシュボード手動が正本です。
 
 ---
 

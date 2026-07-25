@@ -50,6 +50,9 @@
       "path": "packages/cloudflare-adapters"
     },
     {
+      "path": "packages/cf-stack-destroy"
+    },
+    {
       "path": "apps/api-worker"
     },
     {
