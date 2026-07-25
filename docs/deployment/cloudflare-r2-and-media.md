@@ -61,7 +61,7 @@ baserEdge の **画像・ファイル**は、設計上 **R2（オブジェクト
 |------|------|-------------|-------------|------------------|---------------------|
 | **お試し（メディアなし）** | R2 未契約、または明示 | 作らない | なし | **不可**（404 等） | `BASER_CF_TRIAL=1` 付き prove |
 | **お試し + メディア** | R2 API が使える | 作る | あり（trial wrangler） | **可** | 既定 prove（`resolve-prove-media` が自動判定） |
-| **既存スタックのメディア追加** | 一度お試しだけデプロイした後 | 作る | 追加 | **可**（**再アップロード**要） | `npm run enable-media:cloudflare` |
+| **既存スタックのメディア追加** | R2 を後から有効化したあと | 作る | 追加 | **可**（**再アップロード**要） | `enable-media:cloudflare` または **Deploy / prove の再実行**（自動アップグレード） |
 | **フルスタック** | `wrangler.jsonc` 本番寄り | 作る | あり | **可** | `BASER_CF_FULL_STACK=1` + prove |
 
 ### 環境変数（デプロイ時）
@@ -86,6 +86,8 @@ npm run prove:cloudflare
 $env:BASER_CF_PROVE = "1"
 npm run enable-media:cloudflare
 ```
+
+**ブラウザの Deploy ボタン利用者:** Cloudflare で R2 を有効化したあと、**同じ Deploy を再実行**すれば `runProve` が R2 バケットとバインディングを自動追加します（CLI の `enable-media` と同等の provision 段階）。
 
 ### なぜ「アップロード成功」なのに表示されないことがあるか
 

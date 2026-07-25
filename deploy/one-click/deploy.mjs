@@ -19,7 +19,7 @@ if (!process.env.BASER_CF_STACK?.trim()) {
 
 const media = resolveProveMediaStorage({ log: console.log, state: loadState() });
 
-const { consoleUrl, state } = await runProve({
+const { consoleUrl, state, mediaUpgraded } = await runProve({
   runSmoke: false,
   log: console.log,
 });
@@ -31,6 +31,10 @@ console.log("\n→ 「管理をはじめる」を1回押してください。");
 if (state.publicUrl) console.log("公開サイト:", state.publicUrl);
 if (!media.mediaPublicDelivery) {
   console.log("\n(メディアの公開 URL: このデプロイでは無効 — 管理画面の注意バナーを参照)");
+  console.log("R2 を有効化したあと、同じ Deploy をもう一度実行するとメディア配信が追加されます。");
 } else {
   console.log("\n(メディア配信: R2 あり)");
+  if (mediaUpgraded) {
+    console.log("→ 今回 R2 を追加しました。以前アップロードした画像は再アップロードしてください。");
+  }
 }

@@ -13,6 +13,7 @@ import {
 import { runProvision } from "./run-provision.mjs";
 import { applyD1MigrationsRemote } from "./apply-d1-migrations.mjs";
 import { syncInstantLoginDeploy } from "./sync-instant-login.mjs";
+import { upgradeTrialMediaStack } from "./upgrade-trial-media.mjs";
 
 /**
  * @param {{ onProgress?: (event: { step: string, message?: string, consoleUrl?: string, publicUrl?: string }) => void, log?: (...args: unknown[]) => void, runSmoke?: boolean }} options
@@ -34,8 +35,16 @@ export async function runProve(options = {}) {
       : "Cloudflare 上にデータベースとストレージを準備しています…",
   });
   let state = loadState();
+  let mediaUpgraded = false;
   if (!state?.d1DatabaseId) {
     state = await runProvision(log);
+  } else {
+    const upgrade = await upgradeTrialMediaStack({ log, state });
+    state = upgrade.state;
+    mediaUpgraded = upgrade.upgraded;
+    if (mediaUpgraded) {
+      onProgress({ step: "provision", message: "メディア配信（R2）を追加しています…" });
+    }
   }
   if (!state?.d1DatabaseId) throw new Error(`Missing D1 id after provision (${displayPath(statePath)})`);
 
@@ -145,7 +154,7 @@ export async function runProve(options = {}) {
     publicUrl: published?.publicUrl ?? state.publicUrl,
   });
 
-  return { state, consoleUrl, published };
+  return { state, consoleUrl, published, mediaUpgraded };
 }
 
 function buildDemoContext(bootstrap, apiUrl, publicUrl) {

@@ -32,7 +32,7 @@ Living inventory of **existing** `/v1/*` routes against [validation-policy.md](.
 | Route | Methods | Domain | API | −T | Status | Notes |
 |-------|---------|--------|-----|-----|--------|-------|
 | `/health` | GET | — | — | — | OK | No body |
-| `/v1/console/capabilities` | GET | — | — | Y | OK | R2 binding → `assetPublicDelivery`; `tests/console-capabilities.test.mjs` |
+| `/v1/console/capabilities` | GET | — | — | Y | OK | R2 binding → `assetPublicDelivery`; UI: `PublicMediaDeliveryGuide` on media / image edit |
 | `/v1/dev/local-login-hint` | GET | — | — | — | Partial | Dev-only; no abuse tests |
 
 ---

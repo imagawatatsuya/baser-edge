@@ -1,4 +1,5 @@
 import { NavLink, Outlet } from "react-router-dom";
+import { PublicMediaDeliveryGuide } from "../../components/PublicMediaDeliveryGuide";
 
 export function MediaLayout() {
   return (
@@ -17,6 +18,7 @@ export function MediaLayout() {
           アップロード
         </NavLink>
       </nav>
+      <PublicMediaDeliveryGuide className="public-media-guide-in-page" />
       <Outlet />
     </div>
   );

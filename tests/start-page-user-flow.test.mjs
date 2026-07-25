@@ -14,5 +14,8 @@ assert.match(html, /<details class="card dev-only">/);
 // CLI は折りたたみ内のみ
 const main = html.split("<details")[0];
 assert.doesNotMatch(main, /npm run prove/);
+assert.match(html, /無料プラン/);
+assert.doesNotMatch(main, /カード登録/);
+assert.match(html, /Deploy to Cloudflare をもう一度/);
 
 console.log("start-page-user-flow: ok");

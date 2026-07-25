@@ -5,6 +5,7 @@ import type { ArticleMeta, ContentSnapshot } from "../api/types";
 import { useAuth } from "../auth/AuthProvider";
 import { AssetPickerModal } from "../components/AssetPickerModal";
 import { BlockEditor } from "../components/BlockEditor";
+import { PublicMediaDeliveryGuide } from "../components/PublicMediaDeliveryGuide";
 import { RevisionBadges } from "../components/ui/Badge";
 import { Button } from "../components/ui/Button";
 import { Field } from "../components/ui/Field";
@@ -288,6 +289,9 @@ export function ContentEditPage() {
           <Field label="タイトル" htmlFor="title">
             <input id="title" value={title} onChange={(e) => setTitle(e.target.value)} />
           </Field>
+          {blocks.some((b) => b.kind === "image") ? (
+            <PublicMediaDeliveryGuide className="public-media-guide-compact" />
+          ) : null}
           <BlockEditor
             blocks={blocks}
             onChange={setBlocks}

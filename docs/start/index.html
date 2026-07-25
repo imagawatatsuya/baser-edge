@@ -1,95 +1,225 @@
-<!DOCTYPE html>
-<html lang="ja">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>baserEdge お試し</title>
-    <link rel="stylesheet" href="start.css" />
-  </head>
-  <body>
-    <main class="page">
-      <header>
-        <h1>baserEdge お試し</h1>
-        <p class="lead">
-          ブラウザだけで、<strong>あなたの Cloudflare アカウント</strong>にサイトを開設します。コマンドやプログラムのインストールは不要です。
-        </p>
-      </header>
-
-      <section class="card card-highlight">
-        <h2>お試しの流れ（この順番）</h2>
-        <ol class="flow-steps">
-          <li>
-            <a href="https://dash.cloudflare.com/sign-up" target="_blank" rel="noreferrer">Cloudflare で無料アカウント</a>
-            （お持ちならスキップ）
-          </li>
-          <li>下の <strong>Deploy to Cloudflare</strong> を押す</li>
-          <li>画面の指示どおりログイン・許可する（初回は GitHub にコピーが作られることがあります）</li>
-          <li>完了まで <strong>数分</strong>待つ</li>
-          <li>表示された <strong>管理画面 URL</strong>（<code>/console/</code> で終わる）を開く</li>
-          <li><strong>「管理をはじめる」</strong> を 1 回押す</li>
-        </ol>
-        <p class="deploy-wrap">
-          <a id="deploy-btn" class="deploy-button" href="#">Deploy to Cloudflare</a>
-        </p>
-        <p class="note">
-          サイトは <strong>あなたの Cloudflare アカウント内だけ</strong>にあります。運営の共有サーバーには載りません。
-        </p>
-      </section>
-
-      <section class="card">
-        <h2>画像を公開サイトで見せたい場合</h2>
-        <p class="note">
-          画像の <strong>公開 URL</strong> には Cloudflare <strong>R2</strong> の有効化が別途必要です。カード登録と R2 のチェックアウトは別手続きです。
-          <a href="https://developers.cloudflare.com/r2/get-started/" target="_blank" rel="noreferrer">R2 のはじめ方</a>
-        </p>
-        <p class="note">
-          管理画面に「公開メディア配信は無効」と出た場合は、ページとメディア一覧は使えますが公開サイトの <code>/assets/…</code> では表示されません。
-        </p>
-      </section>
-
-      <section class="card">
-        <h2>うまくいかないとき</h2>
-        <ul>
-          <li>デプロイのログで「管理画面」「console」を探す</li>
-          <li>管理画面が真っ白なときは、しばらく待ってから再読み込み</li>
-          <li>それでもダメなときは、案内してくれた人に <strong>ビルドログのスクショ</strong>を送る（ターミナルは不要）</li>
-        </ul>
-      </section>
-
-      <section class="card card-muted">
-        <h2>お試しをやめるとき</h2>
-        <p class="note">
-          このページから自動削除はまだできません。Cloudflare ダッシュボードで Worker とデータベースを削除するか、案内者に頼んでください。
-        </p>
-      </section>
-
-      <details class="card dev-only">
-        <summary>開発者向け（一般の方は閉じて大丈夫）</summary>
-        <ul>
-          <li>実証手順書: リポジトリ内 <code>docs/deployment/general-user-trial-experiment.md</code></li>
-          <li>手元検証: <code>BASER_CF_PROVE=1 npm run prove:cloudflare</code></li>
-        </ul>
-      </details>
-
-      <footer>
-        <p><a href="https://github.com/__GITHUB_REPOSITORY__">ソース（GitHub）</a></p>
-      </footer>
-    </main>
-    <script>
-      (function () {
-        var repo = "__GITHUB_REPOSITORY__";
-        var subdir = "deploy/one-click";
-        var deployUrl =
-          "https://deploy.workers.cloudflare.com/?url=https://github.com/" +
-          encodeURIComponent(repo) +
-          "/tree/main/" +
-          subdir;
-        var a = document.getElementById("deploy-btn");
-        a.href = deployUrl;
-        a.innerHTML =
-          '<img src="https://deploy.workers.cloudflare.com/button" alt="Deploy to Cloudflare" width="180" height="32" />';
-      })();
-    </script>
-  </body>
-</html>
-
+<!DOCTYPE html>
+
+<html lang="ja">
+
+  <head>
+
+    <meta charset="utf-8" />
+
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+
+    <title>baserEdge お試し</title>
+
+    <link rel="stylesheet" href="start.css" />
+
+  </head>
+
+  <body>
+
+    <main class="page">
+
+      <header>
+
+        <h1>baserEdge お試し</h1>
+
+        <p class="lead">
+
+          ブラウザだけで、<strong>あなたの Cloudflare アカウント</strong>にサイトを開設します。コマンドやプログラムのインストールは不要です。
+
+        </p>
+
+      </header>
+
+
+
+      <section class="card card-highlight">
+
+        <h2>お試しの流れ（この順番）</h2>
+
+        <ol class="flow-steps">
+
+          <li>
+
+            <a href="https://dash.cloudflare.com/sign-up" target="_blank" rel="noreferrer">Cloudflare で無料アカウント</a>
+
+            （お持ちならスキップ）
+
+          </li>
+
+          <li>下の <strong>Deploy to Cloudflare</strong> を押す</li>
+
+          <li>画面の指示どおりログイン・許可する（初回は GitHub にコピーが作られることがあります）</li>
+
+          <li>完了まで <strong>数分</strong>待つ</li>
+
+          <li>表示された <strong>管理画面 URL</strong>（<code>/console/</code> で終わる）を開く</li>
+
+          <li><strong>「管理をはじめる」</strong> を 1 回押す</li>
+
+        </ol>
+
+        <p class="deploy-wrap">
+
+          <a id="deploy-btn" class="deploy-button" href="#">Deploy to Cloudflare</a>
+
+        </p>
+
+        <p class="note">
+
+          サイトは <strong>あなたの Cloudflare アカウント内だけ</strong>にあります。運営の共有サーバーには載りません。
+
+        </p>
+
+      </section>
+
+
+
+      <section class="card">
+
+        <h2>画像と公開サイト（あとからで大丈夫）</h2>
+
+        <p class="note">
+
+          <strong>Deploy だけで、管理画面から画像をアップロードして試せます。</strong>
+
+          Cloudflare は<strong>無料プランのまま</strong>で構いません。baserEdge に別途の月額料金はかかりません。
+
+        </p>
+
+        <p class="note">
+
+          公開したページの URL（サイト上の <code>/assets/…</code>）で画像を<strong>訪問者に見せたい</strong>ときだけ、Cloudflare 側で <strong>R2</strong>（画像の保存場所）を有効にする手続きが別途あります。
+
+          これは <strong>Workers の有料プランに入ることとは別</strong>です。R2 を初めて使うときのダッシュボード上の設定です。
+
+        </p>
+
+        <ul class="note-list">
+
+          <li>R2 は従量課金ですが、お試し程度の利用は多くの場合 <strong>無料枠</strong>（ストレージ 10GB など）に収まります。</li>
+
+          <li>手続きの途中で、Cloudflare の <strong>支払い方法</strong>（請求プロファイル）の登録を求められることがあります。クレジットカード以外（PayPal など、ダッシュボードで案内される手段）も使える場合があります。</li>
+
+          <li><strong>支払い方法を登録しただけでは R2 は自動では有効になりません。</strong> R2 の画面で有効化を完了してください。</li>
+
+        </ul>
+
+        <p class="note">
+
+          <a href="https://developers.cloudflare.com/r2/get-started/" target="_blank" rel="noreferrer">Cloudflare 公式: R2 のはじめ方</a>
+
+        </p>
+
+        <h3 class="subhead">公開サイトで画像を見せるとき（3 ステップ）</h3>
+
+        <ol class="flow-steps media-steps">
+
+          <li>Cloudflare ダッシュボードで <strong>R2 を有効化</strong>（上の公式ガイド）</li>
+
+          <li>このページの <strong>Deploy to Cloudflare をもう一度</strong>実行する（Cloudflare の Workers Builds から再デプロイでも可）</li>
+
+          <li>管理画面で画像を<strong>再アップロード</strong>（R2 追加前に上げたファイルは公開用の実体がありません）</li>
+
+        </ol>
+
+        <p class="note">
+
+          管理画面に「公開メディア配信は無効」と出ている間は、一覧や編集は使えますが、公開サイトでは画像 URL が表示されないことがあります。公開 URL まで必要なければ、そのまま他の機能を試して問題ありません。
+
+        </p>
+
+      </section>
+
+
+
+      <section class="card">
+
+        <h2>うまくいかないとき</h2>
+
+        <ul>
+
+          <li>デプロイのログで「管理画面」「console」を探す</li>
+
+          <li>管理画面が真っ白なときは、しばらく待ってから再読み込み</li>
+
+          <li>それでもダメなときは、案内してくれた人に <strong>ビルドログのスクショ</strong>を送る（ターミナルは不要）</li>
+
+        </ul>
+
+      </section>
+
+
+
+      <section class="card card-muted">
+
+        <h2>お試しをやめるとき</h2>
+
+        <p class="note">
+
+          このページから自動削除はまだできません。Cloudflare ダッシュボードで Worker とデータベースを削除するか、案内者に頼んでください。
+
+        </p>
+
+      </section>
+
+
+
+      <details class="card dev-only">
+
+        <summary>開発者向け（一般の方は閉じて大丈夫）</summary>
+
+        <ul>
+
+          <li>実証手順書: リポジトリ内 <code>docs/deployment/general-user-trial-experiment.md</code></li>
+
+          <li>手元検証: <code>BASER_CF_PROVE=1 npm run prove:cloudflare</code></li>
+
+        </ul>
+
+      </details>
+
+
+
+      <footer>
+
+        <p><a href="https://github.com/__GITHUB_REPOSITORY__">ソース（GitHub）</a></p>
+
+      </footer>
+
+    </main>
+
+    <script>
+
+      (function () {
+
+        var repo = "__GITHUB_REPOSITORY__";
+
+        var subdir = "deploy/one-click";
+
+        var deployUrl =
+
+          "https://deploy.workers.cloudflare.com/?url=https://github.com/" +
+
+          encodeURIComponent(repo) +
+
+          "/tree/main/" +
+
+          subdir;
+
+        var a = document.getElementById("deploy-btn");
+
+        a.href = deployUrl;
+
+        a.innerHTML =
+
+          '<img src="https://deploy.workers.cloudflare.com/button" alt="Deploy to Cloudflare" width="180" height="32" />';
+
+      })();
+
+    </script>
+
+  </body>
+
+</html>
+
+

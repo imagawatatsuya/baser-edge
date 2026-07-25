@@ -38,7 +38,7 @@ export function resolveProveMediaStorage({ log = console.log, state } = {}) {
   log("請求プロファイル（Visa/Mastercard/Amex/Discover/UnionPay、PayPal、Apple Pay、Google Pay、Link 等）と R2 チェックアウトは別です。docs/deployment/cloudflare-r2-and-media.md");
   log("ダッシュボードで R2 サブスクリプションを完了後:");
   log("  npm run enable-media:cloudflare   … 既存スタックに R2 を追加");
-  log("  または BASER_CF_FULL_STACK=1 で prove を再実行");
+  log("  または Deploy / prove を再実行（R2 有効化後は自動でメディア追加）");
   log("");
   return { mediaPublicDelivery: false, profile: "trial_no_r2" };
 }

@@ -25,7 +25,7 @@ if (published) console.log("公開ページ:", published.publicUrl);
 console.log("状態ファイル:", displayPath(statePath));
 console.log("(BASER_ENV=preview + instant login — 実証専用)");
 if (!media.mediaPublicDelivery) {
-  console.log("(メディアの公開 URL なし — R2 未契約または BASER_CF_TRIAL=1。有効化: npm run enable-media:cloudflare)");
+  console.log("(メディアの公開 URL なし — R2 未契約または BASER_CF_TRIAL=1。R2 有効化後は Deploy / prove の再実行で自動追加)");
 } else if (media.profile === "trial_with_r2") {
   console.log("(メディア配信: R2 あり・お試しログイン構成)");
 } else if (isTrialNoR2() || state.trialNoR2) {
