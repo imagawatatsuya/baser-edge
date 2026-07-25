@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { ProvisioningProgress } from "./ProvisioningProgress";
 
+const LAST_SITE_KEY = "baser-edge-last-site";
+
 const DEFAULT_PROVISION_STEPS: { id: string; label: string }[] = [
   { id: "connect", label: "Cloudflare に接続" },
   { id: "provision", label: "データベースの準備" },
