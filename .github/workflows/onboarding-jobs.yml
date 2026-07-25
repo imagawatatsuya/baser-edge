@@ -16,6 +16,7 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      - run: npm run build
       - name: Run prove in visitor Cloudflare account
         env:
           ONBOARDING_SESSION_ID: ${{ github.event.client_payload.sessionId }}
@@ -36,6 +37,7 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      - run: npm run build
       - name: Destroy trial stack in visitor account
         env:
           BASER_CF_STACK: ${{ github.event.client_payload.stackId }}

@@ -1,6 +1,16 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { ProvisioningProgress } from "./ProvisioningProgress";
 
-const LAST_SITE_KEY = "baser-edge-last-site";
+const DEFAULT_PROVISION_STEPS: { id: string; label: string }[] = [
+  { id: "connect", label: "Cloudflare に接続" },
+  { id: "provision", label: "データベースの準備" },
+  { id: "build", label: "管理画面の準備" },
+  { id: "migrate", label: "データベース初期化" },
+  { id: "deploy", label: "サイトの公開" },
+  { id: "bootstrap", label: "サイト開設" },
+  { id: "verify", label: "管理画面の確認" },
+  { id: "succeeded", label: "完了" },
+];
 
 type Help = {
   createTokenUrl: string;
@@ -79,10 +89,20 @@ export function App() {
   const [destroying, setDestroying] = useState(false);
   const [oauthEnabled, setOauthEnabled] = useState(false);
   const [publicTrial, setPublicTrial] = useState(false);
+  const [provisionStartedAt, setProvisionStartedAt] = useState<number | null>(null);
+  const provisionStartRef = useRef<number | null>(null);
+
+  function markProvisionStart() {
+    if (provisionStartRef.current == null) {
+      provisionStartRef.current = Date.now();
+      setProvisionStartedAt(provisionStartRef.current);
+    }
+  }
 
   const showManualToken = !publicTrial;
 
   async function beginSession(payload: { cloudflareApiToken?: string; oauthGrantId?: string }) {
+    markProvisionStart();
     const res = await fetch("/api/onboarding/sessions", {
       method: "POST",
       headers: { "content-type": "application/json" },
@@ -178,6 +198,7 @@ export function App() {
     if (oauthGrant) {
       window.history.replaceState({}, "", "/start/");
       setLoading(true);
+      markProvisionStart();
       const grant = oauthGrant;
       if (oauthIntent === "destroy") {
         void runDestroy({ oauthGrantId: grant })
@@ -219,6 +240,7 @@ export function App() {
       return;
     }
     setLoading(true);
+    markProvisionStart();
     try {
       await beginSession({ cloudflareApiToken: token });
     } catch (e) {
@@ -268,9 +290,11 @@ export function App() {
   }
 
   const running = session?.status === "running" || session?.status === "queued";
-  const stepIndex = help?.steps.findIndex((s) => s.id === session?.step) ?? -1;
+  const provisioning = loading || running;
   const actionsDisabled = apiReachable !== true || !trialReady || running || destroying;
   const useOAuthPrimary = oauthEnabled && trialReady;
+  const provisionSteps = help?.steps?.length ? help.steps : DEFAULT_PROVISION_STEPS;
+  const showProvisionPanel = provisioning && provisionStartedAt != null;
 
   return (
     <div className="start-page">
@@ -294,7 +318,19 @@ export function App() {
         </p>
       )}
 
-      <section className="start-card">
+      <section className={`start-card${provisioning ? " start-card--provisioning" : ""}`}>
+        {showProvisionPanel && (
+          <ProvisioningProgress
+            steps={provisionSteps}
+            stepId={session?.step ?? "queued"}
+            message={session?.message ?? ""}
+            accountName={session?.accountName}
+            phase={loading && !session ? "connecting" : "provisioning"}
+            startedAt={provisionStartedAt}
+          />
+        )}
+
+        <div className={provisioning ? "start-card__instructions start-card__instructions--dimmed" : "start-card__instructions"}>
         <h2>1. Cloudflare アカウント</h2>
         <p>
           まだの方は{" "}
@@ -456,18 +492,6 @@ export function App() {
         {error && <p className="error">{error}</p>}
         {session?.error && <p className="error">{session.error}</p>}
 
-        {running && help && (
-          <ol className="progress-steps">
-            {help.steps.map((s, i) => (
-              <li key={s.id} className={i < stepIndex ? "done" : i === stepIndex ? "active" : ""}>
-                {s.label}
-              </li>
-            ))}
-          </ol>
-        )}
-        {session?.message && running && <p className="status-msg">{session.message}</p>}
-        {session?.accountName && <p className="muted">アカウント: {session.accountName}</p>}
-
         {session?.status === "succeeded" && session.consoleUrl && (
           <p>
             <a className="btn-primary" href={session.consoleUrl}>
@@ -475,6 +499,7 @@ export function App() {
             </a>
           </p>
         )}
+        </div>
       </section>
 
       <section className="start-card destroy-card">

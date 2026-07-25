@@ -1,4 +1,5 @@
 import { randomBytes, createHash } from "node:crypto";
+import { resolveBaserCfOAuthScopes } from "./cf-oauth-scopes.mjs";
 
 const AUTH_URL = "https://dash.cloudflare.com/oauth2/auth";
 const TOKEN_URL = "https://dash.cloudflare.com/oauth2/token";
@@ -17,9 +18,7 @@ export function oauthRedirectUri(override) {
 
 /** Space-separated; must match scopes registered on the OAuth client in Cloudflare dashboard */
 export function oauthScopes() {
-  const raw = process.env.BASER_CF_OAUTH_SCOPES?.trim();
-  if (raw) return raw;
-  return "account.read workers_scripts.write d1.write";
+  return resolveBaserCfOAuthScopes(process.env.BASER_CF_OAUTH_SCOPES);
 }
 
 export function createOAuthState() {

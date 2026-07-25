@@ -5,10 +5,13 @@ export async function verifyCloudflareApiToken(token) {
     headers: { Authorization: `Bearer ${token}` },
   });
   const body = await res.json();
-  if (!body.success) {
-    throw new Error(body.errors?.[0]?.message ?? "API トークンの検証に失敗しました");
+  if (body.success) return body.result;
+  const msg = body.errors?.[0]?.message ?? "";
+  if (/invalid api token/i.test(msg)) {
+    const accounts = await listAccounts(token);
+    return { id: "oauth", status: "active", accountCount: accounts.length };
   }
-  return body.result;
+  throw new Error(msg || "API トークンの検証に失敗しました");
 }
 
 export async function listAccounts(token) {

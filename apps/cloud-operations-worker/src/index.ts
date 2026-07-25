@@ -4,6 +4,7 @@ import {
   resolveSingleAccountId,
   DestroyTrialError,
 } from "@baser-edge/cf-stack-destroy";
+import { resolveBaserCfOAuthScopes } from "./cf-oauth-scopes";
 
 export interface Env {
   OPS_KV: KVNamespace;
@@ -37,7 +38,7 @@ function dryRun(env: Env): boolean {
 }
 
 function oauthScopes(env: Env): string {
-  return env.BASER_CF_OAUTH_SCOPES?.trim() || "account.read workers_scripts.write d1.write";
+  return resolveBaserCfOAuthScopes(env.BASER_CF_OAUTH_SCOPES);
 }
 
 function numEnv(env: Env, key: keyof Env, fallback: number): number {

@@ -1,4 +1,5 @@
 import helpJson from "../../../scripts/onboarding/help.json";
+import { resolveBaserCfOAuthScopes, validateOAuthScopeShape } from "./cf-oauth-scopes";
 
 export interface Env {
   ASSETS: Fetcher;
@@ -50,7 +51,7 @@ function oauthConfigured(env: Env): boolean {
 }
 
 function oauthScopes(env: Env): string {
-  return env.BASER_CF_OAUTH_SCOPES?.trim() || "account.read workers_scripts.write d1.write";
+  return resolveBaserCfOAuthScopes(env.BASER_CF_OAUTH_SCOPES);
 }
 
 function json(data: unknown, status = 200, extra: Record<string, string> = {}): Response {
@@ -169,14 +170,6 @@ async function loadSession(env: Env, id: string): Promise<SessionRecord | null> 
   return JSON.parse(raw) as SessionRecord;
 }
 
-async function verifyToken(token: string): Promise<void> {
-  const res = await fetch(`${CF_API}/user/tokens/verify`, {
-    headers: { Authorization: `Bearer ${token}` },
-  });
-  const body = (await res.json()) as { success?: boolean; errors?: { message?: string }[] };
-  if (!body.success) throw new Error(body.errors?.[0]?.message ?? "API トークンの検証に失敗しました");
-}
-
 async function listAccounts(token: string): Promise<{ name: string }[]> {
   const res = await fetch(`${CF_API}/accounts`, { headers: { Authorization: `Bearer ${token}` } });
   const body = (await res.json()) as { success?: boolean; result?: { name: string }[]; errors?: { message?: string }[] };
@@ -238,7 +231,6 @@ async function startProveJob(env: Env, req: Request, apiToken: string): Promise<
   if (!env.GITHUB_REPO?.trim() || !env.GH_DISPATCH_TOKEN?.trim()) {
     throw new Error("お試しの開設ジョブが未設定です（ホスト運用の GitHub 連携）");
   }
-  await verifyToken(apiToken);
   const accounts = await listAccounts(apiToken);
   const stackId = provisionStackId(env);
   const sessionId = randomHex(12);
@@ -292,17 +284,21 @@ async function handleApi(req: Request, env: Env, url: URL): Promise<Response> {
   const ready = !publicTrial(env) || oauthOn;
 
   if (url.pathname === "/api/onboarding/health") {
+    const scopes = oauthOn ? oauthScopes(env) : undefined;
+    const oauthScopeConfigError = scopes ? validateOAuthScopeShape(scopes) : null;
     return json(
       {
-        ok: ready,
+        ok: ready && !oauthScopeConfigError,
         service: "baser-edge-onboarding",
         oauthEnabled: oauthOn,
         publicTrial: publicTrial(env),
-        ready,
+        ready: ready && !oauthScopeConfigError,
         host: "cloudflare-worker",
         oauthClientIdSuffix: oauthOn ? oauthClientIdSuffix(env) : undefined,
+        oauthScopes: scopes,
+        oauthScopeConfigError: oauthScopeConfigError ?? undefined,
       },
-      ready ? 200 : 503,
+      ready && !oauthScopeConfigError ? 200 : 503,
     );
   }
 
@@ -351,6 +347,11 @@ async function handleApi(req: Request, env: Env, url: URL): Promise<Response> {
   if (url.pathname === "/api/onboarding/oauth/start" && req.method === "GET") {
     const limited = await rateLimited(req, env, "oauth-start");
     if (limited) return limited;
+    const scopeStr = oauthScopes(env);
+    const scopeError = validateOAuthScopeShape(scopeStr);
+    if (scopeError) {
+      return json({ error: { message: scopeError } }, 500);
+    }
     const intent = url.searchParams.get("intent") === "destroy" ? "destroy" : "deploy";
     const redirectUri = `${requestOrigin(req)}/api/onboarding/oauth/callback`;
     const state = randomHex(16);
