@@ -1,0 +1,46 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "rootDir": "src",
+    "outDir": "dist",
+    "tsBuildInfoFile": "dist/.tsbuildinfo"
+  },
+  "include": [
+    "src/**/*.ts"
+  ],
+  "references": [
+    {
+      "path": "../core-types"
+    },
+    {
+      "path": "../content-kernel"
+    },
+    {
+      "path": "../blog-kernel"
+    },
+    {
+      "path": "../custom-content-kernel"
+    },
+    {
+      "path": "../baser-domain"
+    },
+    {
+      "path": "../asset-kernel"
+    },
+    {
+      "path": "../preview-kernel"
+    },
+    {
+      "path": "../mail-form-kernel"
+    },
+    {
+      "path": "../theme-kernel"
+    },
+    {
+      "path": "../plugin-kernel"
+    },
+    {
+      "path": "../auth-kernel"
+    }
+  ]
+}

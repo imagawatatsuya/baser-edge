@@ -1,0 +1,22 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "baser-edge-public",
+  "main": "apps/public-renderer/dist/index.js",
+  "compatibility_date": "2026-07-24",
+  "compatibility_flags": ["nodejs_compat"],
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "baser-edge",
+      "database_id": "REPLACE_ME",
+      "migrations_dir": "migrations"
+    }
+  ],
+  "r2_buckets": [{ "binding": "R2", "bucket_name": "baser-edge-assets" }],
+  "vars": {
+    "SITE_ID": "REPLACE_ME",
+    "ASSET_BASE_URL": "/assets",
+    "TURNSTILE_SITE_KEY": ""
+  }
+  // Secrets on public worker: PREVIEW_SECRET, MAIL_FORM_SECRET, MAIL_PRIVACY_SALT, TURNSTILE_SECRET
+}

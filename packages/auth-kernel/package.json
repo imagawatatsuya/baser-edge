@@ -1,0 +1,19 @@
+{
+  "name": "@baser-edge/auth-kernel",
+  "version": "0.9.0",
+  "private": true,
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    }
+  },
+  "dependencies": {
+    "@baser-edge/authorization": "0.8.0",
+    "@baser-edge/core-types": "0.8.0",
+    "@simplewebauthn/server": "^13.1.1"
+  }
+}

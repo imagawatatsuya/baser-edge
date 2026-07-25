@@ -1,0 +1,55 @@
+{
+  "name": "baser-edge",
+  "version": "0.9.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "clean": "node scripts/clean.mjs",
+    "build": "tsc -b",
+    "test": "npm run build && node --test tests/*.test.mjs",
+    "demo": "npm run build && node scripts/demo.mjs",
+    "verify:schema": "node scripts/verify-schema.mjs",
+    "check": "npm run test && npm run verify:schema && npm run check:onboarding-worker",
+    "smoke:stack": "node scripts/smoke-local-flow.mjs",
+    "prove:local": "npm run build && npm run build:admin-web && node scripts/prove-local.mjs",
+    "dev:api": "npm run build && node scripts/serve-api.mjs",
+    "dev:admin": "node scripts/serve-admin.mjs",
+    "dev:stack": "npm run build && npm run build:admin-web && node scripts/serve-stack.mjs",
+    "build:admin-web": "npm run build -w @baser-edge/admin-web",
+    "dev:console": "npm run dev -w @baser-edge/admin-web",
+    "diagnose:theme": "node tools/basercms-theme-diagnostics/cli.mjs",
+    "diagnose:plugin": "node tools/basercms-plugin-diagnostics/cli.mjs",
+    "provision:cloudflare": "node scripts/cloudflare/provision.mjs",
+    "deploy:cloudflare": "node scripts/cloudflare/deploy.mjs",
+    "preflight:cloudflare": "node scripts/cloudflare/preflight.mjs",
+    "plan:cloudflare": "node scripts/cloudflare/plan.mjs",
+    "prove:cloudflare": "node scripts/cloudflare/prove.mjs",
+    "destroy:cloudflare": "node scripts/cloudflare/destroy.mjs",
+    "smoke:cloudflare": "node scripts/cloudflare/smoke-remote.mjs",
+    "dev:onboarding": "node scripts/onboarding/dev.mjs",
+    "dev:onboarding-api": "node scripts/onboarding/server.mjs",
+    "build:onboarding-web": "npm run build -w @baser-edge/onboarding-web",
+    "start:onboarding": "npm run build:onboarding-web && node scripts/onboarding/server.mjs",
+    "deploy:trial-host": "npm run build:onboarding-web && wrangler deploy -c wrangler.onboarding-host.jsonc",
+    "check:onboarding-worker": "npm run check -w @baser-edge/onboarding-worker",
+    "prepare:public-snapshot": "node scripts/release/prepare-public-snapshot.mjs",
+    "prepare:public-snapshot:git": "node scripts/release/prepare-public-snapshot.mjs --init-git"
+  },
+  "devDependencies": {
+    "typescript": "^5.8.3",
+    "wrangler": "^4.24.0"
+  },
+  "optionalDependencies": {
+    "@rollup/rollup-darwin-arm64": "4.62.2",
+    "@rollup/rollup-darwin-x64": "4.62.2",
+    "@rollup/rollup-linux-x64-gnu": "4.62.2",
+    "@rollup/rollup-win32-x64-gnu": "4.62.2"
+  }
+}

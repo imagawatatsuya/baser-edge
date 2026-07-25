@@ -1,0 +1,13 @@
+{
+  "name": "@baser-edge/onboarding-worker",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "check": "tsc --noEmit -p tsconfig.json"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20250725.0",
+    "typescript": "^5.8.3"
+  }
+}

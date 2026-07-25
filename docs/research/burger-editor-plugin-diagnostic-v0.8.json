@@ -1,0 +1,196 @@
+{
+  "schemaVersion": 1,
+  "generatedAt": "2026-07-24T19:33:20.528Z",
+  "root": "/mnt/data/BurgerEditor_src/BurgerEditor",
+  "identity": {
+    "name": "BurgerEditor",
+    "key": "burger-editor",
+    "sourceReference": "BurgerEditor"
+  },
+  "summary": {
+    "totalFiles": 298,
+    "phpFiles": 123,
+    "controllers": {
+      "total": 2,
+      "admin": 1
+    },
+    "templates": {
+      "total": 1,
+      "admin": 0
+    },
+    "services": 1,
+    "models": 11,
+    "migrations": 0,
+    "routes": 0,
+    "commands": 0,
+    "assets": 24,
+    "criticalFindings": 0,
+    "highFindings": 4,
+    "trustRecommendation": "trusted-adapter-required"
+  },
+  "recommendedManifest": {
+    "key": "burger-editor",
+    "name": "BurgerEditor",
+    "trust": "trusted",
+    "capabilities": [
+      "admin:page",
+      "api:route",
+      "block:register",
+      "content:propose",
+      "content:read",
+      "storage:write"
+    ],
+    "hooks": [
+      "content.afterPublish (要手動判定)",
+      "content.beforePublish (要手動判定)"
+    ],
+    "source": {
+      "kind": "basercms-migration",
+      "reference": "BurgerEditor"
+    }
+  },
+  "findings": [
+    {
+      "severity": "high",
+      "code": "filesystem-write",
+      "title": "ファイルシステム書込み",
+      "files": [
+        "src/Controller/Admin/BurgerEditorController.php",
+        "src/Plugin.php",
+        "src/View/Helper/BurgerEditorHelper.php"
+      ],
+      "explanation": "R2 AssetまたはPlugin専用Storageへ置換する。パスをコンテンツ正本にしない。",
+      "migration": "storage-adapter"
+    },
+    {
+      "severity": "high",
+      "code": "direct-database",
+      "title": "直接SQL・Connection操作",
+      "files": [
+        "config/update/2.6.2/updater.php",
+        "src/Event/BurgerEditorModelEventListener.php",
+        "src/Plugin.php"
+      ],
+      "explanation": "PluginからD1へ任意SQLを許可せず、宣言済みStorage CollectionまたはHost APIへ置換する。",
+      "migration": "storage-schema"
+    },
+    {
+      "severity": "high",
+      "code": "form-protection-disabled",
+      "title": "FormProtection無効化",
+      "files": [
+        "src/Controller/Admin/BurgerEditorController.php",
+        "src/Event/BurgerEditorControllerEventListener.php"
+      ],
+      "explanation": "CSRF等の保護を外す実装は移植しない。型付きRouteとHost認証へ置換する。",
+      "migration": "security-redesign"
+    },
+    {
+      "severity": "high",
+      "code": "arbitrary-markup",
+      "title": "任意HTMLまたはScript注入",
+      "files": [
+        "Addon/type/button/init.php",
+        "Addon/type/ckeditor/init.php",
+        "Addon/type/download-file/init.php",
+        "Addon/type/embed/init.php",
+        "Addon/type/google-maps/init.php",
+        "Addon/type/hr/init.php",
+        "Addon/type/image/init.php",
+        "Addon/type/image-link/init.php",
+        "Addon/type/table/init.php",
+        "Addon/type/title-h2/init.php",
+        "Addon/type/title-h3/init.php",
+        "Addon/type/trimmed-image/init.php",
+        "Addon/type/trimmed-image-link/init.php",
+        "Addon/type/youtube/init.php",
+        "src/Event/BurgerEditorViewEventListener.php",
+        "src/Lib/BurgerEditorUtil.php",
+        "src/View/Helper/BurgerEditorHelper.php",
+        "templates/cell/BurgerEditor/display.php",
+        "webroot/js/admin/burger_editor.js"
+      ],
+      "explanation": "任意HTMLを正本・実行コードとして扱わず、安全なBlockまたは隔離Rendererへ変換する。",
+      "migration": "renderer-redesign"
+    },
+    {
+      "severity": "medium",
+      "code": "session-state",
+      "title": "Session依存",
+      "files": [
+        "webroot/js/admin/burger_editor.js"
+      ],
+      "explanation": "Workersのローカルメモリへ依存せず、期限付きSession Storeへ置換する。",
+      "migration": "session-adapter"
+    },
+    {
+      "severity": "info",
+      "code": "event-listener",
+      "title": "CakePHP Event Listener",
+      "files": [
+        "src/Event/BurgerEditorControllerEventListener.php",
+        "src/Event/BurgerEditorViewEventListener.php"
+      ],
+      "explanation": "対応する宣言的Hookへ分解する候補。",
+      "migration": "hook-adapter"
+    },
+    {
+      "severity": "info",
+      "code": "admin-controller",
+      "title": "管理画面Controller",
+      "files": [
+        "Addon/type/button/test.js",
+        "Addon/type/ckeditor/init.js",
+        "Addon/type/download-file/test.js",
+        "Addon/type/embed/test.js",
+        "Addon/type/hr/test.js",
+        "Addon/type/table/test.js",
+        "config/setting.php",
+        "src/Controller/Admin/BurgerEditorController.php",
+        "src/Event/BurgerEditorModelEventListener.php",
+        "src/View/Helper/BurgerEditorHelper.php"
+      ],
+      "explanation": "admin:pageまたはHost管理画面の専用モジュールへ変換する。",
+      "migration": "admin-extension"
+    },
+    {
+      "severity": "info",
+      "code": "burger-addon",
+      "title": "BurgerEditor Addon",
+      "files": [
+        "Addon/block/button/style.scss",
+        "Addon/block/button2/style.scss",
+        "Addon/block/button3/style.scss",
+        "Addon/block/download-file/style.scss",
+        "Addon/block/download-file2/style.scss",
+        "Addon/block/download-file3/style.scss",
+        "Addon/block/embed/style.scss",
+        "Addon/block/google-maps/style.scss",
+        "Addon/block/hr/style.scss",
+        "Addon/block/image-link-text2/style.scss",
+        "Addon/block/image-link-text3/style.scss",
+        "Addon/block/image-link-text4/style.scss",
+        "Addon/block/image-link-text5/style.scss",
+        "Addon/block/image-link1/style.scss",
+        "Addon/block/image-link2/style.scss",
+        "Addon/block/image-link3/style.scss",
+        "Addon/block/image-link4/style.scss",
+        "Addon/block/image-link5/style.scss",
+        "Addon/block/image-text2/style.scss",
+        "Addon/block/image-text3/style.scss"
+      ],
+      "explanation": "Component Manifest・Block Version・Importerへ変換する。",
+      "migration": "block-manifest"
+    }
+  ],
+  "migrationPlan": [
+    "元Pluginの機能を、公開表示・管理画面・保存・外部通信・インストール処理へ分解する。",
+    "推奨Manifestを人間が確認し、必要最小限のCapabilityだけを採用する。",
+    "直接SQLとMigrationをHost管理の宣言的Storage Schemaへ変換する。",
+    "ファイル操作をR2 AssetまたはPlugin専用Storageへ変換する。",
+    "Controllerを型付きAPI RouteまたはHost Service Commandへ分解する。",
+    "PHP TemplateをTheme Componentまたは管理画面Extensionへ変換する。",
+    "隔離実行候補はWorkers for Platformsで検証し、Trusted扱いは第一者コードに限定する。",
+    "実サイトのデータ移行・権限・監査・Rollbackを統合テストする。"
+  ]
+}

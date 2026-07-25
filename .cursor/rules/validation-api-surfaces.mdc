@@ -1,0 +1,23 @@
+---
+description: Validation when editing API worker or admin console
+globs: apps/api-worker/**/*,apps/admin-web/**/*
+alwaysApply: false
+---
+
+# API & console validation
+
+## api-worker (`apps/api-worker/src/index.ts`, `auth-routes.ts`)
+
+- Prefer existing helpers: `stringField`, `numberField`, `documentField`, `stringArray`, `invalid()`.
+- Optional numbers: reject `NaN` and out-of-range (do not use bare `Number(searchParams.get(...))` without bounds).
+- Path IDs: `asSiteId` / `asContentItemId` etc. after match; slug fields must reach `normalizeSlug` via kernel.
+- Mutations: `resolveActorContext` + CSRF for cookie sessions.
+
+## admin-web
+
+- Validate on submit; map common `error.code` to Japanese where user-facing.
+- Slug: `apps/admin-web/src/lib/slug.ts` must stay aligned with `packages/baser-domain` `normalizeSlug`.
+
+## After changing a route
+
+Update `docs/engineering/api-validation-audit.md` (status + tests column) in the same PR.

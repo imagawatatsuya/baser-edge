@@ -1,0 +1,59 @@
+{
+  "files": [],
+  "references": [
+    {
+      "path": "packages/core-types"
+    },
+    {
+      "path": "packages/structured-document"
+    },
+    {
+      "path": "packages/baser-domain"
+    },
+    {
+      "path": "packages/authorization"
+    },
+    {
+      "path": "packages/auth-kernel"
+    },
+    {
+      "path": "packages/content-kernel"
+    },
+    {
+      "path": "packages/blog-kernel"
+    },
+    {
+      "path": "packages/custom-content-kernel"
+    },
+    {
+      "path": "packages/mail-form-kernel"
+    },
+    {
+      "path": "packages/agent-tools"
+    },
+    {
+      "path": "packages/theme-kernel"
+    },
+    {
+      "path": "packages/plugin-kernel"
+    },
+    {
+      "path": "packages/renderer"
+    },
+    {
+      "path": "packages/asset-kernel"
+    },
+    {
+      "path": "packages/preview-kernel"
+    },
+    {
+      "path": "packages/cloudflare-adapters"
+    },
+    {
+      "path": "apps/api-worker"
+    },
+    {
+      "path": "apps/public-renderer"
+    }
+  ]
+}

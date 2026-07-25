@@ -1,0 +1,9 @@
+{
+  "name": "@baser-edge/one-click-deploy",
+  "private": true,
+  "description": "Cloudflare「Deploy to Cloudflare」ボタン用。利用者の CF アカウントにだけ baserEdge お試しを載せる。",
+  "scripts": {
+    "build": "node build.mjs",
+    "deploy": "node deploy.mjs"
+  }
+}

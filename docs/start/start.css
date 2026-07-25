@@ -1,0 +1,71 @@
+:root {
+  font-family: system-ui, sans-serif;
+  line-height: 1.5;
+  color: #1a1a1a;
+  background: #f4f4f5;
+}
+
+body {
+  margin: 0;
+}
+
+.page {
+  max-width: 40rem;
+  margin: 0 auto;
+  padding: 2rem 1.25rem 3rem;
+}
+
+h1 {
+  font-size: 1.75rem;
+  margin: 0 0 0.5rem;
+}
+
+.lead {
+  margin: 0 0 1.5rem;
+  color: #444;
+}
+
+.card {
+  background: #fff;
+  border-radius: 8px;
+  padding: 1.25rem 1.5rem;
+  margin-bottom: 1rem;
+  box-shadow: 0 1px 3px rgb(0 0 0 / 8%);
+}
+
+.card h2 {
+  font-size: 1.1rem;
+  margin: 0 0 0.75rem;
+}
+
+ol,
+ul {
+  margin: 0 0 1rem;
+  padding-left: 1.25rem;
+}
+
+.deploy-wrap {
+  text-align: center;
+  margin: 1.5rem 0;
+}
+
+.deploy-button {
+  display: inline-block;
+}
+
+.note {
+  font-size: 0.9rem;
+  color: #555;
+}
+
+footer {
+  font-size: 0.85rem;
+  color: #666;
+}
+
+code {
+  font-size: 0.85em;
+  background: #eee;
+  padding: 0.1em 0.35em;
+  border-radius: 4px;
+}

@@ -1,0 +1,25 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  // OPTIONAL: baserEdge 公式が共有 /start/ をホストするときのみ。個人メンテナの本番必須ではない。
+  "name": "baser-edge-trial-host",
+  "main": "apps/onboarding-worker/src/index.ts",
+  "compatibility_date": "2026-07-24",
+  "compatibility_flags": ["nodejs_compat"],
+  "assets": {
+    "directory": "./apps/onboarding-web/dist",
+    "binding": "ASSETS",
+    "not_found_handling": "single-page-application",
+    "html_handling": "auto-trailing-slash"
+  },
+  "kv_namespaces": [
+    {
+      "binding": "ONBOARDING_KV",
+      "id": "REPLACE_WITH_KV_ID"
+    }
+  ],
+  "vars": {
+    "BASER_ONBOARDING_PUBLIC": "1",
+    "GITHUB_REPO": "OWNER/baser-edge",
+    "BASER_CF_OAUTH_SCOPES": "account:read workers_scripts:edit d1:edit"
+  }
+}

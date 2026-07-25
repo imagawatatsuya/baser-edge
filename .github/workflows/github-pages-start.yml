@@ -1,0 +1,40 @@
+# GitHub Pages: お試し案内（Deploy ボタンのみ。ホスト用 Secrets 不要）
+name: github-pages-start
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "docs/start/**"
+      - "deploy/one-click/**"
+      - ".github/workflows/github-pages-start.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Prepare start page
+        run: |
+          mkdir -p _site/start
+          cp docs/start/index.html docs/start/start.css _site/start/
+          sed -i "s|__GITHUB_REPOSITORY__|${{ github.repository }}|g" _site/start/index.html
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site
+      - id: deployment
+        uses: actions/deploy-pages@v4

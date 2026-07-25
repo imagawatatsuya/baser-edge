@@ -1,0 +1,52 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "rootDir": "src",
+    "outDir": "dist",
+    "tsBuildInfoFile": "dist/.tsbuildinfo"
+  },
+  "include": [
+    "src/**/*.ts"
+  ],
+  "references": [
+    {
+      "path": "../../packages/core-types"
+    },
+    {
+      "path": "../../packages/content-kernel"
+    },
+    {
+      "path": "../../packages/structured-document"
+    },
+    {
+      "path": "../../packages/blog-kernel"
+    },
+    {
+      "path": "../../packages/custom-content-kernel"
+    },
+    {
+      "path": "../../packages/agent-tools"
+    },
+    {
+      "path": "../../packages/cloudflare-adapters"
+    },
+    {
+      "path": "../../packages/asset-kernel"
+    },
+    {
+      "path": "../../packages/preview-kernel"
+    },
+    {
+      "path": "../../packages/mail-form-kernel"
+    },
+    {
+      "path": "../../packages/theme-kernel"
+    },
+    {
+      "path": "../../packages/plugin-kernel"
+    },
+    {
+      "path": "../../packages/auth-kernel"
+    }
+  ]
+}

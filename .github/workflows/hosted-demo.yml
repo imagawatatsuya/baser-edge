@@ -1,0 +1,64 @@
+# 運営の共有デモではなく、トークン所有者の Cloudflare アカウントに demo スタックを載せる（オンボーディングのスタンドイン）。
+name: hosted-demo
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: "deploy or destroy demo stack"
+        required: true
+        default: deploy
+        type: choice
+        options:
+          - deploy
+          - destroy
+
+jobs:
+  demo:
+    runs-on: ubuntu-latest
+    env:
+      BASER_CF_STACK: demo
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+
+      - name: Require Cloudflare token
+        run: |
+          if [ -z "$CLOUDFLARE_API_TOKEN" ]; then
+            echo "::error::Add CLOUDFLARE_API_TOKEN to repository secrets (運営が一度設定)."
+            exit 1
+          fi
+
+      - name: Destroy demo stack
+        if: inputs.action == 'destroy'
+        run: BASER_CF_DESTROY=1 npm run destroy:cloudflare
+
+      - name: Deploy demo stack (instant login, trial — no R2)
+        if: inputs.action == 'deploy'
+        run: BASER_CF_PROVE=1 npm run prove:cloudflare
+
+      - name: Write console URL for business users
+        if: inputs.action == 'deploy'
+        run: |
+          node <<'NODE'
+          const fs = require("fs");
+          let path = "deploy/cloudflare-state.demo.json";
+          if (!fs.existsSync(path)) path = "deploy/cloudflare-state.json";
+          const s = JSON.parse(fs.readFileSync(path, "utf8"));
+          const url = (s.apiUrl || "").replace(/\/$/, "") + "/console/";
+          const lines = [
+            "## あなたの Cloudflare アカウント上の管理画面 URL",
+            "",
+            url,
+            "",
+            "手順: 開く → 「管理をはじめる」を1回押す。",
+            "",
+            "（BASER_CF_STACK=demo / preview instant login）",
+          ];
+          fs.appendFileSync(process.env.GITHUB_STEP_SUMMARY, lines.join("\n"));
+          console.log("Console URL for business demo:", url);
+          NODE

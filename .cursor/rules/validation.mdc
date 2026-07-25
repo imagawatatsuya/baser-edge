@@ -1,0 +1,30 @@
+---
+description: Mandatory input validation bar (domain-first, tests, stable codes)
+alwaysApply: true
+---
+
+# Validation (required)
+
+Full policy: `docs/engineering/validation-policy.md`. API backlog: `docs/engineering/api-validation-audit.md`.
+
+## Before shipping
+
+1. **Domain/kernel** validates every new external input; `DomainError` with stable `code`.
+2. **API** uses `stringField` / `numberField` / closed enums — no naked `body.foo as string`.
+3. **Admin** mirrors server rules (`apps/admin-web/src/lib/*` or comment linking to domain).
+4. **Tests**: happy path + ≥2 rejections; extend `tests/console-golden-path.test.mjs` when `/console/` changes.
+5. **Slugs**: ASCII only (`normalizeSlug`); **lock**: `expectedLockVersion` = `item.lockVersion`.
+
+## HTTP mapping
+
+| Situation | Status |
+|-----------|--------|
+| Bad shape / policy input | 422 |
+| Stale revision / tree | 409 |
+| Auth / CSRF | 401 / 403 |
+
+## Do not
+
+- UI-only validation; permissive parsing “for demos”.
+- Unicode or slashy slugs on public routes.
+- Ship new routes without an audit row in `api-validation-audit.md`.

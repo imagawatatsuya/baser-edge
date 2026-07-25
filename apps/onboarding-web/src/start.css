@@ -1,0 +1,254 @@
+:root {
+  font-family: system-ui, "Segoe UI", "Noto Sans JP", sans-serif;
+  color: #1a1a1a;
+  background: #f4f1ea;
+  line-height: 1.6;
+}
+
+body {
+  margin: 0;
+}
+
+.start-page {
+  max-width: 640px;
+  margin: 0 auto;
+  padding: 2rem 1.25rem 3rem;
+}
+
+.start-header h1 {
+  margin: 0 0 0.25rem;
+  font-size: 1.75rem;
+  color: #315b47;
+}
+
+.start-card {
+  background: #fff;
+  border-radius: 12px;
+  padding: 1.5rem;
+  box-shadow: 0 2px 12px rgb(0 0 0 / 8%);
+}
+
+.start-card h2 {
+  font-size: 1rem;
+  margin: 1.25rem 0 0.5rem;
+}
+
+.start-card h2:first-child {
+  margin-top: 0;
+}
+
+.perm-list {
+  font-size: 0.9rem;
+  margin: 0.5rem 0;
+  padding-left: 1.25rem;
+}
+
+.note,
+.muted {
+  font-size: 0.85rem;
+  color: #666;
+}
+
+.token-input {
+  width: 100%;
+  box-sizing: border-box;
+  margin: 0.75rem 0;
+  padding: 0.65rem;
+  font-family: ui-monospace, monospace;
+  font-size: 0.85rem;
+  border: 1px solid #ccc;
+  border-radius: 8px;
+}
+
+.btn-primary {
+  display: inline-block;
+  width: 100%;
+  padding: 0.85rem 1rem;
+  font-size: 1rem;
+  font-weight: 600;
+  color: #fff;
+  background: #315b47;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  text-align: center;
+  text-decoration: none;
+  box-sizing: border-box;
+}
+
+.btn-primary:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.error {
+  color: #b00020;
+  font-size: 0.9rem;
+}
+
+.progress-steps {
+  margin: 1.25rem 0 0;
+  padding-left: 1.25rem;
+  font-size: 0.9rem;
+}
+
+.progress-steps .done {
+  color: #315b47;
+}
+
+.progress-steps .active {
+  font-weight: 600;
+}
+
+.status-msg {
+  font-size: 0.9rem;
+}
+
+.start-footer {
+  margin-top: 1.5rem;
+  font-size: 0.85rem;
+  color: #555;
+}
+
+.banner-error {
+  padding: 0.75rem 1rem;
+  background: #fdecea;
+  border-radius: 8px;
+  margin-bottom: 1rem;
+}
+
+.banner-error code {
+  font-size: 0.85em;
+}
+
+.destroy-card {
+  margin-top: 1.25rem;
+}
+
+.field-label {
+  display: block;
+  font-size: 0.85rem;
+  font-weight: 600;
+  margin: 0.75rem 0 0.35rem;
+}
+
+.stack-input {
+  width: 100%;
+  box-sizing: border-box;
+  margin: 0 0 0.75rem;
+  padding: 0.65rem;
+  font-family: ui-monospace, monospace;
+  font-size: 0.85rem;
+  border: 1px solid #ccc;
+  border-radius: 8px;
+}
+
+.btn-danger {
+  display: inline-block;
+  width: 100%;
+  padding: 0.85rem 1rem;
+  font-size: 1rem;
+  font-weight: 600;
+  color: #fff;
+  background: #8b2e2e;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  text-align: center;
+  box-sizing: border-box;
+}
+
+.btn-danger:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.success-msg {
+  color: #315b47;
+  font-size: 0.9rem;
+}
+
+.token-guide {
+  margin: 1rem 0;
+  padding: 0.75rem 1rem;
+  border: 1px solid #d8e3dc;
+  border-radius: 8px;
+  background: #f8faf9;
+  font-size: 0.9rem;
+}
+
+.token-guide summary {
+  cursor: pointer;
+  font-weight: 600;
+  color: #315b47;
+}
+
+.guide-intro {
+  margin: 0.75rem 0;
+}
+
+.guide-steps {
+  margin: 0.75rem 0;
+  padding-left: 1.25rem;
+}
+
+.guide-steps li {
+  margin-bottom: 0.65rem;
+}
+
+.guide-steps li strong {
+  display: block;
+  color: #1a1a1a;
+}
+
+.guide-steps li span {
+  color: #444;
+}
+
+.btn-secondary {
+  display: inline-block;
+  width: 100%;
+  box-sizing: border-box;
+  padding: 0.65rem 1rem;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: #315b47;
+  background: #fff;
+  border: 2px solid #315b47;
+  border-radius: 8px;
+  text-align: center;
+  text-decoration: none;
+  margin: 0.5rem 0 0.75rem;
+}
+
+.perm-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.8rem;
+  margin: 0.75rem 0;
+}
+
+.perm-table caption {
+  text-align: left;
+  font-weight: 600;
+  margin-bottom: 0.35rem;
+}
+
+.perm-table th,
+.perm-table td {
+  border: 1px solid #ccc;
+  padding: 0.35rem 0.45rem;
+  vertical-align: top;
+}
+
+.perm-table code {
+  font-size: 0.78rem;
+}
+
+.oauth-steps {
+  margin-top: 0.5rem;
+}
+
+.manual-fallback {
+  margin-top: 1rem;
+}

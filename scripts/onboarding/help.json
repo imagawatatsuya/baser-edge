@@ -1,0 +1,87 @@
+{
+  "createTokenUrl": "https://dash.cloudflare.com/profile/api-tokens",
+  "createCustomTokenUrl": "https://dash.cloudflare.com/profile/api-tokens",
+  "oauth": {
+    "title": "API トークンは不要です。Cloudflare にログインして「Authorize（許可）」を押すだけです。",
+    "steps": [
+      "「Cloudflare でログインしてサイトを開設」を押す",
+      "Cloudflare にログインし、使うアカウントにチェックを入れる",
+      "表示された権限を確認して Authorize（許可）",
+      "このページに戻ると、自動でサイト開設が始まります"
+    ],
+    "fallbackSummary": "ログインできないときだけ：手動で API トークン（開発・検証用）",
+    "notConfiguredNote": "お試しサービスを準備しています。しばらくしてから再度お試しください。",
+    "destroyTitle": "削除するには、もう一度 Cloudflare にログインして許可してください（API トークンは不要です）。",
+    "destroyButton": "Cloudflare でログインして削除",
+    "publicUnavailable": "お試しの開設は現在ご利用いただけません。しばらくしてから再度お試しください。"
+  },
+  "trialNote": "お試し開設では R2（ファイル保存）は作りません。メディアは後から有効化できます。",
+  "safetyNote": "Cloudflare でログインして許可したあと、ボタンを押したときだけ、あなたの Cloudflare アカウントにリソースが作成・削除されます。許可していなければ何も起きません。",
+  "tokenGuide": {
+    "summary": "API トークンの作り方（3分・画面の英語表記つき）",
+    "intro": "https://dash.cloudflare.com/profile/api-tokens を開くと、テンプレート一覧と「Create Token」ボタンがあります。テンプレートは使わず、下の手順どおりカスタムトークンを作ってください。",
+    "steps": [
+      {
+        "title": "Create Token を押す",
+        "body": "ページ右上付近の青い「Create Token」ボタンをクリックします。"
+      },
+      {
+        "title": "カスタムトークンを選ぶ",
+        "body": "一覧を下までスクロールし、「Create Custom Token」または「Get started」のカード（テンプレートではない方）を選びます。"
+      },
+      {
+        "title": "名前を付ける",
+        "body": "Token name に「baserEdge お試し」など、あとで分かる名前を入力します。"
+      },
+      {
+        "title": "権限を3つ追加する",
+        "body": "Permissions で「Add」→「+ Add more」を2回押し、合計3行にします。各行は左から順に次のとおり選びます（ダッシュボードは英語表記です）。"
+      },
+      {
+        "title": "アカウントの範囲",
+        "body": "Account Resources は「Include」→ あなたのアカウント（または「All accounts」）を選びます。Zone Resources はそのままで構いません。"
+      },
+      {
+        "title": "作成してコピー",
+        "body": "「Continue to summary」→「Create Token」。表示された長い文字列をコピーし、このページの下の入力欄に貼り付けます。※トークンは一度しか表示されません。"
+      }
+    ],
+    "permissionRows": [
+      {
+        "column1": "Account",
+        "column2": "Workers Scripts",
+        "column3": "Edit",
+        "labelJa": "Worker のデプロイ"
+      },
+      {
+        "column1": "Account",
+        "column2": "D1",
+        "column3": "Edit",
+        "labelJa": "データベース"
+      },
+      {
+        "column1": "Account",
+        "column2": "Account Settings",
+        "column3": "Read",
+        "labelJa": "アカウント確認"
+      }
+    ],
+    "doNotUse": "「Edit Cloudflare Workers」などのテンプレートだけでは D1 権限が足りないことがあります。必ず上の3行を自分で追加してください。",
+    "afterPaste": "貼り付けが終わったら、このページに戻り「Cloudflare に接続してサイトを開設」を押してください。"
+  },
+  "permissions": [
+    "Account — Workers Scripts: Edit",
+    "Account — D1: Edit",
+    "Account — Account Settings: Read"
+  ],
+  "steps": [
+    { "id": "connect", "label": "Cloudflare に接続" },
+    { "id": "provision", "label": "データベースの準備" },
+    { "id": "build", "label": "管理画面の準備" },
+    { "id": "migrate", "label": "データベース初期化" },
+    { "id": "deploy", "label": "サイトの公開" },
+    { "id": "bootstrap", "label": "サイト開設" },
+    { "id": "verify", "label": "管理画面の確認" },
+    { "id": "succeeded", "label": "完了" }
+  ]
+}

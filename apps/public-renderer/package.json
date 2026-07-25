@@ -1,0 +1,19 @@
+{
+  "name": "@baser-edge/public-renderer",
+  "version": "0.8.0",
+  "private": true,
+  "type": "module",
+  "main": "./dist/index.js",
+  "dependencies": {
+    "@baser-edge/core-types": "0.8.0",
+    "@baser-edge/content-kernel": "0.8.0",
+    "@baser-edge/renderer": "0.8.0",
+    "@baser-edge/cloudflare-adapters": "0.8.0",
+    "@baser-edge/asset-kernel": "0.8.0",
+    "@baser-edge/preview-kernel": "0.8.0",
+    "@baser-edge/blog-kernel": "0.8.0",
+    "@baser-edge/custom-content-kernel": "0.8.0",
+    "@baser-edge/mail-form-kernel": "0.8.0",
+    "@baser-edge/theme-kernel": "0.8.0"
+  }
+}

@@ -1,0 +1,39 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "baser-edge-api",
+  "main": "apps/api-worker/dist/index.js",
+  "compatibility_date": "2026-07-24",
+  "compatibility_flags": ["nodejs_compat"],
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "baser-edge",
+      "database_id": "REPLACE_ME",
+      "migrations_dir": "migrations"
+    }
+  ],
+  "r2_buckets": [
+    {
+      "binding": "R2",
+      "bucket_name": "baser-edge-assets"
+    }
+  ],
+  "assets": {
+    "directory": "./apps/admin-web/dist",
+    "binding": "STATIC_ASSETS",
+    "not_found_handling": "single-page-application",
+    "html_handling": "auto-trailing-slash"
+  },
+  "send_email": [{ "name": "EMAIL" }],
+  "vars": {
+    "BASER_ENV": "preview",
+    "PUBLIC_BASE_URL": "https://api.example.invalid",
+    "PREVIEW_BASE_URL": "https://preview.example.invalid",
+    "PLUGIN_OUTBOUND_POLICY_ENFORCED": "false",
+    "BASER_INSTANT_LOGIN": "false",
+    "BASER_INSTANT_OWNER_HINT": ""
+  }
+  // Secrets: wrangler secret put ASSET_UPLOAD_SECRET (and PREVIEW_SECRET, MAIL_FORM_SECRET, …)
+  // Production: set BASER_ENV=production, BASER_AUTH_RP_ID, BASER_AUTH_ORIGIN, BASER_WEBAUTHN_GATEWAY=simple
+  // First site: POST /v1/bootstrap (set BASER_ALLOW_BOOTSTRAP=true once) or npm run deploy:cloudflare -- --bootstrap
+}

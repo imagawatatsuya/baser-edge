@@ -1,0 +1,44 @@
+# Worker から起動。公式ホスト用 — fork 先で Secrets を設定する想定ではない。
+name: onboarding-jobs
+
+on:
+  repository_dispatch:
+    types: [onboarding-prove, onboarding-destroy]
+
+jobs:
+  prove:
+    if: github.event.action == 'onboarding-prove'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Run prove in visitor Cloudflare account
+        env:
+          ONBOARDING_SESSION_ID: ${{ github.event.client_payload.sessionId }}
+          BASER_CF_STACK: ${{ github.event.client_payload.stackId }}
+          ONBOARDING_TOKEN_CIPHERTEXT: ${{ github.event.client_payload.ciphertext }}
+          ONBOARDING_CALLBACK_URL: ${{ github.event.client_payload.callbackUrl }}
+          ONBOARDING_CALLBACK_SECRET: ${{ secrets.ONBOARDING_CALLBACK_SECRET }}
+          ONBOARDING_TOKEN_ENCRYPTION_KEY: ${{ secrets.ONBOARDING_TOKEN_ENCRYPTION_KEY }}
+        run: node scripts/onboarding/gh-run-prove.mjs
+
+  destroy:
+    if: github.event.action == 'onboarding-destroy'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - name: Destroy trial stack in visitor account
+        env:
+          BASER_CF_STACK: ${{ github.event.client_payload.stackId }}
+          ONBOARDING_TOKEN_CIPHERTEXT: ${{ github.event.client_payload.ciphertext }}
+          ONBOARDING_TOKEN_ENCRYPTION_KEY: ${{ secrets.ONBOARDING_TOKEN_ENCRYPTION_KEY }}
+        run: node scripts/onboarding/gh-run-destroy.mjs

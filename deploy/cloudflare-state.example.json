@@ -1,0 +1,21 @@
+{
+  "d1DatabaseName": "baser-edge",
+  "d1DatabaseId": "00000000-0000-0000-0000-000000000000",
+  "siteId": "site_00000000-0000-0000-0000-000000000000",
+  "bootstrapped": true,
+  "apiUrl": "https://baser-edge-api.<your-subdomain>.workers.dev",
+  "publicUrl": "https://baser-edge-public.<your-subdomain>.workers.dev",
+  "bootstrap": {
+    "workspaceId": "ws_00000000-0000-0000-0000-000000000000",
+    "siteId": "site_00000000-0000-0000-0000-000000000000",
+    "ownerPrincipalId": "principal_00000000-0000-0000-0000-000000000000"
+  },
+  "demoHint": {
+    "workspaceId": "ws_00000000-0000-0000-0000-000000000000",
+    "siteId": "site_00000000-0000-0000-0000-000000000000",
+    "ownerPrincipalId": "principal_00000000-0000-0000-0000-000000000000",
+    "passkeyLabel": "demo-owner",
+    "credentialId": "<test-webauthn-credential-id>",
+    "apiUrl": "https://baser-edge-api.<your-subdomain>.workers.dev"
+  }
+}
