@@ -465,6 +465,9 @@ async function handleApi(req: Request, env: Env, url: URL): Promise<Response> {
 export default {
   async fetch(req: Request, env: Env): Promise<Response> {
     const url = new URL(req.url);
+    if (url.pathname === "/" || url.pathname === "") {
+      return Response.redirect(`${url.origin}/start/`, 302);
+    }
     if (url.pathname.startsWith("/api/onboarding")) {
       return handleApi(req, env, url);
     }
