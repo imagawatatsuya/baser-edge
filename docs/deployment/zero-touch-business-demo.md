@@ -71,6 +71,7 @@ BASER_CF_PROVE=1 npm run prove:cloudflare   # 既定: お試し（R2 なし）�
 - リソースは **ログインしたアカウント内** の `baser-edge-*`（または `BASER_CF_STACK=lab` で分離）
 - 片付け: `BASER_CF_STACK=lab BASER_CF_DESTROY=1 npm run destroy:cloudflare`
 
+利用者に `npm` を渡さないための行き先は **Cloudflare 側のワンクリック**（[cloudflare-one-click-trial.md](cloudflare-one-click-trial.md)）。ホスト責任の整理は [docs/internal/trial-hosting-architecture.md](../internal/trial-hosting-architecture.md)（内部メモ）。
 
 ## ローカルは別物
 

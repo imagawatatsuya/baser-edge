@@ -21,7 +21,7 @@ Collection 中心 CMS や WordPress 互換は対象外です。
 | 名前 | 値 |
 |------|-----|
 | 製品 | **baserEdge** |
-| Git リポジトリ | `baser-edge`（ディレクトリ名と同じ） |
+| Git リポジトリ | [`imagawatatsuya/baser-edge`](https://github.com/imagawatatsuya/baser-edge)（公開・正本） |
 | npm ルートパッケージ | `baser-edge` |
 | ワークスペーススコープ | `@baser-edge/*`（例: `@baser-edge/content-kernel`, `@baser-edge/admin-web`） |
 | Wrangler（例） | `baser-edge-api`, `baser-edge-public`, D1 `baser-edge`, R2 `baser-edge-assets` |
@@ -41,6 +41,7 @@ Collection 中心 CMS や WordPress 互換は対象外です。
 | **現状（お試し）** | public + [GitHub Pages `/start/`](docs/start/index.html) → [Cloudflare Deploy ボタン](deploy/one-click/)（**管理者のサーバー不要**） |
 | **開発確認** | `prove:cloudflare` / `dev:onboarding` |
 
+**ドキュメント地図:** [docs/README.md](docs/README.md) · **お試し:** [cloudflare-one-click-trial.md](docs/deployment/cloudflare-one-click-trial.md) · **コントリビュート:** [AGENTS.md](AGENTS.md)
 開発者が自分の CF アカウントでスタンドインする場合:
 
 ```bash
