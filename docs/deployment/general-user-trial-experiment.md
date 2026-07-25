@@ -32,7 +32,7 @@ push 後、Actions の **github-pages-start** が成功していること。
 
 | 項目 | 値の例 |
 |------|--------|
-| スタート URL | `https://<org>.github.io/<repo>/start/` |
+| スタート URL | `https://<org>.github.io/<repo>/start/`（ルート `/` は `/start/` へリダイレクト） |
 | Deploy ボタン | 上記ページ内。リポジトリ名は workflow が `__GITHUB_REPOSITORY__` を置換 |
 
 **Pages 設定:** Settings → **Pages** → Build and deployment → **Source: GitHub Actions**（「Static HTML / Jekyll の Configure」は押さない）。

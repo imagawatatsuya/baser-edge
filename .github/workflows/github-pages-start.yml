@@ -32,6 +32,14 @@ jobs:
           mkdir -p _site/start
           cp docs/start/index.html docs/start/start.css _site/start/
           sed -i "s|__GITHUB_REPOSITORY__|${{ github.repository }}|g" _site/start/index.html
+          printf '%s\n' '<!DOCTYPE html>' '<html lang="ja">' '<head>' \
+            '<meta charset="utf-8" />' \
+            '<meta http-equiv="refresh" content="0; url=./start/" />' \
+            '<link rel="canonical" href="./start/" />' \
+            '<title>baserEdge お試し</title>' \
+            '</head>' '<body>' \
+            '<p><a href="./start/">baserEdge お試しへ</a></p>' \
+            '</body>' '</html>' > _site/index.html
       - uses: actions/configure-pages@v5
         with:
           # 初回デプロイ前に Pages サイトが未作成のとき API が 404 になるのを避ける
