@@ -10,7 +10,7 @@
     "@baser-edge/cf-stack-destroy": "0.1.0"
   },
   "devDependencies": {
-    "@cloudflare/workers-types": "^4.20250725.0",
+    "@cloudflare/workers-types": "^5.20260724.1",
     "typescript": "^5.8.3"
   }
 }
