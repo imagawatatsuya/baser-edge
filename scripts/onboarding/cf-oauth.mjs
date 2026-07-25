@@ -19,7 +19,7 @@ export function oauthRedirectUri(override) {
 export function oauthScopes() {
   const raw = process.env.BASER_CF_OAUTH_SCOPES?.trim();
   if (raw) return raw;
-  return "account:read workers_scripts:edit d1:edit";
+  return "account.read workers_scripts.write d1.write";
 }
 
 export function createOAuthState() {

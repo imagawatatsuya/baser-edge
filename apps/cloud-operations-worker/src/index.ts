@@ -37,7 +37,7 @@ function dryRun(env: Env): boolean {
 }
 
 function oauthScopes(env: Env): string {
-  return env.BASER_CF_OAUTH_SCOPES?.trim() || "account:read workers_scripts:edit d1:edit";
+  return env.BASER_CF_OAUTH_SCOPES?.trim() || "account.read workers_scripts.write d1.write";
 }
 
 function numEnv(env: Env, key: keyof Env, fallback: number): number {

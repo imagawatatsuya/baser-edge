@@ -32,7 +32,7 @@ BASER_CF_OAUTH_CLIENT_SECRET=...
 # 省略可（既定: http://localhost:5174/api/onboarding/oauth/callback）
 BASER_CF_OAUTH_REDIRECT_URI=http://localhost:5174/api/onboarding/oauth/callback
 # OAuth クライアントに登録した scope と同じ（スペース区切り）。要調整:
-BASER_CF_OAUTH_SCOPES="account:read workers_scripts:edit d1:edit"
+BASER_CF_OAUTH_SCOPES="account.read workers_scripts.write d1.write"
 ```
 
 5. `npm run dev:onboarding` を再起動。開始ページに **「Cloudflare でログインしてサイトを開設」** が出れば有効。

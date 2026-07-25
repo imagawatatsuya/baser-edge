@@ -11,7 +11,7 @@
     }
   ],
   "vars": {
-    "BASER_CF_OAUTH_SCOPES": "account:read workers_scripts:edit d1:edit",
+    "BASER_CF_OAUTH_SCOPES": "account.read workers_scripts.write d1.write",
     "BASER_OPS_GLOBAL_TEARDOWN_PER_DAY": "500",
     "BASER_OPS_IP_OAUTH_START_PER_HOUR": "20",
     "BASER_OPS_IP_OAUTH_CALLBACK_PER_HOUR": "30",

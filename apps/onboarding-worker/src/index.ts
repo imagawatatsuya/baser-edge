@@ -50,7 +50,7 @@ function oauthConfigured(env: Env): boolean {
 }
 
 function oauthScopes(env: Env): string {
-  return env.BASER_CF_OAUTH_SCOPES?.trim() || "account:read workers_scripts:edit d1:edit";
+  return env.BASER_CF_OAUTH_SCOPES?.trim() || "account.read workers_scripts.write d1.write";
 }
 
 function json(data: unknown, status = 200, extra: Record<string, string> = {}): Response {
@@ -279,6 +279,12 @@ async function startProveJob(env: Env, req: Request, apiToken: string): Promise<
   );
 }
 
+function oauthClientIdSuffix(env: Env): string | undefined {
+  const id = env.BASER_CF_OAUTH_CLIENT_ID?.trim();
+  if (!id || id.length < 8) return undefined;
+  return id.slice(-4);
+}
+
 async function handleApi(req: Request, env: Env, url: URL): Promise<Response> {
   if (req.method === "OPTIONS") return new Response(null, { status: 204, headers: corsHeaders() });
 
@@ -294,6 +300,7 @@ async function handleApi(req: Request, env: Env, url: URL): Promise<Response> {
         publicTrial: publicTrial(env),
         ready,
         host: "cloudflare-worker",
+        oauthClientIdSuffix: oauthOn ? oauthClientIdSuffix(env) : undefined,
       },
       ready ? 200 : 503,
     );

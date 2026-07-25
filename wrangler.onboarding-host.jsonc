@@ -20,7 +20,7 @@
   "vars": {
     "BASER_ONBOARDING_PUBLIC": "1",
     "GITHUB_REPO": "imagawatatsuya/baser-edge",
-    "BASER_CF_OAUTH_SCOPES": "account:read workers_scripts:edit d1:edit",
+    "BASER_CF_OAUTH_SCOPES": "account.read workers_scripts.write d1.write",
     "BASER_ONBOARDING_PROVISION_STACK_ID": "trial",
     "BASER_EDGE_OPS_PUBLIC_URL": "https://baser-edge-cloud-operations.papehiko.workers.dev/"
   }
