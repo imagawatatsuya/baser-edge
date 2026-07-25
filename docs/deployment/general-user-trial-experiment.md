@@ -35,6 +35,17 @@ push 後、Actions の **github-pages-start** が成功していること。
 | スタート URL | `https://<org>.github.io/<repo>/start/` |
 | Deploy ボタン | 上記ページ内。リポジトリ名は workflow が `__GITHUB_REPOSITORY__` を置換 |
 
+**Pages 設定:** Settings → **Pages** → Build and deployment → **Source: GitHub Actions**（「Static HTML / Jekyll の Configure」は押さない）。
+
+**Actions が `Get Pages site failed` / `HttpError: Not Found` で落ちたとき:**
+
+1. 上記 Source が **GitHub Actions** になっているか再確認して保存
+2. `main` に `.github/workflows/github-pages-start.yml` の最新（`configure-pages` の `enablement: true`）を push
+3. Actions → **github-pages-start** → **Re-run all jobs**（または workflow_dispatch で手動実行）
+4. 初回は **Environment `github-pages` の承認**を求められたら Approve
+
+成功後、Pages 画面にデプロイ URL と workflow 実行履歴が表示される。
+
 ローカルで HTML だけ見る場合（Deploy は動かない）:
 
 ```powershell

@@ -10,7 +10,7 @@
 | ステップ | 誰 | 内容 |
 |----------|-----|------|
 | 1 | メンテナ | リポジトリを **public** にする |
-| 2 | メンテナ（一度だけ） | GitHub **Settings → Pages → Source: GitHub Actions** |
+| 2 | メンテナ（一度だけ） | GitHub **Settings → Pages → Source: GitHub Actions**（下記トラブルシュート参照） |
 | 3 | 利用者 | `https://<org>.github.io/baser-edge/start/` を開く |
 | 4 | 利用者 | **Deploy to Cloudflare** → 自分の Cloudflare / GitHub で承認 → **管理画面 URL** |
 
@@ -54,6 +54,10 @@ npm・手動 API トークンは不要です。
 - **デプロイ後の片付け（開発者）:** [cloudflare-teardown.md](cloudflare-teardown.md) — `destroy:cloudflare`、R2 空でないときの 10008、Wrangler 4 に object list が無いこと
 - **画像の公開 URL（メディア）** には Cloudflare **R2** が必要。支払い方法（カード / PayPal / Apple Pay / Google Pay / Link 等）の登録と **R2 サブスクリプション** は別手続き。詳細: [cloudflare-r2-and-media.md](cloudflare-r2-and-media.md)
 - **一般ユーザー向けワンクリック削除**は未実装（予定: 管理コンソール + OAuth）。Pages `/start/` に削除ボタンはない
+
+### GitHub Pages（`/start/`）の Actions が失敗する
+
+`Get Pages site failed` / `HttpError: Not Found` → Settings → Pages で **Source: GitHub Actions** を確認し、workflow を再実行。[general-user-trial-experiment.md](general-user-trial-experiment.md) の Pages 節も参照。
 
 ## 履歴を遡って読まれたとき
 

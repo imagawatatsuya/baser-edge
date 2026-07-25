@@ -33,6 +33,9 @@ jobs:
           cp docs/start/index.html docs/start/start.css _site/start/
           sed -i "s|__GITHUB_REPOSITORY__|${{ github.repository }}|g" _site/start/index.html
       - uses: actions/configure-pages@v5
+        with:
+          # 初回デプロイ前に Pages サイトが未作成のとき API が 404 になるのを避ける
+          enablement: true
       - uses: actions/upload-pages-artifact@v3
         with:
           path: _site
