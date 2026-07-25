@@ -4,6 +4,7 @@ import type { ContentSnapshot, ContentTreeEntry } from "../../api/types";
 import { useAuth } from "../../auth/AuthProvider";
 import { simpleDocument } from "../../lib/document";
 import { normalizeSlugInput, SLUG_FIELD_HINT, validateSlugInput } from "../../lib/slug";
+import { restoreContent, trashContent } from "../../lib/contentTrash";
 import { Modal } from "../ui/Modal";
 import { Button } from "../ui/Button";
 import { Field } from "../ui/Field";
@@ -184,22 +185,7 @@ export function MoveContentModal({
   );
 }
 
-export async function trashContent(snapshot: ContentSnapshot) {
-  await apiFetch(`/v1/content/${encodeURIComponent(snapshot.item.id)}/trash`, {
-    method: "POST",
-    json: { expectedTreeVersion: snapshot.node.treeVersion },
-  });
-}
-
-export async function restoreContent(snapshot: ContentSnapshot, newSlug?: string) {
-  await apiFetch(`/v1/content/${encodeURIComponent(snapshot.item.id)}/restore`, {
-    method: "POST",
-    json: {
-      expectedTreeVersion: snapshot.node.treeVersion,
-      ...(newSlug ? { newSlug: normalizeSlugInput(newSlug) } : {}),
-    },
-  });
-}
+export { trashContent, restoreContent };
 
 export async function copyContent(snapshot: ContentSnapshot, newSlug: string, targetParentId: string | null) {
   await apiFetch(`/v1/content/${encodeURIComponent(snapshot.item.id)}/copy`, {

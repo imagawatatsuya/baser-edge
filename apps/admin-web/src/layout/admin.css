@@ -334,6 +334,7 @@ a { color: var(--accent); }
 .media-card-meta { color: var(--muted); }
 .media-card-id { font-size: 0.75rem; word-break: break-all; }
 .media-card-open { align-self: flex-start; padding: 0; margin-top: 0.25rem; }
+.media-card-delete { align-self: flex-start; margin-top: 0.25rem; }
 .media-card-recent {
   outline: 2px solid var(--accent, #315b47);
   outline-offset: 2px;

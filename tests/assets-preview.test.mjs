@@ -168,3 +168,24 @@ test("asset deletion is blocked while a published revision references it", async
     return true;
   });
 });
+
+test("deleteAsset soft-deletes an unused ready asset", async () => {
+  const { assets, boot, owner } = await setup();
+  const created = await assets.createUploadSession(owner, {
+    workspaceId: boot.workspaceId,
+    filename: "orphan.png",
+    mediaType: "image/png",
+    uploadBaseUrl: "https://api.test",
+  });
+  const token = new URL(created.uploadUrl).searchParams.get("token");
+  const ready = await assets.uploadWithToken({
+    sessionId: created.session.id,
+    token,
+    mediaType: "image/png",
+    body: new Uint8Array([9]),
+  });
+  const deleted = await assets.deleteAsset(owner, ready.id);
+  assert.ok(deleted.deletedAt);
+  const listed = await assets.listAssets(owner, boot.workspaceId);
+  assert.equal(listed.length, 0);
+});

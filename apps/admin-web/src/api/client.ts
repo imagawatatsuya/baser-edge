@@ -111,7 +111,7 @@ export async function apiFetch<T>(path: string, options: RequestInit & { json?: 
     if (response.status === 404 && msg === "Route not found") {
       throw new Error("APIルートが見つかりません。npm run dev:stack で起動し、http://localhost:8787/console/ を開いてください（dev:api のみでは不足です）。");
     }
-    throw new Error(msg);
+    throw new Error(code ? `${code}: ${msg}` : msg);
   }
   return data as T;
 }

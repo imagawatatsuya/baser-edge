@@ -1,6 +1,6 @@
 /**
  * 管理画面 (/console/) が想定する API 契約のゴールデンパス。
- * 記事: 空本文で初回公開 → 本文追記して保存 → 再公開 → 公開 HTML に本文が含まれる。
+ * 記事: 空本文で初回公開 → 本文追記して保存 → 再公開 → 公開 HTML に本文が含まれる → ゴミ箱へ移動。
  */
 import assert from "node:assert/strict";
 import test from "node:test";
@@ -262,4 +262,31 @@ test("console golden path: empty body publish, revise body, republish, public HT
   html = await publicRes.text();
   assert.equal(publicRes.status, 200);
   assert.match(html, /追記した本文/);
+
+  const snapshot = await apiJson(worker, `/v1/content/${contentItemId}`, { cookies });
+  assert.equal(snapshot.response.status, 200);
+  const treeVersion = snapshot.json.node.treeVersion;
+
+  const badTrash = await apiJson(worker, `/v1/content/${contentItemId}/trash`, {
+    method: "POST",
+    cookies,
+    csrf: true,
+    body: {},
+  });
+  assert.equal(badTrash.json.error?.message, "expectedTreeVersion must be a number");
+
+  const trashed = await apiJson(worker, `/v1/content/${contentItemId}/trash`, {
+    method: "POST",
+    cookies,
+    csrf: true,
+    body: { expectedTreeVersion: treeVersion },
+  });
+  assert.equal(trashed.response.status, 200, trashed.json.error?.message);
+
+  const trashList = await apiJson(worker, `/v1/sites/${boot.siteId}/trash`, { cookies });
+  assert.equal(trashList.response.status, 200);
+  assert.equal(trashList.json.some((entry) => entry.snapshot?.item?.id === contentItemId), true);
+
+  publicRes = await publicWorker.fetch(new Request(`https://public.test${path}`), { SITE_ID: boot.siteId });
+  assert.equal(publicRes.status, 404);
 });

@@ -74,6 +74,73 @@ test("API exposes Content Manager folder, alias, copy and trash operations", asy
   assert.equal(trashResponse.status, 200);
   const trashListResponse = await localWorker.fetch(new Request(`https://api.test/v1/sites/${boot.siteId}/trash`, { headers }), {});
   assert.equal((await trashListResponse.json()).length, 1);
+
+  const badTrash = await localWorker.fetch(new Request(`https://api.test/v1/content/${folder.item.id}/trash`, {
+    method: "POST", headers,
+    body: JSON.stringify({ expectedTreeVersion: folder.node.treeVersion }),
+  }), {});
+  assert.equal(badTrash.status, 409);
+  assert.equal((await badTrash.json()).error?.code, "ALREADY_TRASHED");
+});
+
+test("API DELETE /v1/assets soft-deletes unused asset and maps ASSET_IN_USE to 409", async () => {
+  const { actor } = await import("@baser-edge/content-kernel");
+  const { createBlock, createEmptyDocument } = await import("@baser-edge/structured-document");
+  const localCms = new CmsService(new MemoryCmsStore());
+  const localWorker = createApiWorker(() => localCms);
+  const bootstrapResponse = await localWorker.fetch(new Request("https://api.test/v1/bootstrap", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ workspaceName: "Asset Delete", siteName: "Assets", hostname: "asset-del.test", ownerName: "Owner" }),
+  }), {});
+  const boot = await bootstrapResponse.json();
+  const headers = {
+    "content-type": "application/json",
+    "x-baser-principal-id": boot.ownerPrincipalId,
+    "x-baser-principal-type": "human",
+  };
+  const owner = actor(boot.ownerPrincipalId, "human");
+
+  async function uploadReady(filename) {
+    const sessionRes = await localWorker.fetch(new Request("https://api.test/v1/assets/upload-sessions", {
+      method: "POST", headers,
+      body: JSON.stringify({ workspaceId: boot.workspaceId, filename, mediaType: "image/png", maximumBytes: 16 }),
+    }), {});
+    assert.equal(sessionRes.status, 201);
+    const upload = await sessionRes.json();
+    const putRes = await localWorker.fetch(new Request(upload.uploadUrl, {
+      method: "PUT",
+      headers: { "content-type": "image/png", "content-length": "3" },
+      body: new Uint8Array([1, 2, 3]),
+    }), {});
+    assert.equal(putRes.status, 201);
+    return putRes.json();
+  }
+
+  const spare = await uploadReady("spare.png");
+  const deleteSpare = await localWorker.fetch(new Request(`https://api.test/v1/assets/${spare.id}`, { method: "DELETE", headers }), {});
+  assert.equal(deleteSpare.status, 200);
+  assert.ok((await deleteSpare.json()).deletedAt);
+  const listAfterDelete = await localWorker.fetch(new Request(`https://api.test/v1/assets?workspaceId=${boot.workspaceId}`, { headers }), {});
+  assert.equal((await listAfterDelete.json()).length, 0);
+
+  const used = await uploadReady("used.png");
+  const document = createEmptyDocument();
+  document.root.slots.body.push(createBlock("image", { assetId: used.id, alt: "hero" }));
+  const page = await localCms.createPage(owner, {
+    siteId: boot.siteId,
+    parentId: null,
+    slug: "uses-asset-api",
+    title: "Uses asset",
+    document,
+  });
+  const approval = await localCms.requestApproval(owner, { contentItemId: page.item.id, revisionId: page.workingRevision.id });
+  await localCms.decideApproval(owner, { approvalId: approval.id, decision: "approved" });
+  await localCms.publish(owner, { contentItemId: page.item.id, revisionId: page.workingRevision.id, approvalId: approval.id });
+
+  const blocked = await localWorker.fetch(new Request(`https://api.test/v1/assets/${used.id}`, { method: "DELETE", headers }), {});
+  assert.equal(blocked.status, 409);
+  assert.equal((await blocked.json()).error?.code, "ASSET_IN_USE");
 });
 
 test("API issues signed upload sessions and revocable preview sessions", async () => {

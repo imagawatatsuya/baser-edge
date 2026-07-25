@@ -60,7 +60,7 @@ export function ContentLayout() {
   const entryById = new Map(entries.map((e) => [e.snapshot.item.id, e]));
 
   async function onTrash(entry: ContentTreeEntry) {
-    if (!window.confirm(`「${displayTitle(entry)}」をゴミ箱へ移動しますか？`)) return;
+    if (!window.confirm(`「${displayTitle(entry)}」を削除（ゴミ箱へ移動）しますか？`)) return;
     setTreeError("");
     try {
       await trashContent(entry.snapshot);
@@ -205,7 +205,7 @@ export function ContentLayout() {
       <div className="page-header">
         <div>
           <h1>コンテンツ</h1>
-          <p>ドラッグで並べ替え・フォルダ／ブログへ移動（フォルダへドロップ＝末尾、項目へドロップ＝直後）。⋯ メニューで詳細操作。</p>
+          <p>ドラッグで並べ替え・フォルダ／ブログへ移動（フォルダへドロップ＝末尾、項目へドロップ＝直後）。⋯ メニューまたは編集画面から削除（ゴミ箱へ）。</p>
         </div>
         <div className="toolbar">
           <Button onClick={() => { setCreateParentId(null); setCreateKind("page"); }}>ページ</Button>

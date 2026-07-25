@@ -1,9 +1,10 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { AssetThumbnail } from "../../components/AssetThumbnail";
+import { Button } from "../../components/ui/Button";
 import { StatusMessage } from "../../components/ui/StatusMessage";
 import { useMediaAssets } from "../../hooks/useMediaAssets";
-import { assetLabel } from "../../lib/assets";
+import { assetLabel, deleteAsset, formatAssetDeleteError } from "../../lib/assets";
 import { canShowPublicImagePreview, publicAssetUrl } from "../../lib/assetUrl";
 
 function publicBaseFromSession(session: { publicUrl?: string } | null): string {
@@ -11,8 +12,10 @@ function publicBaseFromSession(session: { publicUrl?: string } | null): string {
 }
 
 export function MediaLibraryPage() {
-  const { assets, error, session } = useMediaAssets();
+  const { assets, error, session, reload } = useMediaAssets();
   const [searchParams] = useSearchParams();
+  const [status, setStatus] = useState("");
+  const [deletingId, setDeletingId] = useState<string | null>(null);
   const highlightId = searchParams.get("highlight");
 
   useEffect(() => {
@@ -25,6 +28,21 @@ export function MediaLibraryPage() {
 
   const publicBase = publicBaseFromSession(session);
 
+  async function onDeleteAsset(assetId: string, label: string) {
+    if (!window.confirm(`「${label}」をライブラリから削除しますか？公開中のページで使っている場合は削除できません。`)) return;
+    setDeletingId(assetId);
+    setStatus("");
+    try {
+      await deleteAsset(assetId);
+      await reload();
+      setStatus("削除しました。");
+    } catch (e) {
+      setStatus(formatAssetDeleteError(e));
+    } finally {
+      setDeletingId(null);
+    }
+  }
+
   return (
     <>
       <section className="panel panel-pad media-library" id="media-library">
@@ -35,7 +53,7 @@ export function MediaLibraryPage() {
           </Link>
         </div>
         <p className="panel-lead">
-          ワークスペース内の一覧です。公開 URL（ローカル例: <code>{publicBase}/assets/…</code>）からも閲覧できます。
+          ワークスペース内の一覧です。不要な画像はカードの「削除」でライブラリから外せます。
         </p>
         {assets.length === 0 ? (
           <p className="status">
@@ -73,13 +91,21 @@ export function MediaLibraryPage() {
                       画像を開く
                     </a>
                   ) : null}
+                  <Button
+                    variant="danger"
+                    className="media-card-delete"
+                    disabled={deletingId === asset.id}
+                    onClick={() => void onDeleteAsset(asset.id, label)}
+                  >
+                    {deletingId === asset.id ? "削除中…" : "削除"}
+                  </Button>
                 </div>
               </li>
             );
           })}
         </ul>
       </section>
-      <StatusMessage message={error} />
+      <StatusMessage message={status || error} />
     </>
   );
 }

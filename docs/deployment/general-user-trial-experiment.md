@@ -91,7 +91,9 @@ npm run preview:start-page
 | 3 | instant login でツリー画面に入れた |
 | 4 | `GET …/v1/console/capabilities` が 200（開発者ツール・観察者確認可） |
 | 5 | R2 なし構成なら capabilities バナーでメディア制限が分かる |
-| 6 | 公開ページ URL（ログに出る `baser-edge-public-trial` 等）でトップが 200 |
+| 6 | ページ・記事を編集画面またはツリーから **削除（ゴミ箱へ）** できる |
+| 7 | メディアライブラリで **削除** できる（公開中使用はエラー表示） |
+| 8 | 公開ページ URL（ログに出る `baser-edge-public-trial` 等）でトップが 200 |
 
 ---
 

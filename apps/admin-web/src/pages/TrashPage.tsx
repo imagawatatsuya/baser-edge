@@ -37,7 +37,7 @@ export function TrashPage() {
       <div className="page-header">
         <div>
           <h1>ゴミ箱</h1>
-          <p>削除したコンテンツを復元できます。</p>
+          <p>サイトツリーから外したコンテンツです。復元すると元の場所に戻せます（完全削除は別操作）。</p>
         </div>
         <Link to="/content" className="btn">コンテンツへ</Link>
       </div>

@@ -143,7 +143,7 @@ Public mail submit (renderer, not api-worker) — see `tests/mail-form.test.mjs`
 | `/v1/assets/upload-sessions` | POST | Y | Y | Partial | Partial | MIME/size in kernel |
 | `/v1/assets/uploads/:id` | PUT | Y | Partial | Partial | Partial | Token query required |
 | `/v1/assets` | GET | Y | Partial | Partial | Partial | |
-| `/v1/assets/:id` | GET, DELETE | Y | — | Partial | Partial | |
+| `/v1/assets/:id` | GET, DELETE | Y | — | Partial | Partial | DELETE mirrored in `MediaLibraryPage` (`ASSET_IN_USE` UI) |
 
 ---
 

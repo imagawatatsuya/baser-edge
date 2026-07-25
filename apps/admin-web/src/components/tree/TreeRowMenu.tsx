@@ -98,7 +98,7 @@ export function TreeRowMenu({
                 ) : null}
                 <button type="button" role="menuitem" onClick={() => { onMove(); close(); }}>移動…</button>
                 <button type="button" role="menuitem" onClick={() => { onCopy(); close(); }}>コピー…</button>
-                <button type="button" role="menuitem" className="tree-menu-danger" onClick={() => { onTrash(); close(); }}>ゴミ箱</button>
+                <button type="button" role="menuitem" className="tree-menu-danger" onClick={() => { onTrash(); close(); }}>削除（ゴミ箱へ）</button>
               </div>
             </>,
             document.body,

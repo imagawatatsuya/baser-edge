@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { useParams } from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom";
 import { apiFetch, publishContent, unpublishContent } from "../api/client";
 import type { ArticleMeta, ContentSnapshot } from "../api/types";
 import { useAuth } from "../auth/AuthProvider";
@@ -18,9 +18,11 @@ import {
   PUBLIC_LIVE_TAB,
   PUBLIC_PREVIEW_TAB,
 } from "../lib/public-view";
+import { trashContent } from "../lib/contentTrash";
 
 export function ContentEditPage() {
   const { contentId = "" } = useParams();
+  const navigate = useNavigate();
   const { session } = useAuth();
   const [snapshot, setSnapshot] = useState<ContentSnapshot | null>(null);
   const [title, setTitle] = useState("");
@@ -152,6 +154,22 @@ export function ContentEditPage() {
     }
   }
 
+  async function onTrash() {
+    if (!snapshot) return;
+    const name = title.trim() || snapshot.route.path;
+    if (!window.confirm(`「${name}」を削除（ゴミ箱へ移動）しますか？サイドバーの「ゴミ箱」から復元できます。`)) return;
+    setBusy(true);
+    setStatus("ゴミ箱へ移動しています…");
+    try {
+      await trashContent(snapshot);
+      navigate("/content");
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : String(error));
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function onUnpublish() {
     if (!session || !snapshot?.publishedRevision) return;
     if (!window.confirm("公開を取り下げます。サイトの URL では表示されなくなります（下書きは残ります）。よろしいですか？")) return;
@@ -205,6 +223,9 @@ export function ContentEditPage() {
                   公開
                 </Button>
               ) : null}
+              <Button variant="danger" disabled={busy} onClick={() => void onTrash()} title="サイトツリーから外し、ゴミ箱へ移動">
+                削除（ゴミ箱へ）
+              </Button>
             </>
           ) : null}
         </div>
@@ -221,7 +242,7 @@ export function ContentEditPage() {
       ) : null}
       {editable ? (
         <p className="status editor-hint">
-          保存は下書きのみ。サイトに出すには「公開」、「公開を取り下げ」でサイトから外せます（いずれも Passkey の再確認が求められる場合があります）。
+          保存は下書きのみ。サイトに出すには「公開」、「公開を取り下げ」でサイトから外せます。「削除（ゴミ箱へ）」でツリーから外せます（復元可）。
         </p>
       ) : null}
       <dl className="content-meta-dl">
