@@ -46,13 +46,11 @@
 
           </li>
 
-          <li>下の <strong>Deploy to Cloudflare</strong> を押す</li>
+          <li>下の <strong>お試しをはじめる</strong> を押す</li>
 
-          <li>画面の指示どおりログイン・許可する（初回は GitHub にコピーが作られることがあります）</li>
+          <li>Cloudflare にログインし、<strong>Authorize（許可）</strong>する（D1 や Git の設定画面は出ません）</li>
 
-          <li>完了まで <strong>数分</strong>待つ</li>
-
-          <li>表示された <strong>管理画面 URL</strong>（<code>/console/</code> で終わる）を開く</li>
+          <li>「サイトを準備しています…」のあと、自動で <strong>管理画面</strong>へ進みます（<strong>数分</strong>かかることがあります）</li>
 
           <li><strong>「管理をはじめる」</strong> を 1 回押す</li>
 
@@ -60,7 +58,7 @@
 
         <p class="deploy-wrap">
 
-          <a id="deploy-btn" class="deploy-button" href="#">Deploy to Cloudflare</a>
+          <a id="start-trial-btn" class="deploy-button trial-start-button" href="__TRIAL_ONBOARDING_START_URL__">お試しをはじめる</a>
 
         </p>
 
@@ -80,7 +78,7 @@
 
         <p class="note">
 
-          <strong>Deploy だけで、管理画面から画像をアップロードして試せます。</strong>
+          <strong>お試しをはじめる</strong> だけで、管理画面から画像をアップロードして試せます。
 
           Cloudflare は<strong>無料プランのまま</strong>で構いません。baserEdge に別途の月額料金はかかりません。
 
@@ -116,7 +114,7 @@
 
           <li>Cloudflare ダッシュボードで <strong>R2 を有効化</strong>（上の公式ガイド）</li>
 
-          <li>このページの <strong>Deploy to Cloudflare をもう一度</strong>実行する（Cloudflare の Workers Builds から再デプロイでも可）</li>
+          <li>もう一度 <strong>お試しをはじめる</strong>（同じ流れで再開設。Cloudflare 上の設定は裏で行います）</li>
 
           <li>管理画面で画像を<strong>再アップロード</strong>（R2 追加前に上げたファイルは公開用の実体がありません）</li>
 
@@ -138,7 +136,7 @@
 
         <ul>
 
-          <li>デプロイのログで「管理画面」「console」を探す</li>
+          <li>デプロイのログではなく、開設画面のメッセージを確認する</li>
 
           <li>管理画面が真っ白なときは、しばらく待ってから再読み込み</li>
 
@@ -156,7 +154,9 @@
 
         <p class="note">
 
-          公式の <strong>お試しをやめる</strong> ページ（メンテナがデプロイした Cloud Operations Worker）から、Cloudflare ログイン後に trial スタックだけを削除できます。URL は案内者から共有されます。自動削除がまだない場合は、Cloudflare ダッシュボードで Worker とデータベースを削除してください。
+          <a class="deploy-button trial-start-button" href="__TRIAL_TEARDOWN_URL__">お試しをやめる</a>
+
+          （Cloudflare ログイン後、trial のお試し環境だけを削除します。復元できません。）
 
         </p>
 
@@ -173,6 +173,8 @@
           <li>実証手順書: リポジトリ内 <code>docs/deployment/general-user-trial-experiment.md</code></li>
 
           <li>手元検証: <code>BASER_CF_PROVE=1 npm run prove:cloudflare</code></li>
+
+          <li>旧経路（Cloudflare の D1/Git 設定画面が出る）: <a id="deploy-btn" href="#">Deploy to Cloudflare</a></li>
 
         </ul>
 
@@ -206,13 +208,13 @@
 
           subdir;
 
-        var a = document.getElementById("deploy-btn");
+        var legacy = document.getElementById("deploy-btn");
 
-        a.href = deployUrl;
+        if (legacy) {
 
-        a.innerHTML =
+          legacy.href = deployUrl;
 
-          '<img src="https://deploy.workers.cloudflare.com/button" alt="Deploy to Cloudflare" width="180" height="32" />';
+        }
 
       })();
 

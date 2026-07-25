@@ -14,12 +14,14 @@
   "kv_namespaces": [
     {
       "binding": "ONBOARDING_KV",
-      "id": "REPLACE_WITH_KV_ID"
+      "id": "e9154e26df3640889a38501e2b3bf491"
     }
   ],
   "vars": {
     "BASER_ONBOARDING_PUBLIC": "1",
-    "GITHUB_REPO": "OWNER/baser-edge",
-    "BASER_CF_OAUTH_SCOPES": "account:read workers_scripts:edit d1:edit"
+    "GITHUB_REPO": "imagawatatsuya/baser-edge",
+    "BASER_CF_OAUTH_SCOPES": "account:read workers_scripts:edit d1:edit",
+    "BASER_ONBOARDING_PROVISION_STACK_ID": "trial",
+    "BASER_EDGE_OPS_PUBLIC_URL": "https://baser-edge-cloud-operations.papehiko.workers.dev/"
   }
 }

@@ -6,16 +6,17 @@ import { fileURLToPath } from "node:url";
 const root = join(fileURLToPath(new URL("..", import.meta.url)));
 const html = readFileSync(join(root, "docs", "start", "index.html"), "utf8");
 
-assert.match(html, /Deploy to Cloudflare/);
-assert.match(html, /deploy\.workers\.cloudflare\.com/);
+assert.match(html, /お試しをはじめる/);
+assert.match(html, /__TRIAL_ONBOARDING_START_URL__/);
+assert.match(html, /__TRIAL_TEARDOWN_URL__/);
 assert.match(html, /__GITHUB_REPOSITORY__/);
 assert.match(html, /管理をはじめる/);
 assert.match(html, /<details class="card dev-only">/);
-// CLI は折りたたみ内のみ
+assert.match(html, /deploy\.workers\.cloudflare\.com/);
 const main = html.split("<details")[0];
 assert.doesNotMatch(main, /npm run prove/);
 assert.match(html, /無料プラン/);
 assert.doesNotMatch(main, /カード登録/);
-assert.match(html, /Deploy to Cloudflare をもう一度/);
+assert.match(html, /お試しをはじめる/);
 
 console.log("start-page-user-flow: ok");

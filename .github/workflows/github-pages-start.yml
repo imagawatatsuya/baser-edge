@@ -7,6 +7,7 @@ on:
     paths:
       - "docs/start/**"
       - "deploy/one-click/**"
+      - "deploy/trial-onboarding.json"
       - ".github/workflows/github-pages-start.yml"
   workflow_dispatch:
 
@@ -31,7 +32,11 @@ jobs:
         run: |
           mkdir -p _site/start
           cp docs/start/index.html docs/start/start.css _site/start/
+          ONBOARDING=$(node -e "console.log(JSON.parse(require('fs').readFileSync('deploy/trial-onboarding.json','utf8')).onboardingStartUrl)")
+          TEARDOWN=$(node -e "console.log(JSON.parse(require('fs').readFileSync('deploy/trial-onboarding.json','utf8')).teardownUrl)")
           sed -i "s|__GITHUB_REPOSITORY__|${{ github.repository }}|g" _site/start/index.html
+          sed -i "s|__TRIAL_ONBOARDING_START_URL__|${ONBOARDING}|g" _site/start/index.html
+          sed -i "s|__TRIAL_TEARDOWN_URL__|${TEARDOWN}|g" _site/start/index.html
           printf '%s\n' '<!DOCTYPE html>' '<html lang="ja">' '<head>' \
             '<meta charset="utf-8" />' \
             '<meta http-equiv="refresh" content="0; url=./start/" />' \

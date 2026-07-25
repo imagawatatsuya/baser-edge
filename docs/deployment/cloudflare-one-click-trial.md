@@ -33,9 +33,11 @@ Deploy ボタン URL（`OWNER` を差し替え）:
 ## 利用者がやること（ブラウザ）
 
 1. Cloudflare アカウント（無料可）
-2. 開始ページの Deploy ボタン
-3. Cloudflare の画面でログイン・リポジトリ作成・デプロイ待ち
-4. ログの **管理コンソール URL** →「管理をはじめる」
+2. 開始ページの **お試しをはじめる**（公式ホストの OAuth 開設。D1/Git の設定画面は出ない）
+3. Cloudflare でログイン・許可 → 進捗表示 → 管理画面へ
+4. **「管理をはじめる」**
+
+**裏側:** メンテナがホストする [onboarding Worker](../../apps/onboarding-worker/) が OAuth 後、GitHub Actions で `prove:cloudflare` 相当を実行します（`deploy/one-click` の Deploy ボタンは開発者向けフォールバック）。
 
 npm・手動 API トークンは不要です。
 

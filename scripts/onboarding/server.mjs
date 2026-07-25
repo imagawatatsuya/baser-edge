@@ -44,6 +44,13 @@ function newOnboardingStackId() {
   return `ob-${randomBytes(12).toString("hex")}`;
 }
 
+function resolveProvisionStackId() {
+  const fixed = process.env.BASER_ONBOARDING_PROVISION_STACK_ID?.trim().toLowerCase();
+  if (!fixed) return newOnboardingStackId();
+  if (fixed === "trial") return "trial";
+  throw new Error(`BASER_ONBOARDING_PROVISION_STACK_ID "${fixed}" is not allowed`);
+}
+
 async function readJson(req) {
   const chunks = [];
   for await (const chunk of req) chunks.push(chunk);
@@ -131,7 +138,7 @@ async function beginSessionWithToken(apiToken) {
   await verifyCloudflareApiToken(apiToken);
   const accounts = await listAccounts(apiToken);
   const account = accounts[0];
-  const stackId = newOnboardingStackId();
+  const stackId = resolveProvisionStackId();
   const session = createSession({ accountName: account.name, stackId });
 
   if (jobs.has(session.id)) throw new Error("ジョブが既に実行中です");
@@ -231,6 +238,10 @@ const server = createServer(async (req, res) => {
     help.oauthEnabled = oauthOn;
     help.publicTrial = publicTrial;
     help.ready = serviceReady;
+    const provisionFixed = process.env.BASER_ONBOARDING_PROVISION_STACK_ID?.trim().toLowerCase();
+    if (provisionFixed === "trial") help.provisionStackId = "trial";
+    const teardownUrl = process.env.BASER_EDGE_OPS_PUBLIC_URL?.trim();
+    if (teardownUrl) help.teardownUrl = teardownUrl;
     return json(res, 200, help);
   }
 

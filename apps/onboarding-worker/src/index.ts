@@ -12,6 +12,10 @@ export interface Env {
   ONBOARDING_TOKEN_ENCRYPTION_KEY: string;
   ONBOARDING_CALLBACK_SECRET: string;
   BASER_ONBOARDING_RATE_LIMIT_PER_MIN?: string;
+  /** 固定 trial 開設（ob-* ではなく BASER_CF_STACK=trial）。一般向けお試しは trial を推奨。 */
+  BASER_ONBOARDING_PROVISION_STACK_ID?: string;
+  /** お試しをやめる（Cloud Operations Worker）の公開 URL */
+  BASER_EDGE_OPS_PUBLIC_URL?: string;
 }
 
 type SessionRecord = {
@@ -203,6 +207,13 @@ function newStackId(): string {
   return `ob-${randomHex(12)}`;
 }
 
+function provisionStackId(env: Env): string {
+  const fixed = env.BASER_ONBOARDING_PROVISION_STACK_ID?.trim().toLowerCase();
+  if (!fixed) return newStackId();
+  if (fixed === "trial") return "trial";
+  throw new Error(`BASER_ONBOARDING_PROVISION_STACK_ID "${fixed}" is not allowed`);
+}
+
 async function resolveApiToken(
   env: Env,
   body: { oauthGrantId?: string; cloudflareApiToken?: string },
@@ -229,7 +240,7 @@ async function startProveJob(env: Env, req: Request, apiToken: string): Promise<
   }
   await verifyToken(apiToken);
   const accounts = await listAccounts(apiToken);
-  const stackId = newStackId();
+  const stackId = provisionStackId(env);
   const sessionId = randomHex(12);
   const session: SessionRecord = {
     id: sessionId,
@@ -289,7 +300,16 @@ async function handleApi(req: Request, env: Env, url: URL): Promise<Response> {
   }
 
   if (url.pathname === "/api/onboarding/help") {
-    const help = { ...helpJson, oauthEnabled: oauthOn, publicTrial: publicTrial(env), ready };
+    const provisionFixed = env.BASER_ONBOARDING_PROVISION_STACK_ID?.trim().toLowerCase() || null;
+    const teardownUrl = env.BASER_EDGE_OPS_PUBLIC_URL?.trim() || undefined;
+    const help = {
+      ...helpJson,
+      oauthEnabled: oauthOn,
+      publicTrial: publicTrial(env),
+      ready,
+      provisionStackId: provisionFixed === "trial" ? "trial" : undefined,
+      teardownUrl,
+    };
     return json(help);
   }
 

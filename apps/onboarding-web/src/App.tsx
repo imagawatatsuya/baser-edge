@@ -28,6 +28,8 @@ type Help = {
     destroyButton?: string;
     publicUnavailable?: string;
   };
+  provisionStackId?: string;
+  teardownUrl?: string;
   steps: { id: string; label: string }[];
 };
 
@@ -476,46 +478,63 @@ export function App() {
       </section>
 
       <section className="start-card destroy-card">
-        <h2>このサイトを削除</h2>
-        <p className="note">
-          {useOAuthPrimary
-            ? (help?.oauth?.destroyTitle ??
-              "削除するときも Cloudflare にログインして許可するだけです（同じアカウントである必要があります）。")
-            : "削除には開設時と同じ API トークンが必要です。"}
-        </p>
-        <label className="field-label" htmlFor="stack-id">
-          スタック ID
-        </label>
-        <input
-          id="stack-id"
-          className="stack-input"
-          type="text"
-          placeholder="ob-…（開設時にこのブラウザへ保存）"
-          value={stackId}
-          disabled={actionsDisabled}
-          onChange={(e) => setStackId(e.target.value)}
-        />
-        {useOAuthPrimary ? (
-          <button
-            type="button"
-            className="btn-danger"
-            disabled={actionsDisabled || !stackId.trim()}
-            onClick={onOAuthDestroy}
-          >
-            {destroying ? "削除しています…" : (help?.oauth?.destroyButton ?? "Cloudflare でログインして削除")}
-          </button>
+        <h2>お試しをやめる</h2>
+        {help?.teardownUrl ? (
+          <>
+            <p className="note">
+              Cloudflare にログインして許可するだけです。お試し環境（trial）だけを削除し、他のリソースには触れません。復元できません。
+            </p>
+            <a className="btn-danger" href={help.teardownUrl}>
+              お試しをやめる
+            </a>
+          </>
         ) : (
-          <button
-            type="button"
-            className="btn-danger"
-            disabled={actionsDisabled || !token.trim() || !stackId.trim()}
-            onClick={() => void onDestroyWithToken()}
-          >
-            {destroying ? "削除しています…" : "このサイトを削除"}
-          </button>
+          <>
+            <p className="note">
+              {useOAuthPrimary
+                ? (help?.oauth?.destroyTitle ??
+                  "削除するときも Cloudflare にログインして許可するだけです（同じアカウントである必要があります）。")
+                : "削除には開設時と同じ API トークンが必要です。"}
+            </p>
+            {help?.provisionStackId !== "trial" && (
+              <>
+                <label className="field-label" htmlFor="stack-id">
+                  スタック ID
+                </label>
+                <input
+                  id="stack-id"
+                  className="stack-input"
+                  type="text"
+                  placeholder="ob-…（開設時にこのブラウザへ保存）"
+                  value={stackId}
+                  disabled={actionsDisabled}
+                  onChange={(e) => setStackId(e.target.value)}
+                />
+              </>
+            )}
+            {useOAuthPrimary ? (
+              <button
+                type="button"
+                className="btn-danger"
+                disabled={actionsDisabled || (help?.provisionStackId !== "trial" && !stackId.trim())}
+                onClick={onOAuthDestroy}
+              >
+                {destroying ? "削除しています…" : (help?.oauth?.destroyButton ?? "Cloudflare でログインして削除")}
+              </button>
+            ) : (
+              <button
+                type="button"
+                className="btn-danger"
+                disabled={actionsDisabled || !token.trim() || !stackId.trim()}
+                onClick={() => void onDestroyWithToken()}
+              >
+                {destroying ? "削除しています…" : "このサイトを削除"}
+              </button>
+            )}
+            {destroyMsg && <p className="success-msg">{destroyMsg}</p>}
+            {destroyError && <p className="error">{destroyError}</p>}
+          </>
         )}
-        {destroyMsg && <p className="success-msg">{destroyMsg}</p>}
-        {destroyError && <p className="error">{destroyError}</p>}
       </section>
 
       <footer className="start-footer">

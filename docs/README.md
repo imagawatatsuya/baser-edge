@@ -11,7 +11,8 @@
 | [relationship-to-basercms.md](compatibility/relationship-to-basercms.md) | baserCMS との関係（対外） |
 | [ADR-0021](adr/0021-baseredge-product-identity-no-host-migration.md) | 製品境界・デプロイ必達 |
 | [ADR-0022](adr/0022-cloud-operations-worker-security.md) | 公式 Operations Worker（teardown / 将来 update）・クラウド破産防止 |
-| [cloudflare-one-click-trial.md](deployment/cloudflare-one-click-trial.md) | お試し（ブラウザ + Deploy ボタン） |
+| [cloudflare-one-click-trial.md](deployment/cloudflare-one-click-trial.md) | お試し（ブラウザ + OAuth 開設） |
+| [trial-oauth-host.md](deployment/trial-oauth-host.md) | お試し開設ホスト Worker（メンテナ） |
 | [baseredge-cloudflare.md](deployment/baseredge-cloudflare.md) | 開発者向け prove / deploy |
 | [cloudflare-r2-and-media.md](deployment/cloudflare-r2-and-media.md) | R2 有効化・請求・支払い手段・メディア配信とデプロイ形態 |
 | [general-user-trial-experiment.md](deployment/general-user-trial-experiment.md) | 一般ユーザー立場のお試し実証（準備・成功基準） |

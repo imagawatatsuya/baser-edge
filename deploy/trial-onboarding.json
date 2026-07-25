@@ -1,0 +1,4 @@
+{
+  "onboardingStartUrl": "https://baser-edge-trial-host.papehiko.workers.dev/start/",
+  "teardownUrl": "https://baser-edge-cloud-operations.papehiko.workers.dev/"
+}

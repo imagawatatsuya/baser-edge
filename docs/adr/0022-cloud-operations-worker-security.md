@@ -94,7 +94,7 @@ Operations Worker は **メンテナの請求**に載る。以下を **実装要
 #### 5.4 エンドポイント設計
 
 - **GET**: 静的説明 HTML のみ（キャッシュ可）。削除・OAuth 交換は **POST** のみ。
-- **Turnstile**: OAuth 開始前に検証（ボットによる OAuth 開始コストを抑止）。
+- **Turnstile**: OAuth 開始前に検証（ボットによる OAuth 開始コストを抑止）。**Site Key / Secret Key はいずれも Worker の `wrangler secret put` のみ**（リポジトリの `wrangler.*.jsonc` に書かない）。
 - Manifest / 更新チェックは **GitHub Pages** 等に分離し、Operations の req を増やさない。
 
 ### 6. 利用者向け体験（セキュリティと両立）
