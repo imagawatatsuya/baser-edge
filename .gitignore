@@ -38,6 +38,7 @@ deploy/cloudflare-state.*.json
 !deploy/cloudflare-state.example.json
 deploy/cloudflare-secrets.json
 deploy/onboarding-sessions/
+deploy/_preview/
 
 # --- Test / coverage ---
 coverage/

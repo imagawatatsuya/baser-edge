@@ -1,3 +1,11 @@
+export type ConsoleCapabilities = {
+  assetPublicDelivery: boolean;
+  assetStorage: "r2" | "memory";
+  environment: "production" | "preview";
+  instantLogin: boolean;
+  publicSiteUrl: string | null;
+};
+
 export type LocalLoginHint = {
   apiUrl: string;
   publicUrl: string;

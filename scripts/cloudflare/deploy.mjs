@@ -16,6 +16,7 @@ import {
   wrangler,
   randomSecret,
   statePath,
+  displayPath,
 } from "./shared.mjs";
 import { extractWorkerUrl } from "./wrangler-vars.mjs";
 import {
@@ -26,6 +27,7 @@ import {
   requireProveConsent,
   d1DatabaseName,
 } from "./stack.mjs";
+import { applyD1MigrationsRemote } from "./apply-d1-migrations.mjs";
 
 const args = new Set(process.argv.slice(2));
 const doBootstrap = args.has("--bootstrap");
@@ -40,7 +42,7 @@ if (doProvision || !loadState()?.d1DatabaseId) {
 
 let state = loadState();
 if (!state?.d1DatabaseId) {
-  throw new Error(`Missing D1 id. Run: npm run provision:cloudflare (writes ${statePath})`);
+  throw new Error(`Missing D1 id. Run: npm run provision:cloudflare (writes ${displayPath(statePath)})`);
 }
 patchWranglerBindings({ databaseId: state.d1DatabaseId });
 if (state.siteId) patchPublicSiteId(state.siteId);
@@ -49,8 +51,8 @@ console.log("Building packages and admin console…");
 run("npm", ["run", "build"]);
 run("npm", ["run", "build:admin-web"]);
 
-console.log("Applying D1 migrations (remote)…");
-wrangler(["d1", "migrations", "apply", state.d1DatabaseName ?? d1DatabaseName(), "--remote"]);
+console.log("Applying D1 migrations (remote, per-statement)…");
+applyD1MigrationsRemote({ databaseName: state.d1DatabaseName ?? d1DatabaseName() });
 
 console.log("Deploying API worker (includes /console static assets)…");
 const apiDeploy = wrangler(wranglerDeployApiArgs(), { silent: true });

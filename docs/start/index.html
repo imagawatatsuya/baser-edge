@@ -1,66 +1,95 @@
-<!DOCTYPE html>
-<html lang="ja">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>baserEdge お試し</title>
-    <link rel="stylesheet" href="start.css" />
-  </head>
-  <body>
-    <main class="page">
-      <header>
-        <h1>baserEdge お試し</h1>
-        <p class="lead">
-          ブラウザだけで、<strong>あなたの Cloudflare アカウント</strong>にサイトを開設します。npm 不要・リポジトリ管理者のサーバー不要。
-        </p>
-      </header>
-
-      <section class="card">
-        <h2>はじめ方（3 分）</h2>
-        <ol>
-          <li>
-            <a href="https://dash.cloudflare.com/sign-up" target="_blank" rel="noreferrer">Cloudflare で無料アカウント</a>
-            （お持ちなら不要）
-          </li>
-          <li>下のボタンを押す → Cloudflare にログイン → 画面の指示どおり進める</li>
-          <li>デプロイ完了後、表示された <strong>管理画面 URL</strong> を開き「<strong>管理をはじめる</strong>」</li>
-        </ol>
-        <p class="deploy-wrap">
-          <a id="deploy-btn" class="deploy-button" href="#">Deploy to Cloudflare</a>
-        </p>
-        <p class="note">
-          初回は Cloudflare がこのリポジトリのコピーをあなたの GitHub に作り、あなたのアカウントに Worker とデータベースを作成します。サイトは
-          <strong>あなたのアカウント内だけ</strong>に存在します。
-        </p>
-      </section>
-
-      <section class="card">
-        <h2>うまくいかないとき</h2>
-        <ul>
-          <li>デプロイログに表示される「管理画面」URLを探す（<code>/console/</code> で終わる）</li>
-          <li>ビルドは数分かかることがあります</li>
-          <li>開発者向け: 手元で <code>BASER_CF_PROVE=1 npm run prove:cloudflare</code></li>
-        </ul>
-      </section>
-
-      <footer>
-        <p><a href="https://github.com/__GITHUB_REPOSITORY__">ソース（GitHub）</a></p>
-      </footer>
-    </main>
-    <script>
-      (function () {
-        var repo = "__GITHUB_REPOSITORY__";
-        var subdir = "deploy/one-click";
-        var deployUrl =
-          "https://deploy.workers.cloudflare.com/?url=https://github.com/" +
-          encodeURIComponent(repo) +
-          "/tree/main/" +
-          subdir;
-        var a = document.getElementById("deploy-btn");
-        a.href = deployUrl;
-        a.innerHTML =
-          '<img src="https://deploy.workers.cloudflare.com/button" alt="Deploy to Cloudflare" width="180" height="32" />';
-      })();
-    </script>
-  </body>
-</html>
+<!DOCTYPE html>
+<html lang="ja">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>baserEdge お試し</title>
+    <link rel="stylesheet" href="start.css" />
+  </head>
+  <body>
+    <main class="page">
+      <header>
+        <h1>baserEdge お試し</h1>
+        <p class="lead">
+          ブラウザだけで、<strong>あなたの Cloudflare アカウント</strong>にサイトを開設します。コマンドやプログラムのインストールは不要です。
+        </p>
+      </header>
+
+      <section class="card card-highlight">
+        <h2>お試しの流れ（この順番）</h2>
+        <ol class="flow-steps">
+          <li>
+            <a href="https://dash.cloudflare.com/sign-up" target="_blank" rel="noreferrer">Cloudflare で無料アカウント</a>
+            （お持ちならスキップ）
+          </li>
+          <li>下の <strong>Deploy to Cloudflare</strong> を押す</li>
+          <li>画面の指示どおりログイン・許可する（初回は GitHub にコピーが作られることがあります）</li>
+          <li>完了まで <strong>数分</strong>待つ</li>
+          <li>表示された <strong>管理画面 URL</strong>（<code>/console/</code> で終わる）を開く</li>
+          <li><strong>「管理をはじめる」</strong> を 1 回押す</li>
+        </ol>
+        <p class="deploy-wrap">
+          <a id="deploy-btn" class="deploy-button" href="#">Deploy to Cloudflare</a>
+        </p>
+        <p class="note">
+          サイトは <strong>あなたの Cloudflare アカウント内だけ</strong>にあります。運営の共有サーバーには載りません。
+        </p>
+      </section>
+
+      <section class="card">
+        <h2>画像を公開サイトで見せたい場合</h2>
+        <p class="note">
+          画像の <strong>公開 URL</strong> には Cloudflare <strong>R2</strong> の有効化が別途必要です。カード登録と R2 のチェックアウトは別手続きです。
+          <a href="https://developers.cloudflare.com/r2/get-started/" target="_blank" rel="noreferrer">R2 のはじめ方</a>
+        </p>
+        <p class="note">
+          管理画面に「公開メディア配信は無効」と出た場合は、ページとメディア一覧は使えますが公開サイトの <code>/assets/…</code> では表示されません。
+        </p>
+      </section>
+
+      <section class="card">
+        <h2>うまくいかないとき</h2>
+        <ul>
+          <li>デプロイのログで「管理画面」「console」を探す</li>
+          <li>管理画面が真っ白なときは、しばらく待ってから再読み込み</li>
+          <li>それでもダメなときは、案内してくれた人に <strong>ビルドログのスクショ</strong>を送る（ターミナルは不要）</li>
+        </ul>
+      </section>
+
+      <section class="card card-muted">
+        <h2>お試しをやめるとき</h2>
+        <p class="note">
+          このページから自動削除はまだできません。Cloudflare ダッシュボードで Worker とデータベースを削除するか、案内者に頼んでください。
+        </p>
+      </section>
+
+      <details class="card dev-only">
+        <summary>開発者向け（一般の方は閉じて大丈夫）</summary>
+        <ul>
+          <li>実証手順書: リポジトリ内 <code>docs/deployment/general-user-trial-experiment.md</code></li>
+          <li>手元検証: <code>BASER_CF_PROVE=1 npm run prove:cloudflare</code></li>
+        </ul>
+      </details>
+
+      <footer>
+        <p><a href="https://github.com/__GITHUB_REPOSITORY__">ソース（GitHub）</a></p>
+      </footer>
+    </main>
+    <script>
+      (function () {
+        var repo = "__GITHUB_REPOSITORY__";
+        var subdir = "deploy/one-click";
+        var deployUrl =
+          "https://deploy.workers.cloudflare.com/?url=https://github.com/" +
+          encodeURIComponent(repo) +
+          "/tree/main/" +
+          subdir;
+        var a = document.getElementById("deploy-btn");
+        a.href = deployUrl;
+        a.innerHTML =
+          '<img src="https://deploy.workers.cloudflare.com/button" alt="Deploy to Cloudflare" width="180" height="32" />';
+      })();
+    </script>
+  </body>
+</html>
+

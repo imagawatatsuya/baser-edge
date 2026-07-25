@@ -78,6 +78,7 @@ import {
 } from "@baser-edge/auth-kernel";
 import { D1AuthStore } from "@baser-edge/cloudflare-adapters";
 import { createPrincipalLookup, handleAuthRoute, isProductionEnv, resolveActorContext } from "./auth-routes.js";
+import { resolveConsoleCapabilities } from "./platform-capabilities.js";
 
 export interface Env {
   DB?: D1DatabaseLike;
@@ -132,13 +133,22 @@ export interface ApiWorkerOptions {
 let activeCorsRequest: Request | undefined;
 let activeCorsEnv: Env | undefined;
 
+/** Map public /console/* URL to wrangler assets path (dist root is not under /console). */
+export function mapConsoleUrlToAssetPath(pathname: string): string | null {
+  if (pathname === "/console") return "/index.html";
+  if (!pathname.startsWith("/console/")) return null;
+  const rest = pathname.slice("/console".length);
+  if (!rest || rest === "/") return "/index.html";
+  return rest;
+}
+
 async function tryServeConsole(request: Request, env: Env): Promise<Response | null> {
   const url = new URL(request.url);
   if (!env.STATIC_ASSETS) return null;
-  if (url.pathname === "/console" || url.pathname.startsWith("/console/")) {
-    return env.STATIC_ASSETS.fetch(request);
-  }
-  return null;
+  const assetPath = mapConsoleUrlToAssetPath(url.pathname);
+  if (!assetPath) return null;
+  const assetUrl = new URL(assetPath, url.origin);
+  return env.STATIC_ASSETS.fetch(new Request(assetUrl, request));
 }
 
 export function createApiWorker(resolveCms: (env: Env) => CmsService = defaultResolver, options: ApiWorkerOptions = {}) {
@@ -168,6 +178,12 @@ export function createApiWorker(resolveCms: (env: Env) => CmsService = defaultRe
       try {
         if (request.method === "GET" && url.pathname === "/health") {
           return json({ ok: true, service: "baser-edge-api", version: "0.9.0" });
+        }
+        if (url.pathname === "/v1/console/capabilities") {
+          if (request.method !== "GET") {
+            throw new DomainError("METHOD_NOT_ALLOWED", "Only GET is supported", 405);
+          }
+          return json(resolveConsoleCapabilities(env));
         }
         if (request.method === "GET" && url.pathname === "/v1/dev/local-login-hint") {
           if (!env.LOCAL_DEV_LOGIN_HINT) {

@@ -124,6 +124,7 @@ export function requireProveConsent(scriptName = "prove:cloudflare") {
   console.log("  BASER_CF_STACK=lab BASER_CF_PROVE=1 npm run prove:cloudflare");
   console.log("R2 込みのフルスタック:");
   console.log("  BASER_CF_FULL_STACK=1 BASER_CF_STACK=lab BASER_CF_PROVE=1 npm run prove:cloudflare");
+  console.log("R2・メディア・請求（カード≠R2）: docs/deployment/cloudflare-r2-and-media.md");
   console.log("片付け:");
   console.log("  BASER_CF_STACK=lab BASER_CF_DESTROY=1 npm run destroy:cloudflare");
   process.exit(1);
@@ -134,7 +135,7 @@ export function requireDestroyConsent() {
   const s = describeStack();
   const statePath = resolveStatePath();
   const state = existsSync(statePath) ? JSON.parse(readFileSync(statePath, "utf8")) : null;
-  const skipR2 = state?.trialNoR2 === true || isTrialNoR2();
+  const skipR2 = state?.trialNoR2 !== false && (state?.trialNoR2 === true || isTrialNoR2());
   const r2Part = skipR2 ? "" : `, R2 ${s.r2}`;
   console.log(`破棄対象: ${s.apiWorker}, ${s.publicWorker}, D1 ${s.d1}${r2Part}`);
   console.log("\n中止。実行する場合:");

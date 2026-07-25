@@ -4,6 +4,7 @@ import { logoutApi } from "../api/client";
 
 import { useAuth } from "../auth/AuthProvider";
 
+import { ConsoleCapabilitiesBanner } from "../components/ConsoleCapabilitiesBanner";
 import { ConsoleScopeBanner } from "../components/ConsoleScopeBanner";
 
 import "./admin.css";
@@ -72,6 +73,7 @@ export function AdminLayout() {
       <div className="admin-main" id="main-content">
 
         <ConsoleScopeBanner />
+        <ConsoleCapabilitiesBanner />
 
         <Outlet />
 

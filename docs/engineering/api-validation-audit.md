@@ -15,7 +15,7 @@ Living inventory of **existing** `/v1/*` routes against [validation-policy.md](.
 
 | File | Covers |
 |------|--------|
-| `tests/console-golden-path.test.mjs` | Auth, blog/article, revise lock, publish, public HTML |
+| `tests/console-golden-path.test.mjs` | Auth, blog/article, revise lock, publish, public HTML, console capabilities |
 | `tests/api-worker.test.mjs` | Pages, tree, copy/trash, assets, previews, blogs list |
 | `tests/auth.test.mjs` | Passkeys, session, step-up, CSRF |
 | `tests/theme.test.mjs` | Theme releases, activation |
@@ -32,6 +32,7 @@ Living inventory of **existing** `/v1/*` routes against [validation-policy.md](.
 | Route | Methods | Domain | API | −T | Status | Notes |
 |-------|---------|--------|-----|-----|--------|-------|
 | `/health` | GET | — | — | — | OK | No body |
+| `/v1/console/capabilities` | GET | — | — | Y | OK | R2 binding → `assetPublicDelivery`; `tests/console-capabilities.test.mjs` |
 | `/v1/dev/local-login-hint` | GET | — | — | — | Partial | Dev-only; no abuse tests |
 
 ---

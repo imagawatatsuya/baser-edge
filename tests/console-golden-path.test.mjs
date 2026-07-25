@@ -186,6 +186,10 @@ test("console golden path: empty body publish, revise body, republish, public HT
   const boot = await bootstrapWorker(worker);
   const { cookies, credentialId } = await registerAndLogin(worker, boot);
 
+  const caps = await apiJson(worker, "/v1/console/capabilities", { cookies });
+  assert.equal(caps.response.status, 200);
+  assert.equal(caps.json.assetPublicDelivery, false);
+
   const blogSlug = `news-${Date.now()}`;
   const createdBlog = await apiJson(worker, "/v1/blogs", {
     method: "POST",

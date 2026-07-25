@@ -1,5 +1,16 @@
 import { describeStack, isTrialNoR2 } from "./stack.mjs";
-import { loadState, saveState, patchWranglerBindings, wrangler, statePath } from "./shared.mjs";
+import { d1DatabaseIdFromListJson, parseD1DatabaseIdFromOutput } from "./parse-d1-id.mjs";
+import { loadState, saveState, patchWranglerBindings, wrangler, wranglerResult, statePath, displayPath } from "./shared.mjs";
+
+function resolveD1DatabaseId(databaseName) {
+  const listed = wranglerResult(["d1", "list", "--json"], { silent: true });
+  if (!listed.ok) {
+    throw new Error(`wrangler d1 list failed (${listed.status}): ${listed.stderr || listed.stdout}`);
+  }
+  const id = d1DatabaseIdFromListJson(JSON.parse(listed.stdout), databaseName);
+  if (!id) throw new Error(`D1 database "${databaseName}" not found in account (wrangler d1 list).`);
+  return id;
+}
 
 export async function runProvision(log = console.log) {
   const { d1: D1_NAME, r2: R2_NAME } = describeStack();
@@ -20,10 +31,19 @@ export async function runProvision(log = console.log) {
 
   if (!state.d1DatabaseId) {
     log(`Creating D1 database "${D1_NAME}"…`);
-    const out = wrangler(["d1", "create", D1_NAME], { silent: true });
-    const match = out.match(/database_id\s*=\s*([0-9a-f-]{36})/i) ?? out.match(/"uuid":\s*"([0-9a-f-]{36})"/i);
-    if (!match?.[1]) throw new Error(`Could not parse D1 database_id from:\n${out}`);
-    state.d1DatabaseId = match[1];
+    const created = wranglerResult(["d1", "create", D1_NAME], { silent: true });
+    const combined = `${created.stdout}\n${created.stderr}`;
+    if (created.ok) {
+      state.d1DatabaseId = parseD1DatabaseIdFromOutput(combined);
+      if (!state.d1DatabaseId) {
+        throw new Error(`Could not parse D1 database_id from:\n${combined}`);
+      }
+    } else if (/already exists/i.test(combined)) {
+      log(`D1 database "${D1_NAME}" already exists; looking up database_id…`);
+      state.d1DatabaseId = resolveD1DatabaseId(D1_NAME);
+    } else {
+      throw new Error(`wrangler d1 create failed (${created.status}): ${combined}`);
+    }
     log(`D1 database_id: ${state.d1DatabaseId}`);
   }
 
@@ -47,6 +67,6 @@ export async function runProvision(log = console.log) {
   }
 
   saveState(state);
-  log(`Saved state to ${statePath}`);
+  log(`Saved state to ${displayPath(statePath)}`);
   return state;
 }

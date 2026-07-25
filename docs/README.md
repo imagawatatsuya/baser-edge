@@ -11,7 +11,11 @@
 | [relationship-to-basercms.md](compatibility/relationship-to-basercms.md) | baserCMS との関係（対外） |
 | [ADR-0021](adr/0021-baseredge-product-identity-no-host-migration.md) | 製品境界・デプロイ必達 |
 | [cloudflare-one-click-trial.md](deployment/cloudflare-one-click-trial.md) | お試し（ブラウザ + Deploy ボタン） |
-| [zero-touch-business-demo.md](deployment/zero-touch-business-demo.md) | 顧客 CF アカウント上の体験 |
+| [baseredge-cloudflare.md](deployment/baseredge-cloudflare.md) | 開発者向け prove / deploy |
+| [cloudflare-r2-and-media.md](deployment/cloudflare-r2-and-media.md) | R2 有効化・請求・支払い手段・メディア配信とデプロイ形態 |
+| [general-user-trial-experiment.md](deployment/general-user-trial-experiment.md) | 一般ユーザー立場のお試し実証（準備・成功基準） |
+| [cloudflare-teardown.md](deployment/cloudflare-teardown.md) | お試しスタックの削除（destroy・R2 10008/10006） |
+| [cloudflare-prove-troubleshooting.md](deployment/cloudflare-prove-troubleshooting.md) | prove デプロイのよくあるエラーとお試し制限 |
 | [AGENTS.md](../AGENTS.md) | コントリビュータ向け不変条件 |
 
 ## 履歴・アーカイブ（当時のスナップショット）

@@ -1,5 +1,5 @@
 import { readFileSync, writeFileSync, existsSync, mkdirSync } from "node:fs";
-import { join, dirname } from "node:path";
+import { join, dirname, relative } from "node:path";
 import { fileURLToPath } from "node:url";
 import { spawnSync } from "node:child_process";
 import { randomBytes } from "node:crypto";
@@ -13,6 +13,14 @@ import {
 
 const root = join(fileURLToPath(new URL("../..", import.meta.url)));
 export { root };
+
+/** User-facing paths only (never absolute home / Users / x:/...). */
+export function displayPath(absPath) {
+  const rel = relative(root, absPath);
+  if (!rel || rel.startsWith("..")) return "deploy/cloudflare-state.json";
+  return rel.split("\\").join("/");
+}
+
 export const statePath = resolveStatePath();
 /** @deprecated use wranglerApiPath() */
 export const wranglerApi = join(root, "wrangler.jsonc");
@@ -47,6 +55,30 @@ export function wrangler(args, opts) {
   return run("npx", ["wrangler", ...args], opts);
 }
 
+/** Skips wrangler confirmation prompts (e.g. d1 migrations apply). */
+export function wranglerNonInteractive(args, opts = {}) {
+  return wrangler(args, {
+    ...opts,
+    env: { ...process.env, CI: "true", WRANGLER_CI: "1", ...opts.env },
+  });
+}
+
+/** Like wrangler() but does not throw on non-zero exit (for idempotent provision steps). */
+export function wranglerResult(args, opts = {}) {
+  const result = spawnSync("npx", ["wrangler", ...args], {
+    cwd: root,
+    encoding: "utf8",
+    stdio: opts.silent ? "pipe" : "inherit",
+    shell: process.platform === "win32",
+  });
+  return {
+    ok: result.status === 0,
+    stdout: result.stdout ?? "",
+    stderr: result.stderr ?? "",
+    status: result.status ?? 1,
+  };
+}
+
 export function loadState() {
   if (!existsSync(statePath)) return null;
   return JSON.parse(readFileSync(statePath, "utf8"));
@@ -64,8 +96,16 @@ export function patchWranglerDatabaseId(databaseId) {
 export function patchWranglerBindings({ databaseId, d1Name, r2Name } = {}) {
   const dbName = d1Name ?? d1DatabaseName();
   const bucket = r2Name ?? r2BucketName();
-  for (const file of [wranglerApiPath(), wranglerPublicPath()]) {
+  const wranglerConfigs = [
+    join(root, "wrangler.jsonc"),
+    join(root, "wrangler.trial.jsonc"),
+    join(root, "wrangler.public.jsonc"),
+    join(root, "wrangler.public.trial.jsonc"),
+  ];
+  for (const file of wranglerConfigs) {
+    if (!existsSync(file)) continue;
     let text = readFileSync(file, "utf8");
+    if (!/"d1_databases"/.test(text)) continue;
     if (databaseId) {
       text = text.replace(/"database_id":\s*"[^"]*"/, `"database_id": "${databaseId}"`);
     }

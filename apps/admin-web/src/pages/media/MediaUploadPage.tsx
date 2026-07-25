@@ -87,7 +87,7 @@ export function MediaUploadPage() {
       });
       const put = await fetch(sessionRes.uploadUrl, {
         method: "PUT",
-        headers: { "content-type": file.type, "content-length": String(file.size) },
+        headers: { "content-type": file.type },
         body: file,
       });
       if (!put.ok) throw new Error(`アップロード失敗 (${put.status})`);

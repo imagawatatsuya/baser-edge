@@ -1,4 +1,4 @@
-import { run, wrangler, ensureLoggedIn, loadState, saveState, patchWranglerBindings, patchPublicSiteId, statePath } from "./shared.mjs";
+import { run, wrangler, ensureLoggedIn, loadState, saveState, patchWranglerBindings, patchPublicSiteId, statePath, displayPath } from "./shared.mjs";
 import { extractWorkerUrl, patchWranglerApiUrls, patchInstantLogin } from "./wrangler-vars.mjs";
 import { pushApiSecrets, pushPublicSecrets } from "./push-secrets.mjs";
 import { bootstrapRemote, smokeLoginAndPublish } from "./remote-demo.mjs";
@@ -11,6 +11,8 @@ import {
   isTrialNoR2,
 } from "./stack.mjs";
 import { runProvision } from "./run-provision.mjs";
+import { applyD1MigrationsRemote } from "./apply-d1-migrations.mjs";
+import { syncInstantLoginDeploy } from "./sync-instant-login.mjs";
 
 /**
  * @param {{ onProgress?: (event: { step: string, message?: string, consoleUrl?: string, publicUrl?: string }) => void, log?: (...args: unknown[]) => void, runSmoke?: boolean }} options
@@ -35,7 +37,7 @@ export async function runProve(options = {}) {
   if (!state?.d1DatabaseId) {
     state = await runProvision(log);
   }
-  if (!state?.d1DatabaseId) throw new Error(`Missing D1 id after provision (${statePath})`);
+  if (!state?.d1DatabaseId) throw new Error(`Missing D1 id after provision (${displayPath(statePath)})`);
 
   patchWranglerBindings({ databaseId: state.d1DatabaseId });
   if (state.siteId) patchPublicSiteId(state.siteId);
@@ -46,8 +48,8 @@ export async function runProve(options = {}) {
   run("npm", ["run", "build:admin-web"]);
 
   onProgress({ step: "migrate", message: "データベースを初期化しています…" });
-  log("Applying D1 migrations (remote)…");
-  wrangler(["d1", "migrations", "apply", state.d1DatabaseName ?? d1DatabaseName(), "--remote"]);
+  log("Applying D1 migrations (remote, per-statement)…");
+  applyD1MigrationsRemote({ databaseName: state.d1DatabaseName ?? d1DatabaseName(), log });
 
   onProgress({ step: "secrets", message: "セキュリティ設定を適用しています…" });
   log("Pushing Worker secrets…");
@@ -120,6 +122,10 @@ export async function runProve(options = {}) {
 
   const consoleUrl = `${state.apiUrl.replace(/\/$/, "")}/console/`;
   onProgress({ step: "verify", message: "管理画面を確認しています…", consoleUrl });
+
+  if (boot) {
+    syncInstantLoginDeploy(state, boot, log);
+  }
 
   const health = await fetch(`${state.apiUrl.replace(/\/$/, "")}/health`);
   if (!health.ok) throw new Error(`/health ${health.status}`);

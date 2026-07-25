@@ -58,6 +58,27 @@ ul {
   color: #555;
 }
 
+.card-highlight {
+  border: 1px solid #c5d4e8;
+}
+
+.card-muted {
+  background: #fafafa;
+}
+
+.flow-steps li {
+  margin-bottom: 0.35rem;
+}
+
+details.dev-only summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+
+details.dev-only ul {
+  margin-top: 0.75rem;
+}
+
 footer {
   font-size: 0.85rem;
   color: #666;

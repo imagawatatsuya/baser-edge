@@ -14,6 +14,8 @@
 | 3 | 利用者 | `https://<org>.github.io/baser-edge/start/` を開く |
 | 4 | 利用者 | **Deploy to Cloudflare** → 自分の Cloudflare / GitHub で承認 → **管理画面 URL** |
 
+**一般ユーザー実証の準備・チェックリスト:** [general-user-trial-experiment.md](general-user-trial-experiment.md)
+
 利用者のサイトは **利用者の Cloudflare アカウント内のみ**。fork 管理者が共有 Worker や `repository_dispatch` 用 Secrets を持つ必要はありません。
 
 ## 技術的な中身
@@ -49,6 +51,9 @@ npm・手動 API トークンは不要です。
 - 初回デプロイは **数分**かかることがある（Deploy ボタンは利用者の GitHub にコピーを作る場合あり）
 - GitHub Pages は **public リポジトリ** が前提
 - ビルド失敗時は Workers Builds のログを確認
+- **デプロイ後の片付け（開発者）:** [cloudflare-teardown.md](cloudflare-teardown.md) — `destroy:cloudflare`、R2 空でないときの 10008、Wrangler 4 に object list が無いこと
+- **画像の公開 URL（メディア）** には Cloudflare **R2** が必要。支払い方法（カード / PayPal / Apple Pay / Google Pay / Link 等）の登録と **R2 サブスクリプション** は別手続き。詳細: [cloudflare-r2-and-media.md](cloudflare-r2-and-media.md)
+- **一般ユーザー向けワンクリック削除**は未実装（予定: 管理コンソール + OAuth）。Pages `/start/` に削除ボタンはない
 
 ## 履歴を遡って読まれたとき
 

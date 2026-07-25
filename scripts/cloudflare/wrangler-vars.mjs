@@ -28,8 +28,7 @@ export function patchInstantLogin(ownerHint) {
   const file = wranglerApiPath();
   let text = readFileSync(file, "utf8");
   text = setVar(text, "BASER_INSTANT_LOGIN", "true");
-  const json = JSON.stringify(ownerHint).replace(/\\/g, "\\\\").replace(/"/g, '\\"');
-  text = setVar(text, "BASER_INSTANT_OWNER_HINT", json);
+  text = setVar(text, "BASER_INSTANT_OWNER_HINT", JSON.stringify(ownerHint));
   writeFileSync(file, text, "utf8");
 }
 
@@ -40,7 +39,7 @@ export function extractWorkerUrl(output, workerName) {
 
 function setVar(text, key, value) {
   const escaped = value.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
-  const re = new RegExp(`"${key}":\\s*"[^"]*"`);
+  const re = new RegExp(`("${key}":\\s*")((?:[^"\\\\]|\\\\.)*)(")`);
   if (!re.test(text)) throw new Error(`${wranglerApiConfigRel()} missing var "${key}"`);
-  return text.replace(re, `"${key}": "${escaped}"`);
+  return text.replace(re, `$1${escaped}$3`);
 }

@@ -1,5 +1,6 @@
-import { existsSync, unlinkSync, readFileSync, writeFileSync } from "node:fs";
-import { ensureLoggedIn, loadState, wrangler, wranglerApiPath, wranglerPublicPath } from "./shared.mjs";
+import { existsSync, unlinkSync } from "node:fs";
+import { ensureLoggedIn, loadState, wrangler, displayPath } from "./shared.mjs";
+import { resetWranglerConfigsToTemplate } from "./wrangler-template-reset.mjs";
 import {
   apiWorkerName,
   publicWorkerName,
@@ -65,19 +66,11 @@ export async function runDestroy(options = {}) {
   const stateFile = resolveStatePath();
   if (existsSync(stateFile)) {
     unlinkSync(stateFile);
-    log(`Removed state file: ${stateFile}`);
+    log(`Removed state file: ${displayPath(stateFile)}`);
   }
 
-  if (state?.d1DatabaseId) {
-    for (const file of [wranglerApiPath(), wranglerPublicPath()]) {
-      if (!existsSync(file)) continue;
-      let text = readFileSync(file, "utf8");
-      if (text.includes(state.d1DatabaseId)) {
-        text = text.replace(new RegExp(`"database_id":\\s*"${state.d1DatabaseId}"`), '"database_id": "REPLACE_ME"');
-        writeFileSync(file, text, "utf8");
-      }
-    }
-  }
+  resetWranglerConfigsToTemplate();
+  log("Reverted wrangler configs to repository placeholders (REPLACE_ME / example.invalid).");
 
   const anyRemoved = removed.apiWorker || removed.publicWorker || removed.d1 || removed.r2;
   log("Stack teardown finished.");
