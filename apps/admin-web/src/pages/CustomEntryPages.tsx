@@ -38,6 +38,7 @@ export function CustomContentEntriesPage() {
         method: "POST",
         json: { slug, values: {} },
       });
+      await reload();
       navigate(`/custom/${definitionId}/entries/${created.entry.id}`);
     } catch (e) {
       setStatus(e instanceof Error ? e.message : String(e));

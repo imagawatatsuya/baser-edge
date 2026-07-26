@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { apiFetch, ensureStepUp } from "../api/client";
 import { useAuth } from "../auth/AuthProvider";
+import { invalidateSiteContentViews } from "../lib/siteViewSync";
 import { Button } from "../components/ui/Button";
 import { StatusMessage } from "../components/ui/StatusMessage";
 
@@ -53,6 +54,7 @@ export function ApprovalsPage() {
           json: { revisionId: row.approval.revisionId, approvalId: row.approval.id },
         });
       }
+      invalidateSiteContentViews();
       await reload();
       setStatus(decision === "approved" ? "公開しました。" : "却下しました。");
     } catch (e) {
@@ -77,6 +79,7 @@ export function ApprovalsPage() {
           json: { revisionId: row.approval.revisionId, approvalId: row.approval.id },
         });
       }
+      invalidateSiteContentViews();
       await reload();
       setStatus(decision === "approved" ? "カスタムエントリを公開しました。" : "却下しました。");
     } catch (e) {

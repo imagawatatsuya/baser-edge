@@ -87,6 +87,7 @@ export function ContentEditPage() {
     setStatus("保存中…");
     try {
       await commitEditorState("管理画面から編集");
+      await reloadContentTree();
       const wasPublished = Boolean(snapshot.publishedRevision);
       setStatus(wasPublished ? "保存しました（サイトにはまだ反映されません）。" : "保存しました。");
     } catch (error) {
@@ -149,6 +150,7 @@ export function ContentEditPage() {
       const fresh = await apiFetch<ContentSnapshot>(`/v1/content/${encodeURIComponent(contentId)}`);
       await publishContent(contentId, fresh, session.credentialId);
       await load();
+      await reloadContentTree();
       setStatus("公開しました。");
     } catch (error) {
       setStatus(error instanceof Error ? error.message : String(error));
@@ -182,6 +184,7 @@ export function ContentEditPage() {
     try {
       await unpublishContent(contentId, session.credentialId);
       await load();
+      await reloadContentTree();
       setStatus("公開を取り下げました。下書きは編集画面に残っています。");
     } catch (error) {
       setStatus(error instanceof Error ? error.message : String(error));
