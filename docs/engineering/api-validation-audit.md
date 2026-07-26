@@ -44,7 +44,7 @@ Living inventory of **existing** `/v1/*` routes against [validation-policy.md](.
 | `/v1/bootstrap` | POST | Y | Y | Partial | Partial | Prod gate + provision secret; authenticated bootstrap creates and publishes the initial `/home` through normal services; missing/wrong secret rejection tests; hostname rejection still pending |
 | `/v1/bootstrap/ready` | POST | N/A | N/A | Y | OK | Non-mutating provision-secret readiness probe; missing/wrong secret rejection + success tests |
 | `/v1/principals` | POST | Y | Y | Partial | Partial | Happy path in flows only |
-| `/v1/grants` | POST | Y | Partial | Gap | Gap | `scope` is opaque `isRecord`; capability string unchecked at API |
+| `/v1/grants` | POST | Y | Y | Y | OK | Closed `scope` keys; unknown fields → 422 |
 | `/v1/delegations` | POST | Y | Y | Partial | Partial | |
 | `/v1/audit` | GET | Y | Partial | Partial | Partial | `workspaceId` query required but not format-validated |
 
@@ -131,7 +131,7 @@ Living inventory of **existing** `/v1/*` routes against [validation-policy.md](.
 | `/v1/mail-forms/:id/submissions` | GET | Y | — | Partial | Partial | |
 | `/v1/mail-submissions/:id` | GET | Y | Partial | Partial | Partial | `includeSensitive` flag |
 | `/v1/mail-submissions/:id/purge` | POST | Y | — | Partial | Partial | |
-| `/v1/mail-notifications/deliver` | POST | Y | Partial | Gap | Gap | `limit` only `typeof === "number"`; no max bound at API |
+| `/v1/mail-notifications/deliver` | POST | Y | Y | Y | OK | `limit` integer 1–100; default 20 |
 
 Public mail submit (renderer, not api-worker) — see `tests/mail-form.test.mjs` (replay 409).
 
@@ -185,9 +185,9 @@ Work in this order unless a feature touches a specific route.
 |---|------|---------------|----------------|
 | P0 | Slug rejection at HTTP | `POST /v1/pages`, `/folders`, `/blogs`, `/articles`, `/custom-contents`, move/copy | Add tests: non-ASCII slug → 422 `INVALID_SLUG` |
 | P0 | Pagination bounds | `GET /v1/blogs/:id/articles` | `numberField` or bounded parser for limit/offset |
-| P1 | Tree conflicts | move, copy, trash, restore | Tests for wrong `expectedTreeVersion` → 409 |
-| P1 | Grants scope | `POST /v1/grants` | Schema for `scope`; reject unknown keys |
-| P1 | Mail deliver limit | `POST /v1/mail-notifications/deliver` | `numberField` + max cap |
+| P1 | Tree conflicts | move, copy, trash, restore | Tests for wrong `expectedTreeVersion` → 409 | Done (`api-worker.test.mjs`) |
+| P1 | Grants scope | `POST /v1/grants` | Schema for `scope`; reject unknown keys | Done |
+| P1 | Mail deliver limit | `POST /v1/mail-notifications/deliver` | `numberField` + max cap | Done |
 | P2 | Workspace query IDs | Many `GET ?workspaceId=` | Validate ID format before store |
 | P2 | Plugin route proxy | `/v1/plugin-routes/*` | Document trust boundary; tighten optional body |
 | P2 | Agent proposals | `agent-proposals` | Validate operation shapes; rejection tests |
