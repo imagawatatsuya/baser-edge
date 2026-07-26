@@ -529,6 +529,21 @@ test("API rejects malformed agent proposal operations", async () => {
   }), {});
   assert.equal(rejected.status, 422);
   assert.match((await rejected.json()).error?.message ?? "", /operations\[0\]\.kind/);
+
+  const notArray = await localWorker.fetch(new Request(`https://api.test/v1/content/${contentId}/agent-proposals`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({
+      baseRevisionId: snapshot.workingRevision.id,
+      expectedLockVersion: snapshot.item.lockVersion,
+      operations: "not-an-array",
+      instructionSummary: "test",
+      modelProvider: "test",
+      modelName: "test",
+    }),
+  }), {});
+  assert.equal(notArray.status, 422);
+  assert.match((await notArray.json()).error?.message ?? "", /operations must be an array/);
 });
 
 test("API plugin-routes POST rejects non-object JSON body", async () => {
@@ -547,4 +562,10 @@ test("API plugin-routes POST rejects non-object JSON body", async () => {
     body: "[]",
   }), {});
   assert.equal(rejected.status, 422);
+
+  const missingWorkspace = await localWorker.fetch(new Request("https://api.test/v1/plugin-routes/demo", {
+    method: "GET",
+    headers,
+  }), {});
+  assert.equal(missingWorkspace.status, 422);
 });

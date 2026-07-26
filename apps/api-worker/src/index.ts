@@ -429,8 +429,8 @@ export function createApiWorker(resolveCms: (env: Env) => CmsService = defaultRe
             slug: stringField(body, "slug"),
             title: stringField(body, "title"),
             document: documentField(body.document),
-            ...(typeof body.pageSize === "number" ? { pageSize: body.pageSize } : {}),
-            ...(typeof body.feedSize === "number" ? { feedSize: body.feedSize } : {}),
+            ...("pageSize" in body ? { pageSize: boundedIntField(body, "pageSize", { defaultValue: 10, min: 1, max: 100 }) } : {}),
+            ...("feedSize" in body ? { feedSize: boundedIntField(body, "feedSize", { defaultValue: 20, min: 1, max: 100 }) } : {}),
             ...(body.sortDirection === "asc" || body.sortDirection === "desc" ? { sortDirection: body.sortDirection } : {}),
           }), 201);
         }
