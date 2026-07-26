@@ -179,7 +179,7 @@ export class AuthService {
       userAgent: input.userAgent ?? null,
       ipHint: input.ipHint ?? null,
     });
-    await this.#grantOwnerStepUps(issue.session.id);
+    await this.#grantOwnerStepUps(issue.session.id, issue.session.expiresAt);
     return issue;
   }
 
@@ -197,7 +197,7 @@ export class AuthService {
       userAgent: input.userAgent ?? null,
       ipHint: input.ipHint ?? null,
     });
-    await this.#grantOwnerStepUps(issue.session.id);
+    await this.#grantOwnerStepUps(issue.session.id, issue.session.expiresAt);
     return issue;
   }
 
@@ -387,15 +387,15 @@ export class AuthService {
     return [clearCookie(SESSION_COOKIE), clearCookie("baser_csrf")];
   }
 
-  async #grantOwnerStepUps(sessionId: AuthSession["id"]): Promise<void> {
-    const expiresAt = this.#clock.now() + this.#stepUpTtlMs;
+  async #grantOwnerStepUps(sessionId: AuthSession["id"], expiresAt?: number): Promise<void> {
+    const stepExpiresAt = expiresAt ?? this.#clock.now() + this.#stepUpTtlMs;
     const createdAt = this.#clock.now();
     for (const operation of Object.values(StepUpOperations)) {
       await this.#store.upsertStepUp({
         id: asSessionStepUpId(newId("sessionStepUp")),
         sessionId,
         operation,
-        expiresAt,
+        expiresAt: stepExpiresAt,
         createdAt,
       });
     }

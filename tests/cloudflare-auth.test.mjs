@@ -3,6 +3,26 @@ import test from "node:test";
 import { CmsService, MemoryCmsStore } from "../packages/content-kernel/dist/index.js";
 import { normalizeCloudflareAccountId, normalizeCloudflareOwnerEmail } from "../packages/baser-domain/dist/index.js";
 import { createApiWorker } from "../apps/api-worker/dist/index.js";
+import { CSRF_HEADER } from "@baser-edge/auth-kernel";
+
+function parseSetCookies(response) {
+  const cookies = new Map();
+  for (const value of response.headers.getSetCookie?.() ?? []) {
+    const [pair] = value.split(";");
+    const [name, cookieValue] = pair.split("=");
+    cookies.set(name, cookieValue);
+  }
+  return cookies;
+}
+
+function sessionHeaders(cookies, { csrf = false } = {}) {
+  const headers = {
+    cookie: `baser_session=${cookies.get("baser_session")}; baser_csrf=${cookies.get("baser_csrf")}`,
+    "content-type": "application/json",
+  };
+  if (csrf) headers[CSRF_HEADER] = cookies.get("baser_csrf");
+  return headers;
+}
 
 const ACCOUNT = "b96f01ce-30cb-43c6-9ade-fcc14b5bf026";
 const ACCOUNT_NORMALIZED = normalizeCloudflareAccountId(ACCOUNT);
@@ -179,4 +199,73 @@ test("findCloudflareLoginTargetByEmail matches bootstrap owner when account id d
   assert.equal(await cms.findCloudflareLoginTarget(wrongAccount, normalizeCloudflareOwnerEmail(EMAIL)), null);
   const byEmail = await cms.findCloudflareLoginTargetByEmail(normalizeCloudflareOwnerEmail(EMAIL));
   assert.ok(byEmail);
+});
+
+test("cloudflare access login grants session-length step-up for publish", async () => {
+  const cms = new CmsService(new MemoryCmsStore());
+  const boot = await bootstrapOwner(cms);
+  const worker = workerWithBoundOwner(cms);
+  const devHeaders = {
+    "content-type": "application/json",
+    "x-baser-principal-id": boot.ownerPrincipalId,
+    "x-baser-principal-type": "human",
+  };
+  const pageRes = await worker.fetch(new Request("https://api.test/v1/pages", {
+    method: "POST",
+    headers: devHeaders,
+    body: JSON.stringify({
+      siteId: boot.siteId,
+      slug: "cf-publish",
+      title: "CF Publish",
+      document: {
+        formatVersion: 1,
+        root: { id: "root", type: "page", componentVersion: 1, props: {}, slots: { body: [] } },
+      },
+    }),
+  }), { BASER_ENV: "preview" });
+  assert.equal(pageRes.status, 201);
+  const page = await pageRes.json();
+  const revisionId = page.workingRevision.id;
+  const contentItemId = page.item.id;
+
+  const loginRes = await worker.fetch(
+    new Request("https://api.test/v1/auth/access/login", {
+      headers: {
+        "cf-access-jwt-assertion": "test-jwt",
+        "cf-access-authenticated-user-email": EMAIL,
+      },
+    }),
+    ACCESS_ENV,
+  );
+  assert.equal(loginRes.status, 302);
+  const cookies = parseSetCookies(loginRes);
+  const headers = {
+    ...sessionHeaders(cookies, { csrf: true }),
+    "cf-access-jwt-assertion": "test-jwt",
+    "cf-access-authenticated-user-email": EMAIL,
+  };
+
+  const approvalRes = await worker.fetch(new Request(`https://api.test/v1/content/${contentItemId}/approvals`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ revisionId, riskLevel: "medium" }),
+  }), ACCESS_ENV);
+  const approval = await approvalRes.json();
+  assert.equal(approvalRes.status, 201, JSON.stringify(approval));
+
+  const decideRes = await worker.fetch(new Request(`https://api.test/v1/approvals/${approval.id}/decide`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ decision: "approved", comment: "cf-access" }),
+  }), ACCESS_ENV);
+  assert.equal(decideRes.status, 200);
+
+  const publishRes = await worker.fetch(new Request(`https://api.test/v1/content/${contentItemId}/publish`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ revisionId, approvalId: approval.id }),
+  }), ACCESS_ENV);
+  const published = await publishRes.json();
+  assert.equal(publishRes.status, 200, JSON.stringify(published));
+  assert.ok(published.publishedRevision);
 });

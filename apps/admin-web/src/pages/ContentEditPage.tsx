@@ -24,6 +24,7 @@ import { trashContent } from "../lib/contentTrash";
 import { useContentTreeContext } from "../hooks/useContentTree";
 import {
   fetchContentEditorPayload,
+  invalidateContentEditorCache,
   peekContentEditorCache,
 } from "../lib/contentSnapshotCache";
 
@@ -181,7 +182,8 @@ export function ContentEditPage() {
       }
       const fresh = await apiFetch<ContentSnapshot>(`/v1/content/${encodeURIComponent(contentId)}`);
       await publishContent(contentId, fresh, session.credentialId);
-      await load();
+      invalidateContentEditorCache(contentId);
+      await load({ silent: true });
       await reloadContentTree();
       setStatus("公開しました。");
     } catch (error) {
