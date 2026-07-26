@@ -334,3 +334,51 @@ test("POST /v1/approvals/:id/decide rejects invalid decision values", async () =
     assert.equal(rejected.status, 422, JSON.stringify(body));
   }
 });
+
+test("POST custom entry approvals reject missing revisionId and invalid decide", async () => {
+  const { CustomContentService, MemoryCustomContentStore } = await import("@baser-edge/custom-content-kernel");
+  const localCms = new CmsService(new MemoryCmsStore());
+  const localCustom = new CustomContentService(new MemoryCustomContentStore(), localCms);
+  const localWorker = createApiWorker(() => localCms, { resolveCustomContent: () => localCustom });
+  const bootstrapResponse = await localWorker.fetch(new Request("https://api.test/v1/bootstrap", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ workspaceName: "CeApr", siteName: "S", hostname: "ce-apr.test", ownerName: "Owner" }),
+  }), {});
+  const boot = await bootstrapResponse.json();
+  const headers = { "content-type": "application/json", "x-baser-principal-id": boot.ownerPrincipalId, "x-baser-principal-type": "human" };
+  const fieldResponse = await localWorker.fetch(new Request("https://api.test/v1/custom-fields", {
+    method: "POST", headers, body: JSON.stringify({ workspaceId: boot.workspaceId, key: "name", name: "名称", type: "text" }),
+  }), {});
+  const field = await fieldResponse.json();
+  const tableResponse = await localWorker.fetch(new Request("https://api.test/v1/custom-tables", {
+    method: "POST", headers, body: JSON.stringify({ workspaceId: boot.workspaceId, key: "items", name: "Items", kind: "content", displayFieldKey: "name" }),
+  }), {});
+  const table = await tableResponse.json();
+  await localWorker.fetch(new Request(`https://api.test/v1/custom-tables/${table.id}/fields`, {
+    method: "POST", headers, body: JSON.stringify({ fieldId: field.id, required: true }),
+  }), {});
+  const customResponse = await localWorker.fetch(new Request("https://api.test/v1/custom-contents", {
+    method: "POST", headers, body: JSON.stringify({ siteId: boot.siteId, slug: "items", title: "Items", tableId: table.id }),
+  }), {});
+  const custom = await customResponse.json();
+  const entryResponse = await localWorker.fetch(new Request(`https://api.test/v1/custom-contents/${custom.definition.id}/entries`, {
+    method: "POST", headers, body: JSON.stringify({ slug: "one", values: { name: "One" } }),
+  }), {});
+  const entry = await entryResponse.json();
+  const missingRevision = await localWorker.fetch(new Request(`https://api.test/v1/custom-entries/${entry.entry.id}/approvals`, {
+    method: "POST", headers, body: JSON.stringify({}),
+  }), {});
+  assert.equal(missingRevision.status, 422);
+  const approvalResponse = await localWorker.fetch(new Request(`https://api.test/v1/custom-entries/${entry.entry.id}/approvals`, {
+    method: "POST", headers, body: JSON.stringify({ revisionId: entry.workingRevision.id }),
+  }), {});
+  assert.equal(approvalResponse.status, 201);
+  const approval = await approvalResponse.json();
+  for (const body of [{}, { decision: "maybe" }, { decision: 1 }]) {
+    const rejected = await localWorker.fetch(new Request(`https://api.test/v1/custom-entry-approvals/${approval.id}/decide`, {
+      method: "POST", headers, body: JSON.stringify(body),
+    }), {});
+    assert.equal(rejected.status, 422, JSON.stringify(body));
+  }
+});

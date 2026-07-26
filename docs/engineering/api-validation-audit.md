@@ -117,8 +117,8 @@ Living inventory of **existing** `/v1/*` routes against [validation-policy.md](.
 | `/v1/custom-contents/:id/entries` | GET, POST | Y | Y | Partial | Partial | Typed values in kernel |
 | `/v1/custom-entries/:id` | GET | Y | — | Partial | Partial | |
 | `/v1/custom-entries/:id/revisions` | POST | Y | Y | Partial | Partial | Lock version like CMS |
-| `/v1/custom-entries/:id/approvals` | POST | Y | Y | Partial | Partial | |
-| `/v1/custom-entry-approvals/:id/decide` | POST | Y | Y | Partial | Partial | |
+| `/v1/custom-entries/:id/approvals` | POST | Y | Y | Y | OK | `revisionId` required; tests in `api-validation.test.mjs` |
+| `/v1/custom-entry-approvals/:id/decide` | POST | Y | Y | Y | OK | Closed `decision`; rejection tests in `api-validation.test.mjs` |
 | `/v1/custom-entries/:id/publish` | POST | Y | Y | Partial | Partial | |
 
 ---
@@ -199,6 +199,7 @@ Work in this order unless a feature touches a specific route.
 | P4 | Content approvals | `approvals`, `decide` | Closed enums + HTTP rejection tests | Done |
 | P4 | Article term classify | `PUT …/terms` | `termIds` array validation + tests | Done |
 | P4 | Console slug mirror | create modals | `validateSlugInput` wiring tests | Done |
+| P5 | Custom entry approvals | `custom-entries/…/approvals`, `custom-entry-approvals/…/decide` | Mirror content approval HTTP rejection tests | Done |
 
 ---
 
