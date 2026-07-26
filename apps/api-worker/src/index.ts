@@ -29,6 +29,7 @@ import {
   asPluginActivationId,
   type ActorContext,
   type PrincipalType,
+  type SiteId,
   type WorkspaceId,
 } from "@baser-edge/core-types";
 import {
@@ -350,10 +351,11 @@ export function createApiWorker(resolveCms: (env: Env) => CmsService = defaultRe
         }
         if (request.method === "POST" && url.pathname === "/v1/grants") {
           const body = await readJson(request);
+          const scope = optionalCapabilityScopeField(body, "scope");
           return json(await cms.grantCapability(context, {
             principalId: asPrincipalId(stringField(body, "principalId")),
             capability: stringField(body, "capability"),
-            ...(isRecord(body.scope) ? { scope: body.scope } : {}),
+            ...(scope ? { scope } : {}),
             ...(typeof body.validUntil === "number" ? { validUntil: body.validUntil } : {}),
           }), 201);
         }
@@ -651,7 +653,11 @@ export function createApiWorker(resolveCms: (env: Env) => CmsService = defaultRe
         if (request.method === "GET" && mailSubmissionMatch?.[1]) return json(await mailForms.getSubmission(context, asMailSubmissionId(mailSubmissionMatch[1]), { includeSensitive: url.searchParams.get("includeSensitive") === "true" }));
         const mailPurgeMatch = url.pathname.match(/^\/v1\/mail-submissions\/([^/]+)\/purge$/);
         if (request.method === "POST" && mailPurgeMatch?.[1]) return json(await mailForms.purgeSubmission(context, asMailSubmissionId(mailPurgeMatch[1])));
-        if (request.method === "POST" && url.pathname === "/v1/mail-notifications/deliver") { const body=await readJson(request); return json(await mailForms.deliverPending(context, typeof body.limit === "number" ? body.limit : 20)); }
+        if (request.method === "POST" && url.pathname === "/v1/mail-notifications/deliver") {
+          const body = await readJson(request);
+          const limit = boundedIntField(body, "limit", { defaultValue: 20, min: 1, max: 100 });
+          return json(await mailForms.deliverPending(context, limit));
+        }
 
         const articleMetaMatch = url.pathname.match(/^\/v1\/content\/([^/]+)\/article-meta$/);
         if (articleMetaMatch?.[1]) {
@@ -976,6 +982,42 @@ function documentField(value: unknown) {
 function recordField(body: Record<string, unknown>, key: string): Record<string, unknown> { const value = body[key]; return isRecord(value) ? value : invalid(`${key} must be an object`); }
 function stringField(body: Record<string, unknown>, key: string): string { const value = body[key]; return typeof value === "string" && value.length > 0 ? value : invalid(`${key} must be a non-empty string`); }
 function numberField(body: Record<string, unknown>, key: string): number { const value = body[key]; return typeof value === "number" && Number.isFinite(value) ? value : invalid(`${key} must be a number`); }
+function boundedIntField(
+  body: Record<string, unknown>,
+  key: string,
+  bounds: { defaultValue: number; min: number; max: number },
+): number {
+  if (!(key in body)) return bounds.defaultValue;
+  const value = numberField(body, key);
+  if (!Number.isInteger(value)) invalid(`${key} must be an integer`);
+  if (value < bounds.min || value > bounds.max) invalid(`${key} must be between ${bounds.min} and ${bounds.max}`);
+  return value;
+}
+const CAPABILITY_SCOPE_KEYS = new Set(["workspaceId", "siteId", "contentType", "pathPrefix", "maximumRisk"]);
+function optionalCapabilityScopeField(body: Record<string, unknown>, key: string) {
+  if (!(key in body)) return undefined;
+  const raw = body[key];
+  if (!isRecord(raw)) invalid(`${key} must be an object`);
+  for (const entryKey of Object.keys(raw)) {
+    if (!CAPABILITY_SCOPE_KEYS.has(entryKey)) invalid(`scope.${entryKey} is not allowed`);
+  }
+  const scope: {
+    workspaceId?: WorkspaceId;
+    siteId?: SiteId;
+    contentType?: string;
+    pathPrefix?: string;
+    maximumRisk?: "low" | "medium" | "high" | "critical";
+  } = {};
+  if (raw.workspaceId !== undefined) scope.workspaceId = stringField({ workspaceId: raw.workspaceId }, "workspaceId") as WorkspaceId;
+  if (raw.siteId !== undefined) scope.siteId = asSiteId(stringField({ siteId: raw.siteId }, "siteId"));
+  if (raw.contentType !== undefined) scope.contentType = stringField({ contentType: raw.contentType }, "contentType");
+  if (raw.pathPrefix !== undefined) scope.pathPrefix = stringField({ pathPrefix: raw.pathPrefix }, "pathPrefix");
+  if (raw.maximumRisk !== undefined) {
+    if (!isRisk(raw.maximumRisk)) invalid("scope.maximumRisk must be a valid risk level");
+    scope.maximumRisk = raw.maximumRisk;
+  }
+  return scope;
+}
 function optionalQueryInt(raw: string | null, name: string, max: number): number {
   if (raw === null || raw.trim() === "") invalid(`${name} is required`);
   const value = Number(raw);

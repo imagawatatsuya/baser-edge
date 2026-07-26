@@ -397,3 +397,78 @@ test("API exposes Mail Form creation, listing, submissions, and notification del
   const deliveryResponse = await localWorker.fetch(new Request("https://api.test/v1/mail-notifications/deliver", { method: "POST", headers, body: JSON.stringify({ limit: 10 }) }), {});
   assert.equal(deliveryResponse.status, 200); assert.deepEqual(await deliveryResponse.json(), { sent: 0, failed: 0 });
 });
+
+test("API POST /v1/grants rejects unknown scope keys", async () => {
+  const localCms = new CmsService(new MemoryCmsStore());
+  const localWorker = createApiWorker(() => localCms);
+  const bootstrapResponse = await localWorker.fetch(new Request("https://api.test/v1/bootstrap", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ workspaceName: "Grants", siteName: "Grants", hostname: "grants.test", ownerName: "Owner" }),
+  }), {});
+  const boot = await bootstrapResponse.json();
+  const headers = { "content-type": "application/json", "x-baser-principal-id": boot.ownerPrincipalId, "x-baser-principal-type": "human" };
+  const agentResponse = await localWorker.fetch(new Request("https://api.test/v1/principals", {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ workspaceId: boot.workspaceId, type: "agent", displayName: "Agent" }),
+  }), {});
+  assert.equal(agentResponse.status, 201);
+  const agent = await agentResponse.json();
+  const badScope = await localWorker.fetch(new Request("https://api.test/v1/grants", {
+    method: "POST",
+    headers,
+    body: JSON.stringify({
+      principalId: agent.id,
+      capability: "content.read",
+      scope: { workspaceId: boot.workspaceId, rogue: true },
+    }),
+  }), {});
+  assert.equal(badScope.status, 422);
+  assert.match((await badScope.json()).error?.message ?? "", /scope\.rogue/);
+});
+
+test("API POST /v1/mail-notifications/deliver validates limit bounds", async () => {
+  const localCms = new CmsService(new MemoryCmsStore());
+  const localWorker = createApiWorker(() => localCms);
+  const bootstrapResponse = await localWorker.fetch(new Request("https://api.test/v1/bootstrap", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ workspaceName: "MailLimit", siteName: "Mail", hostname: "mail-limit.test", ownerName: "Owner" }),
+  }), {});
+  const boot = await bootstrapResponse.json();
+  const headers = { "content-type": "application/json", "x-baser-principal-id": boot.ownerPrincipalId, "x-baser-principal-type": "human" };
+  for (const body of [{ limit: 101 }, { limit: 0 }, { limit: 1.5 }]) {
+    const rejected = await localWorker.fetch(new Request("https://api.test/v1/mail-notifications/deliver", {
+      method: "POST",
+      headers,
+      body: JSON.stringify(body),
+    }), {});
+    assert.equal(rejected.status, 422, JSON.stringify(body));
+  }
+});
+
+test("API tree mutations return 409 for stale expectedTreeVersion", async () => {
+  const localCms = new CmsService(new MemoryCmsStore());
+  const localWorker = createApiWorker(() => localCms);
+  const bootstrapResponse = await localWorker.fetch(new Request("https://api.test/v1/bootstrap", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ workspaceName: "TreeVer", siteName: "Tree", hostname: "tree-ver.test", ownerName: "Owner" }),
+  }), {});
+  const boot = await bootstrapResponse.json();
+  const headers = { "content-type": "application/json", "x-baser-principal-id": boot.ownerPrincipalId, "x-baser-principal-type": "human" };
+  const folderResponse = await localWorker.fetch(new Request("https://api.test/v1/folders", {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ siteId: boot.siteId, slug: "docs", title: "Docs" }),
+  }), {});
+  const folder = await folderResponse.json();
+  const stale = await localWorker.fetch(new Request(`https://api.test/v1/content/${folder.item.id}/trash`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ expectedTreeVersion: folder.node.treeVersion - 1 }),
+  }), {});
+  assert.equal(stale.status, 409);
+  assert.equal((await stale.json()).error?.code, "TREE_CONFLICT");
+});
