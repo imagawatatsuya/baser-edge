@@ -1,6 +1,4 @@
-import { useEffect, useState } from "react";
-import { apiFetch } from "../api/client";
-import { useAuth } from "../auth/AuthProvider";
+import { useWorkspaceMediaAssets } from "../hooks/useMediaAssets";
 import type { AssetRow } from "../lib/assets";
 import { assetLabel } from "../lib/assets";
 import { AssetThumbnail } from "./AssetThumbnail";
@@ -16,16 +14,7 @@ export function AssetPickerModal({
   onClose: () => void;
   onSelect: (assetId: string) => void;
 }) {
-  const { session } = useAuth();
-  const [assets, setAssets] = useState<AssetRow[]>([]);
-  const [error, setError] = useState("");
-
-  useEffect(() => {
-    if (!session) return;
-    void apiFetch<AssetRow[]>(`/v1/assets?workspaceId=${encodeURIComponent(session.workspaceId)}`)
-      .then(setAssets)
-      .catch((e) => setError(e instanceof Error ? e.message : String(e)));
-  }, [session]);
+  const { assets, error } = useWorkspaceMediaAssets();
 
   const ready = assets.filter((a) => a.state === "ready");
 

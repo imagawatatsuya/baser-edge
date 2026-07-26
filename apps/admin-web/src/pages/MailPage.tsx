@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { apiFetch, ensureStepUp } from "../api/client";
 import { useAuth } from "../auth/AuthProvider";
 import { Button } from "../components/ui/Button";
@@ -20,12 +20,15 @@ export function MailPage() {
       .catch((e) => setStatus(e instanceof Error ? e.message : String(e)));
   }, [session]);
 
-  useEffect(() => {
+  const reloadSubmissions = useCallback(async () => {
     if (!selected) return;
-    void apiFetch<{ id: string; submittedAt: number }[]>(`/v1/mail-forms/${selected}/submissions`)
-      .then(setSubmissions)
-      .catch((e) => setStatus(e instanceof Error ? e.message : String(e)));
+    const list = await apiFetch<{ id: string; submittedAt: number }[]>(`/v1/mail-forms/${selected}/submissions`);
+    setSubmissions(list);
   }, [selected]);
+
+  useEffect(() => {
+    void reloadSubmissions().catch((e) => setStatus(e instanceof Error ? e.message : String(e)));
+  }, [reloadSubmissions]);
 
   async function loadSensitive(id: string) {
     if (!session) return;
@@ -45,6 +48,7 @@ export function MailPage() {
           <h1>メールフォーム</h1>
           <p>送信一覧（PII は step-up 後に表示）。</p>
         </div>
+        <Button onClick={() => void reloadSubmissions()}>更新</Button>
       </div>
       {forms.length ? (
         <select value={selected} onChange={(e) => setSelected(e.target.value)}>

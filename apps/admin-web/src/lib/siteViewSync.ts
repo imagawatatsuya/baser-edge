@@ -1,4 +1,5 @@
 import { invalidateContentTreeCache } from "./contentTreeCache";
+import { invalidateMediaAssetsCache } from "./mediaAssetsCache";
 
 /**
  * Invalidate cached admin views of site content (tree, etc.) after mutations.
@@ -6,4 +7,5 @@ import { invalidateContentTreeCache } from "./contentTreeCache";
  */
 export function invalidateSiteContentViews(): void {
   invalidateContentTreeCache();
+  invalidateMediaAssetsCache();
 }
