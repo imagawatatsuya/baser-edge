@@ -9,5 +9,6 @@
 | [release-checklist.md](release-checklist.md) | public 化前チェックリスト・**新規 repo vs 同一 repo 公開** |
 | [trial-hosting-architecture.md](trial-hosting-architecture.md) | 共有 `/start/` を誰がホストするかの整理 |
 | [optional-hosted-start-page.md](optional-hosted-start-page.md) | 公式組織がホスト型オンボーディングを出すときの参考 |
+| [reset-checkpoint.md](reset-checkpoint.md) | 機能開発用 Git タグと Cloud lab スタックのリセット手順 |
 
 旧パス（`deployment/private-repo-until-launch.md` 等）はリダイレクト用スタブのみ残しています。
