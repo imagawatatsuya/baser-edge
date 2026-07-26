@@ -10,7 +10,7 @@ assert.match(html, /お試しをはじめる/);
 assert.match(html, /__TRIAL_ONBOARDING_START_URL__/);
 assert.match(html, /__TRIAL_TEARDOWN_URL__/);
 assert.match(html, /__GITHUB_REPOSITORY__/);
-assert.match(html, /管理をはじめる/);
+assert.match(html, /Cloudflare でログイン/);
 assert.match(html, /<details class="card dev-only">/);
 assert.match(html, /deploy\.workers\.cloudflare\.com/);
 const main = html.split("<details")[0];

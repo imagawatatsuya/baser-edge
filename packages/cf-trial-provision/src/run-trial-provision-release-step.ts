@@ -26,6 +26,7 @@ import {
   type TrialReleaseConfig,
 } from "./run-trial-provision-release.js";
 import { fetchTrialProvisionerIdentity } from "./cf-provisioner-identity.js";
+import { assertTrialHostCmsOAuth, verifyTrialCmsLoginReady } from "./trial-cms-login.js";
 
 export const TRIAL_PROVISION_STEP_API_BUDGET = 35;
 export const TRIAL_PROVISION_ROUTE_PROBE_ATTEMPTS = 12;
@@ -353,6 +354,7 @@ export async function runTrialProvisionReleaseStep(
     }
 
     case "secrets": {
+      assertTrialHostCmsOAuth(config);
       const secrets = requiredSecrets(state);
       const manifest = await loadTrialReleaseManifest(config);
       const apiSecrets: Record<string, string> = { ...secrets };
@@ -456,13 +458,14 @@ export async function runTrialProvisionReleaseStep(
           expectedContentTypePrefix: "text/html",
         },
       });
+      await verifyTrialCmsLoginReady(apiUrl);
       const consoleUrl = `${apiUrl.replace(/\/$/, "")}/console/`;
       return {
         done: true,
         result: { consoleUrl, publicUrl, apiUrl },
         progress: {
           step: "succeeded",
-          message: "サイトの準備ができました",
+          message: "サイトの準備ができました。管理画面で Cloudflare にログインしてください。",
           consoleUrl,
           publicUrl,
         },

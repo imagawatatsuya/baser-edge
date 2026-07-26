@@ -4,6 +4,8 @@
 
 ## 現在の標準経路
 
+利用者向けの正本は [provisioning-paths.md](provisioning-paths.md) です。
+
 1. [お試し開始ページ](https://baser-edge-trial-host.papehiko.workers.dev/start/)を開く
 2. Cloudflare OAuthでログイン・許可する
 3. 開設画面で進捗を確認する
@@ -38,8 +40,8 @@
 ## 完了の目印
 
 - 管理画面URLは`/console/`で終わる
-- 管理画面で**サイトの準備ができました**と表示される
-- **管理をはじめる**でコンテンツツリーへ入れる
+- 管理画面に **Cloudflare でログイン** が表示される
+- ログイン後、コンテンツツリー（**コンテンツ**）に入れる
 - 公開サイトのルートURLから公開済み`/home`を表示できる
 
 Workerの`/health`だけでは開設成功と判定しません。管理画面のHTMLが200で配信されることと、D1の初期化完了を確認します。

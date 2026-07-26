@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 /**
- * baserEdge single-flow Cloudflare deploy (build → migrate → workers).
+ * baserEdge maintainer deploy (build → migrate → workers).
+ * End users should open a site via trial onboarding — see docs/deployment/provisioning-paths.md
  * Usage:
  *   npm run provision:cloudflare   # once per account
  *   npm run deploy:cloudflare      # build + migrate + deploy
@@ -14,7 +15,6 @@ import {
   patchPublicSiteId,
   run,
   wrangler,
-  randomSecret,
   statePath,
   displayPath,
 } from "./shared.mjs";
@@ -29,6 +29,7 @@ import {
 } from "./stack.mjs";
 import { applyD1MigrationsRemote } from "./apply-d1-migrations.mjs";
 import { getBootstrapSecret } from "./secrets-store.mjs";
+import { TRIAL_ONBOARDING_START_URL } from "./trial-start-url.mjs";
 
 const args = new Set(process.argv.slice(2));
 const doBootstrap = args.has("--bootstrap");
@@ -109,14 +110,16 @@ async function bootstrapSite(state) {
 }
 
 function printPostDeploy(state) {
-  console.log("\n--- baserEdge deploy complete ---\n");
+  console.log("\n--- baserEdge deploy complete (開発者向け手動デプロイ) ---\n");
+  console.log("一般のサイト開設:", TRIAL_ONBOARDING_START_URL);
+  console.log("  → 利用者はブラウザだけ。OAuth/Access/binding は開設処理が自動で行います。");
+  console.log("  → 詳細:", "docs/deployment/provisioning-paths.md");
+  console.log("");
   console.log("管理コンソール:", state.apiUrl ? `${state.apiUrl.replace(/\/$/, "")}/console/` : "(see wrangler deploy output)");
   console.log("公開ワーカー:", state.publicUrl ?? "(see wrangler deploy output)");
   console.log("D1 database_id:", state.d1DatabaseId);
   if (!state.bootstrapped) {
-    console.log("\n初回のみ:");
-    console.log("  推奨: npm run prove:cloudflare で自動実証");
+    console.log("\n初回のみ (メンテナ): npm run prove:cloudflare または npm run bind:cloudflare-owner + OAuth シークレット");
   }
   console.log("\n開発用ローカル:", "npm run dev:stack → 起動ログの管理画面 URL（/console/）");
-  console.log("推奨シークレット例 (生成):", randomSecret());
 }

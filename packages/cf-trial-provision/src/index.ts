@@ -50,3 +50,7 @@ export {
   decryptTrialProvisionToken,
   encryptTrialProvisionToken,
 } from "./provision-token-crypto.js";
+export {
+  assertTrialHostCmsOAuth,
+  verifyTrialCmsLoginReady,
+} from "./trial-cms-login.js";

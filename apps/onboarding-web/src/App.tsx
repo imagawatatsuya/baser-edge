@@ -562,6 +562,9 @@ export function App() {
                 </a>
               </p>
             )}
+            <p className="note">
+              管理画面では<strong> Cloudflare でログイン</strong>してください（開設したのと同じアカウント）。
+            </p>
           </div>
         )}
         </div>
@@ -615,7 +618,7 @@ export function App() {
       </section>
 
       <footer className="start-footer">
-        <p>開設後は管理画面で「管理をはじめる」を押してください（実証用の簡易ログイン）。</p>
+        <p>開設後は管理画面 URL を開き、<strong>Cloudflare でログイン</strong>してください。</p>
       </footer>
     </div>
   );

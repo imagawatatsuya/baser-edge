@@ -15,6 +15,8 @@ import {
   runTrialProvisionReleaseStep,
   trialMigrationRunnerSource,
   trialProvisionStageProgress,
+  assertTrialHostCmsOAuth,
+  verifyTrialCmsLoginReady,
 } from "../packages/cf-trial-provision/dist/index.js";
 import {
   uploadWorkerAssets,
@@ -226,6 +228,9 @@ describe("cf-trial-provision log parse", () => {
       if (url.pathname === "/v1/bootstrap/ready") {
         return Response.json({ ready: true });
       }
+      if (url.pathname === "/v1/auth/cloudflare/entry") {
+        return Response.json({ available: true, mode: "oauth" });
+      }
       if (url.pathname === "/health") return Response.json({ ok: true });
       if (url.pathname === "/console/") {
         return new Response("<!doctype html><title>baserEdge</title>", {
@@ -235,6 +240,12 @@ describe("cf-trial-provision log parse", () => {
       throw new Error(`Unexpected external fetch: ${method} ${url}`);
     };
 
+    const trialConfig = {
+      accountId: "a".repeat(32),
+      releaseBaseUrl: "https://release.test/trial-release",
+      httpFetch: releaseFetch,
+      cmsOAuth: { clientId: "trial-oauth-client", clientSecret: "trial-oauth-secret" },
+    };
     try {
       let state;
       let completed;
@@ -244,11 +255,7 @@ describe("cf-trial-provision log parse", () => {
         const stage = state?.stage ?? "prepare";
         let result = await runTrialProvisionReleaseStep(
           "oauth-token",
-          {
-            accountId: "a".repeat(32),
-            releaseBaseUrl: "https://release.test/trial-release",
-            httpFetch: releaseFetch,
-          },
+          trialConfig,
           state,
         );
         callsByStage.push({ stage, calls: invocationCalls });
@@ -258,11 +265,7 @@ describe("cf-trial-provision log parse", () => {
           invocationCalls = 0;
           result = await runTrialProvisionReleaseStep(
             "oauth-token",
-            {
-              accountId: "a".repeat(32),
-              releaseBaseUrl: "https://release.test/trial-release",
-              httpFetch: releaseFetch,
-            },
+            trialConfig,
             state,
           );
           callsByStage.push({ stage: "deploy-api-initial-redelivery", calls: invocationCalls });
@@ -306,6 +309,8 @@ describe("cf-trial-provision log parse", () => {
         [
           "ASSET_UPLOAD_SECRET",
           "BASER_BOOTSTRAP_SECRET",
+          "BASER_CF_OAUTH_CLIENT_ID",
+          "BASER_CF_OAUTH_CLIENT_SECRET",
           "MAIL_FORM_SECRET",
           "MAIL_PRIVACY_SALT",
           "PREVIEW_SECRET",
@@ -773,5 +778,27 @@ describe("cf-trial-provision log parse", () => {
     const encrypted = await encryptTrialProvisionToken(key, "cloudflare-oauth-token");
     assert.notEqual(encrypted, "cloudflare-oauth-token");
     assert.equal(await decryptTrialProvisionToken(key, encrypted), "cloudflare-oauth-token");
+  });
+});
+
+describe("trial CMS login readiness", () => {
+  it("requires host CMS OAuth before pushing user worker secrets", () => {
+    assert.throws(() => assertTrialHostCmsOAuth({ accountId: "a", releaseBaseUrl: "https://x" }), /OAuth/);
+    assert.doesNotThrow(() => assertTrialHostCmsOAuth({
+      accountId: "a",
+      releaseBaseUrl: "https://x",
+      cmsOAuth: { clientId: "id", clientSecret: "secret" },
+    }));
+  });
+
+  it("verifyTrialCmsLoginReady rejects unavailable entry", async () => {
+    await assert.rejects(
+      () => verifyTrialCmsLoginReady("https://api.test", async () => new Response(JSON.stringify({ available: false, reason: "owner_not_bound" }))),
+      /利用できません/,
+    );
+  });
+
+  it("verifyTrialCmsLoginReady accepts oauth entry", async () => {
+    await verifyTrialCmsLoginReady("https://api.test", async () => new Response(JSON.stringify({ available: true, mode: "oauth" })));
   });
 });

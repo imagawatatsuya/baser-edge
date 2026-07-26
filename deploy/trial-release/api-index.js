@@ -1,3 +1,11 @@
+import * as http from "node:http";
+import * as https from "node:https";
+import { once } from "node:events";
+import { Buffer as Buffer$1 } from "node:buffer";
+import * as crypto$1 from "node:crypto";
+import { KeyObject, createPrivateKey, createPublicKey, constants, createSecretKey } from "node:crypto";
+import * as util from "node:util";
+import { promisify } from "node:util";
 const systemClock = {
   now: () => Date.now()
 };
@@ -55,8 +63,8 @@ class DomainError extends Error {
   code;
   status;
   details;
-  constructor(code, message, status = 400, details) {
-    super(message);
+  constructor(code, message2, status = 400, details) {
+    super(message2);
     this.name = "DomainError";
     this.code = code;
     this.status = status;
@@ -64,9 +72,9 @@ class DomainError extends Error {
       this.details = details;
   }
 }
-function assertDomain(condition, code, message, status = 400, details) {
+function assertDomain(condition, code, message2, status = 400, details) {
   if (!condition)
-    throw new DomainError(code, message, status, details);
+    throw new DomainError(code, message2, status, details);
 }
 function stableStringify(value) {
   return JSON.stringify(sortValue(value));
@@ -256,6 +264,30 @@ function normalizeSlug(input) {
   assertDomain(/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(ascii), "INVALID_SLUG", "Slug must use ASCII letters, numbers, and hyphens only (e.g. news, my-post)", 422);
   return ascii;
 }
+const CLOUDFLARE_ACCOUNT_ID_RE = /^[a-f0-9]{32}$/i;
+function normalizeCloudflareOwnerEmail(input) {
+  const email = input.normalize("NFC").trim().toLowerCase();
+  assertDomain(email.length > 0, "EMPTY_EMAIL", "Email cannot be empty", 422);
+  assertDomain(email.length <= 254, "EMAIL_TOO_LONG", "Email must be 254 characters or fewer", 422);
+  assertDomain(email.includes("@") && !email.startsWith("@") && !email.endsWith("@"), "INVALID_EMAIL", "Email format is invalid", 422);
+  return email;
+}
+function normalizeCloudflareAccountId(input) {
+  const accountId = input.trim().toLowerCase().replace(/-/g, "");
+  assertDomain(CLOUDFLARE_ACCOUNT_ID_RE.test(accountId), "INVALID_CLOUDFLARE_ACCOUNT_ID", "Cloudflare account id must be 32 hex characters", 422);
+  return accountId;
+}
+function normalizeSiteHostname(input) {
+  const hostname = input.normalize("NFC").trim().toLowerCase();
+  assertDomain(hostname.length > 0, "INVALID_HOSTNAME", "Hostname cannot be empty", 422);
+  assertDomain(hostname.length <= 253, "INVALID_HOSTNAME", "Hostname must be 253 characters or fewer", 422);
+  assertDomain(!hostname.includes("..") && !hostname.includes(":") && !hostname.includes("/") && !hostname.includes(" "), "INVALID_HOSTNAME", "Hostname must not contain spaces, slashes, or port syntax", 422);
+  const labelPattern = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/;
+  const labels = hostname.split(".");
+  assertDomain(labels.length >= 2, "INVALID_HOSTNAME", "Hostname must include a domain suffix (e.g. example.test)", 422);
+  assertDomain(labels.every((label) => labelPattern.test(label)), "INVALID_HOSTNAME", "Hostname must use ASCII letters, numbers, hyphens, and dots only (e.g. example.test)", 422);
+  return hostname;
+}
 function normalizePath(path) {
   const normalized = `/${path}`.replace(/\/{2,}/g, "/");
   if (normalized === "/")
@@ -311,7 +343,7 @@ function validateDocument(document, registry) {
       unknownComponents.push({ id: block.id, type: block.type, version: block.componentVersion });
       return;
     }
-    errors.push(...definition2.validateProps(block.props).map((message) => `${block.id}: ${message}`));
+    errors.push(...definition2.validateProps(block.props).map((message2) => `${block.id}: ${message2}`));
     if (parent && slot) {
       const parentDefinition = registry.get(parent.type, parent.componentVersion);
       const allowed = parentDefinition?.allowedSlots[slot];
@@ -519,13 +551,18 @@ function createDefaultComponentRegistry() {
   registry.register(definition("divider", "Divider", () => []));
   return registry;
 }
+const BUILTIN_STARTER_HOME_HERO_ASSET_ID = "builtin:starter-home-hero";
+function isEmbeddedBuiltinAssetId(assetId) {
+  return assetId === BUILTIN_STARTER_HOME_HERO_ASSET_ID;
+}
 function collectAssetReferences(document) {
   const references = [];
   walk(document.root, void 0, void 0, (block) => {
     if (block.type === "image" || block.type === "imageText") {
       const assetId = block.props.assetId;
-      if (typeof assetId === "string" && assetId.length > 0)
+      if (typeof assetId === "string" && assetId.length > 0 && !isEmbeddedBuiltinAssetId(assetId)) {
         references.push({ assetId, blockId: block.id, fieldPath: "props.assetId", usage: "image" });
+      }
     } else if (block.type === "gallery") {
       const assetIds = block.props.assetIds;
       if (Array.isArray(assetIds))
@@ -535,8 +572,9 @@ function collectAssetReferences(document) {
         });
     } else if (block.type === "fileDownload") {
       const assetId = block.props.assetId;
-      if (typeof assetId === "string" && assetId.length > 0)
+      if (typeof assetId === "string" && assetId.length > 0 && !isEmbeddedBuiltinAssetId(assetId)) {
         references.push({ assetId, blockId: block.id, fieldPath: "props.assetId", usage: "download" });
+      }
     }
   });
   return references;
@@ -575,7 +613,7 @@ class MemoryCmsStore {
     this.principals.set(principal.id, structuredClone(principal));
   }
   async getPrincipal(id) {
-    return clone$6(this.principals.get(id) ?? null);
+    return clone$7(this.principals.get(id) ?? null);
   }
   async createCapabilityGrant(grant) {
     this.grants.set(grant.id, structuredClone(grant));
@@ -587,7 +625,7 @@ class MemoryCmsStore {
     return [...this.grants.values()].filter((grant) => grant.principalId === principalId).map((grant) => structuredClone(grant));
   }
   async getDelegationGrant(id) {
-    return clone$6(this.delegations.get(id) ?? null);
+    return clone$7(this.delegations.get(id) ?? null);
   }
   async createPage(input) {
     return this.createRoutableContent(input, "page", "canonical");
@@ -625,7 +663,7 @@ class MemoryCmsStore {
     return snapshot;
   }
   async getNode(id) {
-    return clone$6(this.nodes.get(id) ?? null);
+    return clone$7(this.nodes.get(id) ?? null);
   }
   async getContentSnapshot(contentItemId) {
     if (!this.items.has(contentItemId))
@@ -633,7 +671,7 @@ class MemoryCmsStore {
     return this.snapshot(contentItemId);
   }
   async getRevision(revisionId) {
-    return clone$6(this.revisions.get(revisionId) ?? null);
+    return clone$7(this.revisions.get(revisionId) ?? null);
   }
   async commitRevision(input) {
     const item = requireValue$1(this.items.get(input.contentItemId), "CONTENT_NOT_FOUND", "Content not found");
@@ -1011,10 +1049,10 @@ class MemoryCmsStore {
     return this.snapshot(rootItem.id);
   }
   async listContentTree(siteId) {
-    return [...this.items.values()].filter((item) => item.siteId === siteId && item.state === "active").map((item) => this.managerEntry(item.id)).sort((a, b) => compareSortKeys(a.snapshot.node.sortKey, b.snapshot.node.sortKey) || a.snapshot.node.cachedPath.localeCompare(b.snapshot.node.cachedPath));
+    return [...this.items.values()].filter((item) => item.siteId === siteId && item.state === "active").map((item) => this.managerEntryForTree(item.id)).sort((a, b) => compareSortKeys(a.snapshot.node.sortKey, b.snapshot.node.sortKey) || a.snapshot.node.cachedPath.localeCompare(b.snapshot.node.cachedPath));
   }
   async listTrash(siteId) {
-    return [...this.items.values()].filter((item) => item.siteId === siteId && item.state === "trashed").map((item) => this.managerEntry(item.id)).sort((a, b) => (a.trash?.previousPath ?? "").localeCompare(b.trash?.previousPath ?? ""));
+    return [...this.items.values()].filter((item) => item.siteId === siteId && item.state === "trashed").map((item) => this.managerEntryForTree(item.id)).sort((a, b) => (a.trash?.previousPath ?? "").localeCompare(b.trash?.previousPath ?? ""));
   }
   async createApproval(input) {
     const item = requireValue$1(this.items.get(input.contentItemId), "CONTENT_NOT_FOUND", "Content not found");
@@ -1038,7 +1076,7 @@ class MemoryCmsStore {
     return structuredClone(approval);
   }
   async getApproval(id) {
-    return clone$6(this.approvals.get(id) ?? null);
+    return clone$7(this.approvals.get(id) ?? null);
   }
   async listPendingApprovalsBySite(siteId) {
     return [...this.approvals.values()].filter((approval) => approval.state === "pending").filter((approval) => this.items.get(approval.contentItemId)?.siteId === siteId).map((approval) => structuredClone(approval)).sort((a, b) => b.requestedAt - a.requestedAt);
@@ -1140,7 +1178,7 @@ class MemoryCmsStore {
     this.changeSets.set(changeSet.id, structuredClone(changeSet));
   }
   async getChangeSet(id) {
-    return clone$6(this.changeSets.get(id) ?? null);
+    return clone$7(this.changeSets.get(id) ?? null);
   }
   async appendAudit(event) {
     this.audits.set(event.id, structuredClone(event));
@@ -1149,10 +1187,56 @@ class MemoryCmsStore {
     return [...this.audits.values()].filter((event) => event.workspaceId === workspaceId).sort((a, b) => a.occurredAt - b.occurredAt).map((event) => structuredClone(event));
   }
   async getWorkspace(id) {
-    return clone$6(this.workspaces.get(id) ?? null);
+    return clone$7(this.workspaces.get(id) ?? null);
   }
   async getSite(id) {
-    return clone$6(this.sites.get(id) ?? null);
+    return clone$7(this.sites.get(id) ?? null);
+  }
+  async findCloudflareLoginTarget(accountId, ownerEmail) {
+    for (const workspace of this.workspaces.values()) {
+      if (workspace.cloudflareAccountId !== accountId || workspace.cloudflareOwnerEmail !== ownerEmail)
+        continue;
+      return this.#cloudflareTargetForWorkspace(workspace);
+    }
+    return null;
+  }
+  async findCloudflareLoginTargetByEmail(ownerEmail) {
+    let match = null;
+    for (const workspace of this.workspaces.values()) {
+      if (workspace.cloudflareOwnerEmail !== ownerEmail)
+        continue;
+      const target = this.#cloudflareTargetForWorkspace(workspace);
+      if (match) {
+        throw new DomainError("CLOUDFLARE_OWNER_AMBIGUOUS", "Multiple workspaces match this Cloudflare email", 409);
+      }
+      match = target;
+    }
+    return match;
+  }
+  async bindCloudflareOwner(input) {
+    const workspaces = [...this.workspaces.values()];
+    assertDomain(workspaces.length === 1, "WORKSPACE_COUNT_INVALID", "Exactly one workspace is required to bind Cloudflare owner", 422);
+    const workspace = workspaces[0];
+    assertDomain(!workspace.cloudflareAccountId, "CLOUDFLARE_OWNER_ALREADY_BOUND", "Cloudflare owner is already bound", 409);
+    workspace.cloudflareAccountId = input.cloudflareAccountId;
+    workspace.cloudflareOwnerEmail = input.cloudflareOwnerEmail;
+    this.workspaces.set(workspace.id, structuredClone(workspace));
+    return this.#cloudflareTargetForWorkspace(workspace);
+  }
+  async hasCloudflareOwnerBinding() {
+    return [...this.workspaces.values()].some((w) => Boolean(w.cloudflareAccountId && w.cloudflareOwnerEmail));
+  }
+  #cloudflareTargetForWorkspace(workspace) {
+    const owner = [...this.principals.values()].find((p) => p.workspaceId === workspace.id && p.type === "human");
+    assertDomain(owner, "OWNER_NOT_FOUND", "Workspace owner principal not found", 500);
+    const site = [...this.sites.values()].find((s) => s.workspaceId === workspace.id);
+    assertDomain(site, "SITE_NOT_FOUND", "Workspace site not found", 500);
+    return {
+      workspaceId: workspace.id,
+      ownerPrincipalId: owner.id,
+      siteId: site.id,
+      siteName: site.name
+    };
   }
   async listOutbox() {
     return [...this.outbox.values()].map((event) => structuredClone(event));
@@ -1272,7 +1356,21 @@ class MemoryCmsStore {
     return {
       snapshot: this.snapshot(contentItemId),
       aliasTargetContentItemId: this.aliases.get(contentItemId)?.targetContentItemId ?? null,
-      trash: clone$6(this.trashEntries.get(contentItemId) ?? null)
+      trash: clone$7(this.trashEntries.get(contentItemId) ?? null)
+    };
+  }
+  managerEntryForTree(contentItemId) {
+    const entry = this.managerEntry(contentItemId);
+    return {
+      ...entry,
+      snapshot: this.snapshotForTreeListing(entry.snapshot)
+    };
+  }
+  snapshotForTreeListing(snapshot) {
+    return {
+      ...snapshot,
+      workingRevision: snapshot.workingRevision ? { ...snapshot.workingRevision, document: createEmptyDocument() } : null,
+      publishedRevision: snapshot.publishedRevision ? { ...snapshot.publishedRevision, document: createEmptyDocument() } : null
     };
   }
   nodeForContent(contentItemId) {
@@ -1300,8 +1398,8 @@ class MemoryCmsStore {
     const required = childType === "article" ? "blog" : "folder";
     if (parentItem.contentTypeKey !== required) {
       const code = required === "blog" ? "PARENT_MUST_BE_BLOG" : "PARENT_MUST_BE_FOLDER";
-      const message = required === "blog" ? "Articles can only belong to a blog" : "Only folders can contain this content type";
-      throw new DomainError(code, message, 422);
+      const message2 = required === "blog" ? "Articles can only belong to a blog" : "Only folders can contain this content type";
+      throw new DomainError(code, message2, 422);
     }
     return parent;
   }
@@ -1361,12 +1459,12 @@ class MemoryCmsStore {
     this.audits.set(event.id, event);
   }
 }
-function requireValue$1(value, code, message) {
+function requireValue$1(value, code, message2) {
   if (value === void 0)
-    throw new DomainError(code, message, 404);
+    throw new DomainError(code, message2, 404);
   return value;
 }
-function clone$6(value) {
+function clone$7(value) {
   return structuredClone(value);
 }
 const Capabilities = {
@@ -1508,6 +1606,11 @@ class CmsService {
     return revision;
   }
   async bootstrap(input) {
+    const cloudflareAccountId = input.cloudflareAccountId ? normalizeCloudflareAccountId(input.cloudflareAccountId) : null;
+    const cloudflareOwnerEmail = input.cloudflareOwnerEmail ? normalizeCloudflareOwnerEmail(input.cloudflareOwnerEmail) : null;
+    if (cloudflareAccountId !== null || cloudflareOwnerEmail !== null) {
+      assertDomain(cloudflareAccountId !== null && cloudflareOwnerEmail !== null, "CLOUDFLARE_OWNER_INCOMPLETE", "cloudflareAccountId and cloudflareOwnerEmail must be set together", 422);
+    }
     const now = this.#clock.now();
     const workspaceId = newId("workspace");
     const siteId = asSiteId(newId("site"));
@@ -1527,13 +1630,19 @@ class CmsService {
       scope: { workspaceId }
     };
     await this.#store.bootstrap({
-      workspace: { id: workspaceId, name: input.workspaceName, createdAt: now },
+      workspace: {
+        id: workspaceId,
+        name: input.workspaceName,
+        createdAt: now,
+        cloudflareAccountId,
+        cloudflareOwnerEmail
+      },
       owner,
       site: {
         id: siteId,
         workspaceId,
         name: input.siteName,
-        hostname: input.hostname.toLowerCase(),
+        hostname: normalizeSiteHostname(input.hostname),
         locale: input.locale ?? "ja-JP",
         state: "active",
         createdAt: now,
@@ -1542,6 +1651,21 @@ class CmsService {
       ownerGrant
     });
     return { workspaceId, siteId, ownerPrincipalId: ownerId };
+  }
+  async findCloudflareLoginTarget(accountId, ownerEmail) {
+    return this.#store.findCloudflareLoginTarget(accountId, ownerEmail);
+  }
+  async findCloudflareLoginTargetByEmail(ownerEmail) {
+    return this.#store.findCloudflareLoginTargetByEmail(ownerEmail);
+  }
+  async bindCloudflareOwner(input) {
+    return this.#store.bindCloudflareOwner({
+      cloudflareAccountId: normalizeCloudflareAccountId(input.cloudflareAccountId),
+      cloudflareOwnerEmail: normalizeCloudflareOwnerEmail(input.cloudflareOwnerEmail)
+    });
+  }
+  async hasCloudflareOwnerBinding() {
+    return this.#store.hasCloudflareOwnerBinding();
   }
   async createPrincipal(actor2, input) {
     await this.#authorize(actor2, Capabilities.PrincipalManage, { workspaceId: input.workspaceId, risk: "high" }, "principal.create", "workspace", input.workspaceId);
@@ -1867,8 +1991,8 @@ class CmsService {
     assertDomain(parent.item.state === "active", "PARENT_TRASHED", "Parent is in trash", 409);
     const required = childType === "article" ? "blog" : "folder";
     const code = required === "blog" ? "PARENT_MUST_BE_BLOG" : "PARENT_MUST_BE_FOLDER";
-    const message = required === "blog" ? "Articles can only belong to a blog" : "Only folders can contain this content type";
-    assertDomain(parent.item.contentTypeKey === required, code, message, 422);
+    const message2 = required === "blog" ? "Articles can only belong to a blog" : "Only folders can contain this content type";
+    assertDomain(parent.item.contentTypeKey === required, code, message2, 422);
     return node;
   }
   #validateDocument(document) {
@@ -2300,18 +2424,18 @@ function mapApproval$1(r) {
   return { id: asCustomEntryApprovalId(r.id), entryId: asCustomEntryId(r.entry_id), revisionId: asCustomEntryRevisionId(r.revision_id), revisionHash: r.revision_hash, state: r.state, requestedBy: asPrincipalId(r.requested_by), requestedAt: r.requested_at, decidedBy: r.decided_by ? asPrincipalId(r.decided_by) : null, decidedAt: r.decided_at, decisionComment: r.decision_comment };
 }
 function translate$1(error) {
-  const message = error instanceof Error ? error.message : String(error);
-  if (message.includes("CUSTOM_ENTRY_REVISION_CONFLICT"))
+  const message2 = error instanceof Error ? error.message : String(error);
+  if (message2.includes("CUSTOM_ENTRY_REVISION_CONFLICT"))
     return new DomainError("CUSTOM_ENTRY_REVISION_CONFLICT", "Custom entry changed since it was read", 409);
-  if (message.includes("CUSTOM_ENTRY_APPROVAL_REQUIRED"))
+  if (message2.includes("CUSTOM_ENTRY_APPROVAL_REQUIRED"))
     return new DomainError("CUSTOM_ENTRY_APPROVAL_REQUIRED", "Matching approved revision is required", 409);
-  if (message.includes("UNIQUE constraint failed: custom_fields"))
+  if (message2.includes("UNIQUE constraint failed: custom_fields"))
     return new DomainError("CUSTOM_FIELD_KEY_EXISTS", "Custom field key already exists", 409);
-  if (message.includes("UNIQUE constraint failed: custom_tables"))
+  if (message2.includes("UNIQUE constraint failed: custom_tables"))
     return new DomainError("CUSTOM_TABLE_KEY_EXISTS", "Custom table key already exists", 409);
-  if (message.includes("UNIQUE constraint failed: custom_entries.custom_content_id, custom_entries.slug"))
+  if (message2.includes("UNIQUE constraint failed: custom_entries.custom_content_id, custom_entries.slug"))
     return new DomainError("CUSTOM_ENTRY_SLUG_EXISTS", "Custom entry slug already exists", 409);
-  return new DomainError("D1_CUSTOM_CONTENT_ERROR", message, 500);
+  return new DomainError("D1_CUSTOM_CONTENT_ERROR", message2, 500);
 }
 class D1MailFormStore {
   #db;
@@ -2733,6 +2857,35 @@ function mapStepUp(row) {
     createdAt: Number(row.created_at)
   };
 }
+class D1CfOAuthChallengeStore {
+  #db;
+  constructor(db) {
+    this.#db = db;
+  }
+  async create(state, codeVerifier, expiresAt, createdAt) {
+    await this.#db.prepare("INSERT INTO cf_oauth_login_challenges(state,code_verifier,expires_at,created_at) VALUES(?,?,?,?)").bind(state, codeVerifier, expiresAt, createdAt).run();
+  }
+  async take(state, now) {
+    const row = await this.#db.prepare("SELECT code_verifier, expires_at FROM cf_oauth_login_challenges WHERE state=?").bind(state).first();
+    await this.#db.prepare("DELETE FROM cf_oauth_login_challenges WHERE state=?").bind(state).run();
+    if (!row || row.expires_at <= now)
+      return null;
+    return row.code_verifier;
+  }
+}
+class MemoryCfOAuthChallengeStore {
+  #entries = /* @__PURE__ */ new Map();
+  async create(state, codeVerifier, expiresAt) {
+    this.#entries.set(state, { codeVerifier, expiresAt });
+  }
+  async take(state, now) {
+    const row = this.#entries.get(state);
+    this.#entries.delete(state);
+    if (!row || row.expiresAt <= now)
+      return null;
+    return row.codeVerifier;
+  }
+}
 class D1CmsStore {
   #db;
   constructor(db) {
@@ -2740,7 +2893,7 @@ class D1CmsStore {
   }
   async bootstrap(input) {
     await this.#batch([
-      this.#db.prepare("INSERT INTO workspaces(id,name,created_at) VALUES(?,?,?)").bind(input.workspace.id, input.workspace.name, input.workspace.createdAt),
+      this.#db.prepare("INSERT INTO workspaces(id,name,created_at,cloudflare_account_id,cloudflare_owner_email) VALUES(?,?,?,?,?)").bind(input.workspace.id, input.workspace.name, input.workspace.createdAt, input.workspace.cloudflareAccountId ?? null, input.workspace.cloudflareOwnerEmail ?? null),
       this.#db.prepare("INSERT INTO principals(id,workspace_id,principal_type,display_name,state,created_at) VALUES(?,?,?,?,?,?)").bind(input.owner.id, input.owner.workspaceId, input.owner.type, input.owner.displayName, input.owner.state, input.owner.createdAt),
       this.#db.prepare("INSERT INTO sites(id,workspace_id,name,hostname,locale,state,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?)").bind(input.site.id, input.site.workspaceId, input.site.name, input.site.hostname, input.site.locale, input.site.state, input.site.createdAt, input.site.updatedAt),
       this.#grantStatement(input.ownerGrant, input.workspace.createdAt),
@@ -3050,13 +3203,17 @@ class D1CmsStore {
     return this.#requireSnapshot(source.item.id);
   }
   async listContentTree(siteId) {
-    const ids = (await this.#db.prepare("SELECT id FROM content_items WHERE site_id=? AND state='active'").bind(siteId).all()).results;
-    const entries = await Promise.all(ids.map((row) => this.#managerEntry(asContentItemId(row.id))));
+    const itemRows = (await this.#db.prepare("SELECT * FROM content_items WHERE site_id=? AND state='active'").bind(siteId).all()).results;
+    if (!itemRows.length)
+      return [];
+    const entries = await this.#contentManagerEntriesForItemRows(siteId, itemRows, false);
     return entries.sort((a, b) => compareSortKeys(a.snapshot.node.sortKey, b.snapshot.node.sortKey) || a.snapshot.node.cachedPath.localeCompare(b.snapshot.node.cachedPath));
   }
   async listTrash(siteId) {
-    const ids = (await this.#db.prepare("SELECT id FROM content_items WHERE site_id=? AND state='trashed'").bind(siteId).all()).results;
-    const entries = await Promise.all(ids.map((row) => this.#managerEntry(asContentItemId(row.id))));
+    const itemRows = (await this.#db.prepare("SELECT * FROM content_items WHERE site_id=? AND state='trashed'").bind(siteId).all()).results;
+    if (!itemRows.length)
+      return [];
+    const entries = await this.#contentManagerEntriesForItemRows(siteId, itemRows, true);
     return entries.sort((a, b) => (a.trash?.previousPath ?? "").localeCompare(b.trash?.previousPath ?? ""));
   }
   async createApproval(input) {
@@ -3157,7 +3314,54 @@ class D1CmsStore {
   }
   async getWorkspace(id) {
     const row = await this.#db.prepare("SELECT * FROM workspaces WHERE id=?").bind(id).first();
-    return row ? { id: row.id, name: row.name, createdAt: row.created_at } : null;
+    return row ? mapWorkspace(row) : null;
+  }
+  async findCloudflareLoginTarget(accountId, ownerEmail) {
+    const row = await this.#db.prepare(`SELECT w.id AS workspace_id, w.name AS workspace_name, p.id AS owner_principal_id, s.id AS site_id, s.name AS site_name
+       FROM workspaces w
+       JOIN principals p ON p.workspace_id = w.id AND p.principal_type = 'human'
+       JOIN sites s ON s.workspace_id = w.id
+       WHERE w.cloudflare_account_id = ? AND w.cloudflare_owner_email = ?
+       LIMIT 1`).bind(accountId, ownerEmail).first();
+    return row ? {
+      workspaceId: row.workspace_id,
+      ownerPrincipalId: asPrincipalId(row.owner_principal_id),
+      siteId: asSiteId(row.site_id),
+      siteName: row.site_name
+    } : null;
+  }
+  async findCloudflareLoginTargetByEmail(ownerEmail) {
+    const rows = await this.#db.prepare(`SELECT w.id AS workspace_id, w.name AS workspace_name, p.id AS owner_principal_id, s.id AS site_id, s.name AS site_name
+       FROM workspaces w
+       JOIN principals p ON p.workspace_id = w.id AND p.principal_type = 'human'
+       JOIN sites s ON s.workspace_id = w.id
+       WHERE w.cloudflare_owner_email = ?`).bind(ownerEmail).all();
+    if (rows.results.length === 0)
+      return null;
+    if (rows.results.length > 1) {
+      throw new DomainError("CLOUDFLARE_OWNER_AMBIGUOUS", "Multiple workspaces match this Cloudflare email", 409);
+    }
+    const row = rows.results[0];
+    return {
+      workspaceId: row.workspace_id,
+      ownerPrincipalId: asPrincipalId(row.owner_principal_id),
+      siteId: asSiteId(row.site_id),
+      siteName: row.site_name
+    };
+  }
+  async bindCloudflareOwner(input) {
+    const workspaces = await this.#db.prepare("SELECT id, cloudflare_account_id FROM workspaces").all();
+    assertDomain(workspaces.results.length === 1, "WORKSPACE_COUNT_INVALID", "Exactly one workspace is required to bind Cloudflare owner", 422);
+    const workspace = workspaces.results[0];
+    assertDomain(!workspace.cloudflare_account_id, "CLOUDFLARE_OWNER_ALREADY_BOUND", "Cloudflare owner is already bound", 409);
+    await this.#db.prepare("UPDATE workspaces SET cloudflare_account_id=?, cloudflare_owner_email=? WHERE id=?").bind(input.cloudflareAccountId, input.cloudflareOwnerEmail, workspace.id).run();
+    const target = await this.findCloudflareLoginTarget(input.cloudflareAccountId, input.cloudflareOwnerEmail);
+    assertDomain(target, "CLOUDFLARE_OWNER_BIND_FAILED", "Failed to bind Cloudflare owner", 500);
+    return target;
+  }
+  async hasCloudflareOwnerBinding() {
+    const row = await this.#db.prepare("SELECT 1 AS ok FROM workspaces WHERE cloudflare_account_id IS NOT NULL AND cloudflare_owner_email IS NOT NULL LIMIT 1").first();
+    return Boolean(row);
   }
   async getSite(id) {
     const row = await this.#db.prepare("SELECT * FROM sites WHERE id=?").bind(id).first();
@@ -3224,6 +3428,65 @@ class D1CmsStore {
     const trash = await this.#db.prepare("SELECT * FROM trash_entries WHERE content_item_id=?").bind(contentItemId).first();
     return { snapshot, aliasTargetContentItemId: alias ? asContentItemId(alias.target_content_item_id) : null, trash: trash ? mapTrash(trash) : null };
   }
+  async #contentManagerEntriesForItemRows(siteId, itemRows, includeTrash) {
+    const [nodeResult, routeResult, aliasResult, trashResult] = await Promise.all([
+      this.#db.prepare("SELECT * FROM content_nodes WHERE site_id=?").bind(siteId).all(),
+      this.#db.prepare("SELECT * FROM routes WHERE site_id=? AND active=1 AND is_canonical=1").bind(siteId).all(),
+      this.#db.prepare("SELECT ca.* FROM content_aliases ca INNER JOIN content_items ci ON ci.id=ca.alias_content_item_id WHERE ci.site_id=?").bind(siteId).all(),
+      includeTrash ? this.#db.prepare("SELECT te.* FROM trash_entries te INNER JOIN content_items ci ON ci.id=te.content_item_id WHERE ci.site_id=? AND ci.state='trashed'").bind(siteId).all() : Promise.resolve({ results: [] })
+    ]);
+    const nodeRows = nodeResult.results;
+    const routeRows = routeResult.results;
+    const aliasRows = aliasResult.results;
+    const trashRows = trashResult.results;
+    const revisionIds = [];
+    for (const row of itemRows) {
+      if (row.working_revision_id)
+        revisionIds.push(asRevisionId(row.working_revision_id));
+      if (row.published_revision_id)
+        revisionIds.push(asRevisionId(row.published_revision_id));
+    }
+    const revisions = await this.#loadRevisionSummariesForTree(revisionIds);
+    const nodeByContentId = new Map(nodeRows.map((row) => [row.content_item_id, row]));
+    const routeByContentId = pickLatestCanonicalRouteByContentItem(routeRows);
+    const aliasByContentId = new Map(aliasRows.map((row) => [row.alias_content_item_id, row]));
+    const trashByContentId = new Map(trashRows.map((row) => [row.content_item_id, row]));
+    const entries = [];
+    for (const itemRow of itemRows) {
+      const nodeRow = nodeByContentId.get(itemRow.id);
+      const routeRow = routeByContentId.get(itemRow.id);
+      assertDomain(nodeRow && routeRow, "CONTENT_PROJECTION_MISSING", "Content node or route is missing", 500);
+      const item = mapItem(itemRow);
+      entries.push({
+        snapshot: {
+          item,
+          node: mapNode(nodeRow),
+          route: mapRoute(routeRow),
+          workingRevision: item.workingRevisionId ? revisions.get(item.workingRevisionId) ?? null : null,
+          publishedRevision: item.publishedRevisionId ? revisions.get(item.publishedRevisionId) ?? null : null
+        },
+        aliasTargetContentItemId: aliasByContentId.has(itemRow.id) ? asContentItemId(aliasByContentId.get(itemRow.id).target_content_item_id) : null,
+        trash: trashByContentId.has(itemRow.id) ? mapTrash(trashByContentId.get(itemRow.id)) : null
+      });
+    }
+    return entries;
+  }
+  async #loadRevisionSummariesForTree(ids) {
+    const map = /* @__PURE__ */ new Map();
+    const unique2 = [...new Set(ids)];
+    if (!unique2.length)
+      return map;
+    const chunkSize = 80;
+    for (let offset = 0; offset < unique2.length; offset += chunkSize) {
+      const chunk = unique2.slice(offset, offset + chunkSize);
+      const placeholders = chunk.map(() => "?").join(",");
+      const rows = (await this.#db.prepare(`SELECT id,content_item_id,revision_number,based_on_revision_id,fields_json,content_hash,created_by,agent_run_id,change_summary,created_at FROM content_revisions WHERE id IN (${placeholders})`).bind(...chunk).all()).results;
+      for (const row of rows) {
+        map.set(asRevisionId(row.id), mapRevisionFieldsOnly(row));
+      }
+    }
+    return map;
+  }
   async #requireFolderParent(id, siteId) {
     return this.#requireParentForType(id, siteId, "page");
   }
@@ -3235,8 +3498,8 @@ class D1CmsStore {
     assertDomain(item.state === "active", "PARENT_TRASHED", "Parent is in trash", 409);
     const required = childType === "article" ? "blog" : "folder";
     const code = required === "blog" ? "PARENT_MUST_BE_BLOG" : "PARENT_MUST_BE_FOLDER";
-    const message = required === "blog" ? "Articles can only belong to a blog" : "Only folders can contain this content type";
-    assertDomain(item.content_type_key === required, code, message, 422);
+    const message2 = required === "blog" ? "Articles can only belong to a blog" : "Only folders can contain this content type";
+    assertDomain(item.content_type_key === required, code, message2, 422);
     return node;
   }
   async #assertRouteAvailable(siteId, hostname, path, exceptContentId) {
@@ -3298,15 +3561,15 @@ class D1CmsStore {
     try {
       return await this.#db.batch(statements);
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      if (message.includes("REVISION_CONFLICT"))
+      const message2 = error instanceof Error ? error.message : String(error);
+      if (message2.includes("REVISION_CONFLICT"))
         throw new DomainError("REVISION_CONFLICT", "The content changed after the requested base revision", 409);
-      if (message.includes("REVISION_NOT_APPROVED"))
+      if (message2.includes("REVISION_NOT_APPROVED"))
         throw new DomainError("REVISION_NOT_APPROVED", "The exact revision has not been approved", 409);
-      if (message.includes("TREE_CONFLICT"))
+      if (message2.includes("TREE_CONFLICT"))
         throw new DomainError("TREE_CONFLICT", "Content tree changed", 409);
-      if (message.includes("UNIQUE constraint failed") || message.includes("constraint failed"))
-        throw new DomainError("DATABASE_CONSTRAINT", "A unique or relational constraint was violated", 409, { databaseMessage: message });
+      if (message2.includes("UNIQUE constraint failed") || message2.includes("constraint failed"))
+        throw new DomainError("DATABASE_CONSTRAINT", "A unique or relational constraint was violated", 409, { databaseMessage: message2 });
       throw error;
     }
   }
@@ -3322,6 +3585,25 @@ function createAudit(actor2, workspaceId, siteId, action, resourceType, resource
 }
 function json$2(value) {
   return JSON.parse(value);
+}
+function pickLatestCanonicalRouteByContentItem(routeRows) {
+  const map = /* @__PURE__ */ new Map();
+  for (const row of routeRows) {
+    const existing = map.get(row.content_item_id);
+    if (!existing || row.activated_at > existing.activated_at) {
+      map.set(row.content_item_id, row);
+    }
+  }
+  return map;
+}
+function mapWorkspace(row) {
+  return {
+    id: row.id,
+    name: row.name,
+    createdAt: row.created_at,
+    cloudflareAccountId: row.cloudflare_account_id,
+    cloudflareOwnerEmail: row.cloudflare_owner_email
+  };
 }
 function mapSite(r) {
   return { id: asSiteId(r.id), workspaceId: r.workspace_id, name: r.name, hostname: r.hostname, locale: r.locale, state: r.state, createdAt: r.created_at, updatedAt: r.updated_at };
@@ -3350,6 +3632,21 @@ function mapItem(r) {
 }
 function mapRevision(r) {
   return { id: asRevisionId(r.id), contentItemId: asContentItemId(r.content_item_id), revisionNumber: r.revision_number, basedOnRevisionId: r.based_on_revision_id ? asRevisionId(r.based_on_revision_id) : null, fields: json$2(r.fields_json), document: json$2(r.document_json), contentHash: r.content_hash, createdBy: asPrincipalId(r.created_by), agentRunId: r.agent_run_id, changeSummary: r.change_summary, createdAt: r.created_at };
+}
+function mapRevisionFieldsOnly(r) {
+  return {
+    id: asRevisionId(r.id),
+    contentItemId: asContentItemId(r.content_item_id),
+    revisionNumber: r.revision_number,
+    basedOnRevisionId: r.based_on_revision_id ? asRevisionId(r.based_on_revision_id) : null,
+    fields: json$2(r.fields_json),
+    document: createEmptyDocument(),
+    contentHash: r.content_hash,
+    createdBy: asPrincipalId(r.created_by),
+    agentRunId: r.agent_run_id,
+    changeSummary: r.change_summary,
+    createdAt: r.created_at
+  };
 }
 function mapNode(r) {
   return { id: asContentNodeId(r.id), siteId: asSiteId(r.site_id), contentItemId: asContentItemId(r.content_item_id), parentId: r.parent_id ? asContentNodeId(r.parent_id) : null, slug: r.slug, sortKey: r.sort_key, cachedPath: r.cached_path, treeVersion: r.tree_version, createdAt: r.created_at, updatedAt: r.updated_at };
@@ -3744,10 +4041,10 @@ class MemoryAssetMetadataStore {
     this.sessions.set(session.id, structuredClone(session));
   }
   async getAsset(id) {
-    return clone$5(this.assets.get(id) ?? null);
+    return clone$6(this.assets.get(id) ?? null);
   }
   async getUploadSession(id) {
-    return clone$5(this.sessions.get(id) ?? null);
+    return clone$6(this.sessions.get(id) ?? null);
   }
   async completeUpload(input) {
     const session = requireValue(this.sessions.get(input.sessionId), "UPLOAD_SESSION_NOT_FOUND", "Upload session not found");
@@ -3795,7 +4092,7 @@ class MemoryAssetObjectStore {
     return structuredClone(metadata);
   }
   async head(key2) {
-    return clone$5(this.objects.get(key2)?.metadata ?? null);
+    return clone$6(this.objects.get(key2)?.metadata ?? null);
   }
   async get(key2) {
     const entry = this.objects.get(key2);
@@ -3817,12 +4114,12 @@ function sanitizeFilename(value) {
 function normalizeMediaType(value) {
   return value.split(";", 1)[0]?.trim().toLowerCase() ?? "";
 }
-function clone$5(value) {
+function clone$6(value) {
   return value === null || value === void 0 ? value : structuredClone(value);
 }
-function requireValue(value, code, message) {
+function requireValue(value, code, message2) {
   if (value === void 0)
-    throw new DomainError(code, message, 404);
+    throw new DomainError(code, message2, 404);
   return value;
 }
 async function toBytes(body) {
@@ -3979,7 +4276,7 @@ class MemoryBlogStore {
     this.collectionByContent.set(collection.contentItemId, collection.id);
   }
   async getCollection(id) {
-    return clone$4(this.collections.get(id) ?? null);
+    return clone$5(this.collections.get(id) ?? null);
   }
   async getCollectionByContentItem(contentItemId) {
     const id = this.collectionByContent.get(contentItemId);
@@ -3999,7 +4296,7 @@ class MemoryBlogStore {
     this.articles.set(record.contentItemId, structuredClone(record));
   }
   async getArticle(contentItemId) {
-    return clone$4(this.articles.get(contentItemId) ?? null);
+    return clone$5(this.articles.get(contentItemId) ?? null);
   }
   async listArticles(collectionId) {
     return [...this.articles.values()].filter((article) => article.collectionId === collectionId).map((article) => structuredClone(article));
@@ -4018,7 +4315,7 @@ class MemoryBlogStore {
     this.taxonomies.set(taxonomy.id, structuredClone(taxonomy));
   }
   async getTaxonomy(id) {
-    return clone$4(this.taxonomies.get(id) ?? null);
+    return clone$5(this.taxonomies.get(id) ?? null);
   }
   async listTaxonomies(collectionId) {
     return [...this.taxonomies.values()].filter((item) => item.collectionId === collectionId).map((item) => structuredClone(item));
@@ -4029,7 +4326,7 @@ class MemoryBlogStore {
     this.terms.set(term.id, structuredClone(term));
   }
   async getTerm(id) {
-    return clone$4(this.terms.get(id) ?? null);
+    return clone$5(this.terms.get(id) ?? null);
   }
   async listTerms(taxonomyId) {
     return [...this.terms.values()].filter((item) => item.taxonomyId === taxonomyId).map((item) => structuredClone(item));
@@ -4038,13 +4335,13 @@ class MemoryBlogStore {
     this.revisionValues.set(key(value.revisionId, value.taxonomyId), structuredClone(value));
   }
   async getRevisionTaxonomyValue(revisionId, taxonomyId) {
-    return clone$4(this.revisionValues.get(key(revisionId, taxonomyId)) ?? null);
+    return clone$5(this.revisionValues.get(key(revisionId, taxonomyId)) ?? null);
   }
 }
 function key(revisionId, taxonomyId) {
   return `${revisionId}:${taxonomyId}`;
 }
-function clone$4(value) {
+function clone$5(value) {
   return value === null ? null : structuredClone(value);
 }
 class BlogService {
@@ -4076,7 +4373,7 @@ class BlogService {
     };
     await this.#store.createCollection(collection);
     const category = await this.#createTaxonomyRecord(collection, { key: "category", title: "カテゴリ", kind: "category", hierarchical: true }, now);
-    const tag = await this.#createTaxonomyRecord(collection, { key: "tag", title: "タグ", kind: "tag", hierarchical: false }, now);
+    const tag2 = await this.#createTaxonomyRecord(collection, { key: "tag", title: "タグ", kind: "tag", hierarchical: false }, now);
     await this.#cms.recordSuccessfulOperation(actor2, {
       workspaceId: collection.workspaceId,
       siteId: collection.siteId,
@@ -4087,7 +4384,7 @@ class BlogService {
       capability: Capabilities.BlogCreate,
       details: { contentItemId: collection.contentItemId, pageSize: collection.pageSize, feedSize: collection.feedSize }
     });
-    return { collection, snapshot, taxonomies: [category, tag] };
+    return { collection, snapshot, taxonomies: [category, tag2] };
   }
   async createArticle(actor2, input) {
     const collection = await this.#requireCollection(input.collectionId);
@@ -4380,43 +4677,43 @@ class MemoryCustomContentStore {
   async createField(field) {
     if ([...this.fields.values()].some((item) => item.workspaceId === field.workspaceId && item.key === field.key))
       throw new DomainError("CUSTOM_FIELD_KEY_EXISTS", "Custom field key already exists", 409);
-    this.fields.set(field.id, clone$3(field));
+    this.fields.set(field.id, clone$4(field));
   }
   async getField(id) {
     return maybe$1(this.fields.get(id));
   }
   async listFields(workspaceId) {
-    return [...this.fields.values()].filter((item) => item.workspaceId === workspaceId).map(clone$3);
+    return [...this.fields.values()].filter((item) => item.workspaceId === workspaceId).map(clone$4);
   }
   async createTable(table) {
     if ([...this.tables.values()].some((item) => item.workspaceId === table.workspaceId && item.key === table.key))
       throw new DomainError("CUSTOM_TABLE_KEY_EXISTS", "Custom table key already exists", 409);
-    this.tables.set(table.id, clone$3(table));
+    this.tables.set(table.id, clone$4(table));
   }
   async getTable(id) {
     return maybe$1(this.tables.get(id));
   }
   async listTables(workspaceId) {
-    return [...this.tables.values()].filter((item) => item.workspaceId === workspaceId).map(clone$3);
+    return [...this.tables.values()].filter((item) => item.workspaceId === workspaceId).map(clone$4);
   }
   async updateTable(table) {
     if (!this.tables.has(table.id))
       throw new DomainError("CUSTOM_TABLE_NOT_FOUND", "Custom table not found", 404);
-    this.tables.set(table.id, clone$3(table));
+    this.tables.set(table.id, clone$4(table));
   }
   async attachField(relation) {
     const key2 = `${relation.tableId}:${relation.fieldId}`;
     if (this.tableFields.has(key2))
       throw new DomainError("CUSTOM_TABLE_FIELD_EXISTS", "Field is already attached", 409);
-    this.tableFields.set(key2, clone$3(relation));
+    this.tableFields.set(key2, clone$4(relation));
   }
   async listTableFields(tableId) {
-    return [...this.tableFields.values()].filter((item) => item.tableId === tableId).sort((a, b) => a.sortOrder - b.sortOrder).map(clone$3);
+    return [...this.tableFields.values()].filter((item) => item.tableId === tableId).sort((a, b) => a.sortOrder - b.sortOrder).map(clone$4);
   }
   async createCustomContent(definition2) {
     if (this.contentByItem.has(definition2.contentItemId))
       throw new DomainError("CUSTOM_CONTENT_EXISTS", "Custom content definition already exists", 409);
-    this.contents.set(definition2.id, clone$3(definition2));
+    this.contents.set(definition2.id, clone$4(definition2));
     this.contentByItem.set(definition2.contentItemId, definition2.id);
   }
   async getCustomContent(id) {
@@ -4427,13 +4724,13 @@ class MemoryCustomContentStore {
     return id ? this.getCustomContent(id) : null;
   }
   async listCustomContents(siteId) {
-    return [...this.contents.values()].filter((item) => item.siteId === siteId).map(clone$3);
+    return [...this.contents.values()].filter((item) => item.siteId === siteId).map(clone$4);
   }
   async createEntry(entry, revision) {
     if (entry.slug && [...this.entries.values()].some((item) => item.customContentId === entry.customContentId && item.slug === entry.slug))
       throw new DomainError("CUSTOM_ENTRY_SLUG_EXISTS", "Entry slug already exists", 409);
-    this.entries.set(entry.id, clone$3(entry));
-    this.revisions.set(revision.id, clone$3(revision));
+    this.entries.set(entry.id, clone$4(entry));
+    this.revisions.set(revision.id, clone$4(revision));
     return this.getEntry(entry.id);
   }
   async getEntry(id) {
@@ -4443,7 +4740,7 @@ class MemoryCustomContentStore {
     const working = this.revisions.get(entry.workingRevisionId);
     if (!working)
       throw new DomainError("CUSTOM_ENTRY_REVISION_MISSING", "Working revision missing", 500);
-    return { entry: clone$3(entry), workingRevision: clone$3(working), publishedRevision: entry.publishedRevisionId ? clone$3(this.revisions.get(entry.publishedRevisionId) ?? null) : null };
+    return { entry: clone$4(entry), workingRevision: clone$4(working), publishedRevision: entry.publishedRevisionId ? clone$4(this.revisions.get(entry.publishedRevisionId) ?? null) : null };
   }
   async getEntryByPublicKey(customContentId, key2) {
     const entry = [...this.entries.values()].find((item) => item.customContentId === customContentId && (item.slug === key2 || item.id === key2));
@@ -4462,14 +4759,14 @@ class MemoryCustomContentStore {
       throw new DomainError("CUSTOM_ENTRY_NOT_FOUND", "Custom entry not found", 404);
     if (entry.workingRevisionId !== input.baseRevisionId || entry.lockVersion !== input.expectedLockVersion)
       throw new DomainError("CUSTOM_ENTRY_REVISION_CONFLICT", "Custom entry changed since it was read", 409);
-    this.revisions.set(input.revision.id, clone$3(input.revision));
+    this.revisions.set(input.revision.id, clone$4(input.revision));
     entry.workingRevisionId = input.revision.id;
     entry.lockVersion += 1;
     entry.updatedAt = input.revision.createdAt;
-    return clone$3(input.revision);
+    return clone$4(input.revision);
   }
   async createApproval(approval) {
-    this.approvals.set(approval.id, clone$3(approval));
+    this.approvals.set(approval.id, clone$4(approval));
   }
   async getApproval(id) {
     return maybe$1(this.approvals.get(id));
@@ -4484,14 +4781,14 @@ class MemoryCustomContentStore {
         continue;
       const definition2 = this.contents.get(entry.customContentId);
       if (definition2?.siteId === siteId)
-        result.push(clone$3(approval));
+        result.push(clone$4(approval));
     }
     return result.sort((a, b) => b.requestedAt - a.requestedAt);
   }
   async updateApproval(approval) {
     if (!this.approvals.has(approval.id))
       throw new DomainError("CUSTOM_ENTRY_APPROVAL_NOT_FOUND", "Approval not found", 404);
-    this.approvals.set(approval.id, clone$3(approval));
+    this.approvals.set(approval.id, clone$4(approval));
   }
   async publishEntry(input) {
     const entry = this.entries.get(input.entryId);
@@ -4518,11 +4815,11 @@ class MemoryCustomContentStore {
     return this.getEntry(entry.id);
   }
 }
-function clone$3(value) {
+function clone$4(value) {
   return structuredClone(value);
 }
 function maybe$1(value) {
-  return value === void 0 ? null : clone$3(value);
+  return value === void 0 ? null : clone$4(value);
 }
 class CustomContentService {
   #store;
@@ -4941,10 +5238,10 @@ class MemoryMailFormStore {
   async createForm(definition2, policies) {
     if (this.byContent.has(definition2.contentItemId))
       throw new DomainError("MAIL_FORM_EXISTS", "Mail form already exists", 409);
-    this.forms.set(definition2.id, clone$2(definition2));
+    this.forms.set(definition2.id, clone$3(definition2));
     this.byContent.set(definition2.contentItemId, definition2.id);
     for (const policy of policies)
-      this.policies.set(`${policy.mailFormId}:${policy.fieldId}`, clone$2(policy));
+      this.policies.set(`${policy.mailFormId}:${policy.fieldId}`, clone$3(policy));
   }
   async getForm(id) {
     return maybe(this.forms.get(id));
@@ -4954,13 +5251,13 @@ class MemoryMailFormStore {
     return id ? this.getForm(id) : null;
   }
   async listForms(siteId) {
-    return [...this.forms.values()].filter((v) => v.siteId === siteId).map(clone$2);
+    return [...this.forms.values()].filter((v) => v.siteId === siteId).map(clone$3);
   }
   async listFieldPolicies(mailFormId) {
-    return [...this.policies.values()].filter((v) => v.mailFormId === mailFormId).map(clone$2);
+    return [...this.policies.values()].filter((v) => v.mailFormId === mailFormId).map(clone$3);
   }
   async createConfirmation(session) {
-    this.confirmations.set(session.id, clone$2(session));
+    this.confirmations.set(session.id, clone$3(session));
   }
   async getConfirmation(id) {
     return maybe(this.confirmations.get(id));
@@ -4974,17 +5271,17 @@ class MemoryMailFormStore {
     if (confirmation.expiresAt < input.now)
       throw new DomainError("MAIL_CONFIRMATION_EXPIRED", "Confirmation has expired", 410);
     confirmation.usedAt = input.now;
-    this.submissions.set(input.submission.id, clone$2(input.submission));
-    this.payloads.set(input.payload.submissionId, clone$2(input.payload));
+    this.submissions.set(input.submission.id, clone$3(input.submission));
+    this.payloads.set(input.payload.submissionId, clone$3(input.payload));
     for (const notification of input.notifications)
-      this.notifications.set(notification.id, clone$2(notification));
-    return clone$2(input.submission);
+      this.notifications.set(notification.id, clone$3(notification));
+    return clone$3(input.submission);
   }
   async getSubmission(id) {
     const s = this.submissions.get(id);
     if (!s)
       return null;
-    return { submission: clone$2(s), values: s.payloadState === "available" ? clone$2(this.payloads.get(id)?.values ?? null) : null, redacted: false };
+    return { submission: clone$3(s), values: s.payloadState === "available" ? clone$3(this.payloads.get(id)?.values ?? null) : null, redacted: false };
   }
   async listSubmissions(mailFormId) {
     const result = [];
@@ -4999,21 +5296,21 @@ class MemoryMailFormStore {
       throw new DomainError("MAIL_SUBMISSION_NOT_FOUND", "Submission not found", 404);
     this.payloads.delete(id);
     s.payloadState = "purged";
-    return clone$2(s);
+    return clone$3(s);
   }
   async listPendingNotifications(limit, now) {
-    return [...this.notifications.values()].filter((n) => n.state === "pending" && n.availableAt <= now).sort((a, b) => a.availableAt - b.availableAt).slice(0, limit).map(clone$2);
+    return [...this.notifications.values()].filter((n) => n.state === "pending" && n.availableAt <= now).sort((a, b) => a.availableAt - b.availableAt).slice(0, limit).map(clone$3);
   }
   async getNotification(id) {
     return maybe(this.notifications.get(id));
   }
   async listNotificationsForSubmission(id) {
-    return [...this.notifications.values()].filter((n) => n.submissionId === id).map(clone$2);
+    return [...this.notifications.values()].filter((n) => n.submissionId === id).map(clone$3);
   }
   async updateNotification(n) {
     if (!this.notifications.has(n.id))
       throw new DomainError("MAIL_NOTIFICATION_NOT_FOUND", "Notification not found", 404);
-    this.notifications.set(n.id, clone$2(n));
+    this.notifications.set(n.id, clone$3(n));
   }
   async updateSubmissionState(id, state) {
     const s = this.submissions.get(id);
@@ -5022,11 +5319,11 @@ class MemoryMailFormStore {
     s.state = state;
   }
 }
-function clone$2(v) {
+function clone$3(v) {
   return structuredClone(v);
 }
 function maybe(v) {
-  return v === void 0 ? null : clone$2(v);
+  return v === void 0 ? null : clone$3(v);
 }
 class UnavailableBotVerifier {
   async verify() {
@@ -5340,11 +5637,11 @@ function defaultPrivacy(type) {
   return type === "email" || type === "tel" ? "personal" : "non-personal";
 }
 function assertMailPayloadLimits(values) {
-  const encoder = new TextEncoder();
-  assertDomain(encoder.encode(stableStringify(values)).byteLength <= 262144, "MAIL_FORM_PAYLOAD_TOO_LARGE", "Form payload is too large", 413);
+  const encoder2 = new TextEncoder();
+  assertDomain(encoder2.encode(stableStringify(values)).byteLength <= 262144, "MAIL_FORM_PAYLOAD_TOO_LARGE", "Form payload is too large", 413);
   for (const value of Object.values(values)) {
     if (typeof value === "string")
-      assertDomain(encoder.encode(value).byteLength <= 65536, "MAIL_FORM_FIELD_TOO_LARGE", "A form field is too large", 413);
+      assertDomain(encoder2.encode(value).byteLength <= 65536, "MAIL_FORM_FIELD_TOO_LARGE", "A form field is too large", 413);
     if (Array.isArray(value))
       assertDomain(value.length <= 100, "MAIL_FORM_FIELD_TOO_LARGE", "A multi-value field contains too many values", 413);
   }
@@ -5357,8 +5654,8 @@ class CloudflareEmailSender {
   constructor(binding) {
     this.#binding = binding;
   }
-  async send(message) {
-    await this.#binding.send({ to: message.to, from: message.from, subject: message.subject, text: message.text, ...message.replyTo ? { replyTo: message.replyTo } : {} });
+  async send(message2) {
+    await this.#binding.send({ to: message2.to, from: message2.from, subject: message2.subject, text: message2.text, ...message2.replyTo ? { replyTo: message2.replyTo } : {} });
   }
 }
 class ThemeService {
@@ -5532,7 +5829,7 @@ class MemoryThemeStore {
     this.themes.set(theme.id, structuredClone(theme));
   }
   async getTheme(id) {
-    return clone$1(this.themes.get(id));
+    return clone$2(this.themes.get(id));
   }
   async listThemes(workspaceId) {
     return [...this.themes.values()].filter((value) => value.workspaceId === workspaceId).map((value) => structuredClone(value));
@@ -5541,7 +5838,7 @@ class MemoryThemeStore {
     this.tokenRevisions.set(revision.id, structuredClone(revision));
   }
   async getTokenRevision(id) {
-    return clone$1(this.tokenRevisions.get(id));
+    return clone$2(this.tokenRevisions.get(id));
   }
   async countTokenRevisions(themeId) {
     return [...this.tokenRevisions.values()].filter((value) => value.themeId === themeId).length;
@@ -5550,7 +5847,7 @@ class MemoryThemeStore {
     this.layoutRevisions.set(revision.id, structuredClone(revision));
   }
   async getLayoutRevision(id) {
-    return clone$1(this.layoutRevisions.get(id));
+    return clone$2(this.layoutRevisions.get(id));
   }
   async countLayoutRevisions(themeId) {
     return [...this.layoutRevisions.values()].filter((value) => value.themeId === themeId).length;
@@ -5560,7 +5857,7 @@ class MemoryThemeStore {
     this.releases.set(release.id, structuredClone(release));
   }
   async getRelease(id) {
-    return clone$1(this.releases.get(id));
+    return clone$2(this.releases.get(id));
   }
   async listReleases(themeId) {
     return [...this.releases.values()].filter((value) => value.themeId === themeId).sort((a, b) => b.createdAt - a.createdAt).map((value) => structuredClone(value));
@@ -5648,7 +5945,7 @@ function assertRange(value, min, max, name) {
 function isSafeColor(value) {
   return typeof value === "string" && /^#[0-9a-fA-F]{3,8}$/.test(value);
 }
-function clone$1(value) {
+function clone$2(value) {
   return value === void 0 ? null : structuredClone(value);
 }
 const PluginCapabilities = {
@@ -5978,10 +6275,10 @@ class MemoryPluginStore {
     this.plugins.set(plugin.id, structuredClone(plugin));
   }
   async getPlugin(id) {
-    return clone(this.plugins.get(id));
+    return clone$1(this.plugins.get(id));
   }
   async getPluginByKey(workspaceId, key2) {
-    return clone([...this.plugins.values()].find((value) => value.workspaceId === workspaceId && value.key === key2));
+    return clone$1([...this.plugins.values()].find((value) => value.workspaceId === workspaceId && value.key === key2));
   }
   async listPlugins(workspaceId) {
     return [...this.plugins.values()].filter((value) => value.workspaceId === workspaceId).map((value) => structuredClone(value));
@@ -5991,7 +6288,7 @@ class MemoryPluginStore {
     this.releases.set(release.id, structuredClone(release));
   }
   async getRelease(id) {
-    return clone(this.releases.get(id));
+    return clone$1(this.releases.get(id));
   }
   async listReleases(pluginId) {
     return [...this.releases.values()].filter((value) => value.pluginId === pluginId).sort((a, b) => b.createdAt - a.createdAt).map((value) => structuredClone(value));
@@ -6015,7 +6312,7 @@ class MemoryPluginStore {
     value.deactivatedAt = at;
   }
   async getActivation(id) {
-    return clone(this.activations.get(id));
+    return clone$1(this.activations.get(id));
   }
   async listActiveActivations(workspaceId, siteId) {
     return [...this.activations.values()].filter((value) => value.workspaceId === workspaceId && value.state === "active" && (siteId === void 0 ? true : value.siteId === null || value.siteId === siteId)).sort((a, b) => a.activatedAt - b.activatedAt).map((value) => structuredClone(value));
@@ -6149,7 +6446,7 @@ function integerRange(value, min, max, name) {
 function unique(values) {
   return [...new Set(values)];
 }
-function clone(value) {
+function clone$1(value) {
   return value === void 0 ? null : structuredClone(value);
 }
 function safeHeaders(input) {
@@ -6369,6 +6666,1242 @@ async function assertCsrfForMutation(request, sessionCsrfHash) {
     throw new DomainError("CSRF_VALIDATION_FAILED", "CSRF token does not match the active session", 403);
   }
 }
+const encoder = new TextEncoder();
+const decoder = new TextDecoder();
+function concat$2(...buffers) {
+  const size = buffers.reduce((acc, { length }) => acc + length, 0);
+  const buf = new Uint8Array(size);
+  let i = 0;
+  for (const buffer of buffers) {
+    buf.set(buffer, i);
+    i += buffer.length;
+  }
+  return buf;
+}
+function normalize(input) {
+  let encoded = input;
+  if (encoded instanceof Uint8Array) {
+    encoded = decoder.decode(encoded);
+  }
+  return encoded;
+}
+const decode = (input) => new Uint8Array(Buffer$1.from(normalize(input), "base64url"));
+class JOSEError extends Error {
+  static code = "ERR_JOSE_GENERIC";
+  code = "ERR_JOSE_GENERIC";
+  constructor(message2, options) {
+    super(message2, options);
+    this.name = this.constructor.name;
+    Error.captureStackTrace?.(this, this.constructor);
+  }
+}
+class JWTClaimValidationFailed extends JOSEError {
+  static code = "ERR_JWT_CLAIM_VALIDATION_FAILED";
+  code = "ERR_JWT_CLAIM_VALIDATION_FAILED";
+  claim;
+  reason;
+  payload;
+  constructor(message2, payload, claim = "unspecified", reason = "unspecified") {
+    super(message2, { cause: { claim, reason, payload } });
+    this.claim = claim;
+    this.reason = reason;
+    this.payload = payload;
+  }
+}
+class JWTExpired extends JOSEError {
+  static code = "ERR_JWT_EXPIRED";
+  code = "ERR_JWT_EXPIRED";
+  claim;
+  reason;
+  payload;
+  constructor(message2, payload, claim = "unspecified", reason = "unspecified") {
+    super(message2, { cause: { claim, reason, payload } });
+    this.claim = claim;
+    this.reason = reason;
+    this.payload = payload;
+  }
+}
+class JOSEAlgNotAllowed extends JOSEError {
+  static code = "ERR_JOSE_ALG_NOT_ALLOWED";
+  code = "ERR_JOSE_ALG_NOT_ALLOWED";
+}
+class JOSENotSupported extends JOSEError {
+  static code = "ERR_JOSE_NOT_SUPPORTED";
+  code = "ERR_JOSE_NOT_SUPPORTED";
+}
+class JWSInvalid extends JOSEError {
+  static code = "ERR_JWS_INVALID";
+  code = "ERR_JWS_INVALID";
+}
+class JWTInvalid extends JOSEError {
+  static code = "ERR_JWT_INVALID";
+  code = "ERR_JWT_INVALID";
+}
+class JWKSInvalid extends JOSEError {
+  static code = "ERR_JWKS_INVALID";
+  code = "ERR_JWKS_INVALID";
+}
+class JWKSNoMatchingKey extends JOSEError {
+  static code = "ERR_JWKS_NO_MATCHING_KEY";
+  code = "ERR_JWKS_NO_MATCHING_KEY";
+  constructor(message2 = "no applicable key found in the JSON Web Key Set", options) {
+    super(message2, options);
+  }
+}
+class JWKSMultipleMatchingKeys extends JOSEError {
+  [Symbol.asyncIterator];
+  static code = "ERR_JWKS_MULTIPLE_MATCHING_KEYS";
+  code = "ERR_JWKS_MULTIPLE_MATCHING_KEYS";
+  constructor(message2 = "multiple matching keys found in the JSON Web Key Set", options) {
+    super(message2, options);
+  }
+}
+class JWKSTimeout extends JOSEError {
+  static code = "ERR_JWKS_TIMEOUT";
+  code = "ERR_JWKS_TIMEOUT";
+  constructor(message2 = "request timed out", options) {
+    super(message2, options);
+  }
+}
+class JWSSignatureVerificationFailed extends JOSEError {
+  static code = "ERR_JWS_SIGNATURE_VERIFICATION_FAILED";
+  code = "ERR_JWS_SIGNATURE_VERIFICATION_FAILED";
+  constructor(message2 = "signature verification failed", options) {
+    super(message2, options);
+  }
+}
+const isKeyObject = (obj) => util.types.isKeyObject(obj);
+const webcrypto = crypto$1.webcrypto;
+const isCryptoKey = (key2) => util.types.isCryptoKey(key2);
+function unusable(name, prop = "algorithm.name") {
+  return new TypeError(`CryptoKey does not support this operation, its ${prop} must be ${name}`);
+}
+function isAlgorithm(algorithm, name) {
+  return algorithm.name === name;
+}
+function getHashLength(hash) {
+  return parseInt(hash.name.slice(4), 10);
+}
+function getNamedCurve$1(alg) {
+  switch (alg) {
+    case "ES256":
+      return "P-256";
+    case "ES384":
+      return "P-384";
+    case "ES512":
+      return "P-521";
+    default:
+      throw new Error("unreachable");
+  }
+}
+function checkUsage(key2, usages) {
+  if (usages.length && !usages.some((expected) => key2.usages.includes(expected))) {
+    let msg = "CryptoKey does not support this operation, its usages must include ";
+    if (usages.length > 2) {
+      const last = usages.pop();
+      msg += `one of ${usages.join(", ")}, or ${last}.`;
+    } else if (usages.length === 2) {
+      msg += `one of ${usages[0]} or ${usages[1]}.`;
+    } else {
+      msg += `${usages[0]}.`;
+    }
+    throw new TypeError(msg);
+  }
+}
+function checkSigCryptoKey(key2, alg, ...usages) {
+  switch (alg) {
+    case "HS256":
+    case "HS384":
+    case "HS512": {
+      if (!isAlgorithm(key2.algorithm, "HMAC"))
+        throw unusable("HMAC");
+      const expected = parseInt(alg.slice(2), 10);
+      const actual = getHashLength(key2.algorithm.hash);
+      if (actual !== expected)
+        throw unusable(`SHA-${expected}`, "algorithm.hash");
+      break;
+    }
+    case "RS256":
+    case "RS384":
+    case "RS512": {
+      if (!isAlgorithm(key2.algorithm, "RSASSA-PKCS1-v1_5"))
+        throw unusable("RSASSA-PKCS1-v1_5");
+      const expected = parseInt(alg.slice(2), 10);
+      const actual = getHashLength(key2.algorithm.hash);
+      if (actual !== expected)
+        throw unusable(`SHA-${expected}`, "algorithm.hash");
+      break;
+    }
+    case "PS256":
+    case "PS384":
+    case "PS512": {
+      if (!isAlgorithm(key2.algorithm, "RSA-PSS"))
+        throw unusable("RSA-PSS");
+      const expected = parseInt(alg.slice(2), 10);
+      const actual = getHashLength(key2.algorithm.hash);
+      if (actual !== expected)
+        throw unusable(`SHA-${expected}`, "algorithm.hash");
+      break;
+    }
+    case "EdDSA": {
+      if (key2.algorithm.name !== "Ed25519" && key2.algorithm.name !== "Ed448") {
+        throw unusable("Ed25519 or Ed448");
+      }
+      break;
+    }
+    case "Ed25519": {
+      if (!isAlgorithm(key2.algorithm, "Ed25519"))
+        throw unusable("Ed25519");
+      break;
+    }
+    case "ES256":
+    case "ES384":
+    case "ES512": {
+      if (!isAlgorithm(key2.algorithm, "ECDSA"))
+        throw unusable("ECDSA");
+      const expected = getNamedCurve$1(alg);
+      const actual = key2.algorithm.namedCurve;
+      if (actual !== expected)
+        throw unusable(expected, "algorithm.namedCurve");
+      break;
+    }
+    default:
+      throw new TypeError("CryptoKey does not support this operation");
+  }
+  checkUsage(key2, usages);
+}
+function message(msg, actual, ...types2) {
+  types2 = types2.filter(Boolean);
+  if (types2.length > 2) {
+    const last = types2.pop();
+    msg += `one of type ${types2.join(", ")}, or ${last}.`;
+  } else if (types2.length === 2) {
+    msg += `one of type ${types2[0]} or ${types2[1]}.`;
+  } else {
+    msg += `of type ${types2[0]}.`;
+  }
+  if (actual == null) {
+    msg += ` Received ${actual}`;
+  } else if (typeof actual === "function" && actual.name) {
+    msg += ` Received function ${actual.name}`;
+  } else if (typeof actual === "object" && actual != null) {
+    if (actual.constructor?.name) {
+      msg += ` Received an instance of ${actual.constructor.name}`;
+    }
+  }
+  return msg;
+}
+const invalidKeyInput = (actual, ...types2) => {
+  return message("Key must be ", actual, ...types2);
+};
+function withAlg(alg, actual, ...types2) {
+  return message(`Key for the ${alg} algorithm must be `, actual, ...types2);
+}
+const isKeyLike = (key2) => isKeyObject(key2) || isCryptoKey(key2);
+const types = ["KeyObject"];
+if (globalThis.CryptoKey || webcrypto?.CryptoKey) {
+  types.push("CryptoKey");
+}
+const isDisjoint = (...headers) => {
+  const sources = headers.filter(Boolean);
+  if (sources.length === 0 || sources.length === 1) {
+    return true;
+  }
+  let acc;
+  for (const header of sources) {
+    const parameters = Object.keys(header);
+    if (!acc || acc.size === 0) {
+      acc = new Set(parameters);
+      continue;
+    }
+    for (const parameter of parameters) {
+      if (acc.has(parameter)) {
+        return false;
+      }
+      acc.add(parameter);
+    }
+  }
+  return true;
+};
+function isObjectLike(value) {
+  return typeof value === "object" && value !== null;
+}
+function isObject(input) {
+  if (!isObjectLike(input) || Object.prototype.toString.call(input) !== "[object Object]") {
+    return false;
+  }
+  if (Object.getPrototypeOf(input) === null) {
+    return true;
+  }
+  let proto = input;
+  while (Object.getPrototypeOf(proto) !== null) {
+    proto = Object.getPrototypeOf(proto);
+  }
+  return Object.getPrototypeOf(input) === proto;
+}
+function isJWK(key2) {
+  return isObject(key2) && typeof key2.kty === "string";
+}
+function isPrivateJWK(key2) {
+  return key2.kty !== "oct" && typeof key2.d === "string";
+}
+function isPublicJWK(key2) {
+  return key2.kty !== "oct" && typeof key2.d === "undefined";
+}
+function isSecretJWK(key2) {
+  return isJWK(key2) && key2.kty === "oct" && typeof key2.k === "string";
+}
+const namedCurveToJOSE = (namedCurve) => {
+  switch (namedCurve) {
+    case "prime256v1":
+      return "P-256";
+    case "secp384r1":
+      return "P-384";
+    case "secp521r1":
+      return "P-521";
+    case "secp256k1":
+      return "secp256k1";
+    default:
+      throw new JOSENotSupported("Unsupported key curve for this operation");
+  }
+};
+const getNamedCurve = (kee, raw) => {
+  let key2;
+  if (isCryptoKey(kee)) {
+    key2 = KeyObject.from(kee);
+  } else if (isKeyObject(kee)) {
+    key2 = kee;
+  } else if (isJWK(kee)) {
+    return kee.crv;
+  } else {
+    throw new TypeError(invalidKeyInput(kee, ...types));
+  }
+  if (key2.type === "secret") {
+    throw new TypeError('only "private" or "public" type keys can be used for this operation');
+  }
+  switch (key2.asymmetricKeyType) {
+    case "ed25519":
+    case "ed448":
+      return `Ed${key2.asymmetricKeyType.slice(2)}`;
+    case "x25519":
+    case "x448":
+      return `X${key2.asymmetricKeyType.slice(1)}`;
+    case "ec": {
+      const namedCurve = key2.asymmetricKeyDetails.namedCurve;
+      return namedCurveToJOSE(namedCurve);
+    }
+    default:
+      throw new TypeError("Invalid asymmetric key type for this operation");
+  }
+};
+const checkKeyLength = (key2, alg) => {
+  let modulusLength;
+  try {
+    if (key2 instanceof KeyObject) {
+      modulusLength = key2.asymmetricKeyDetails?.modulusLength;
+    } else {
+      modulusLength = Buffer.from(key2.n, "base64url").byteLength << 3;
+    }
+  } catch {
+  }
+  if (typeof modulusLength !== "number" || modulusLength < 2048) {
+    throw new TypeError(`${alg} requires key modulusLength to be 2048 bits or larger`);
+  }
+};
+const parse = (key2) => {
+  if (key2.d) {
+    return createPrivateKey({ format: "jwk", key: key2 });
+  }
+  return createPublicKey({ format: "jwk", key: key2 });
+};
+async function importJWK(jwk, alg) {
+  if (!isObject(jwk)) {
+    throw new TypeError("JWK must be an object");
+  }
+  alg ||= jwk.alg;
+  switch (jwk.kty) {
+    case "oct":
+      if (typeof jwk.k !== "string" || !jwk.k) {
+        throw new TypeError('missing "k" (Key Value) Parameter value');
+      }
+      return decode(jwk.k);
+    case "RSA":
+      if ("oth" in jwk && jwk.oth !== void 0) {
+        throw new JOSENotSupported('RSA JWK "oth" (Other Primes Info) Parameter value is not supported');
+      }
+    case "EC":
+    case "OKP":
+      return parse({ ...jwk, alg });
+    default:
+      throw new JOSENotSupported('Unsupported "kty" (Key Type) Parameter value');
+  }
+}
+const tag = (key2) => key2?.[Symbol.toStringTag];
+const jwkMatchesOp = (alg, key2, usage) => {
+  if (key2.use !== void 0 && key2.use !== "sig") {
+    throw new TypeError("Invalid key for this operation, when present its use must be sig");
+  }
+  if (key2.key_ops !== void 0 && key2.key_ops.includes?.(usage) !== true) {
+    throw new TypeError(`Invalid key for this operation, when present its key_ops must include ${usage}`);
+  }
+  if (key2.alg !== void 0 && key2.alg !== alg) {
+    throw new TypeError(`Invalid key for this operation, when present its alg must be ${alg}`);
+  }
+  return true;
+};
+const symmetricTypeCheck = (alg, key2, usage, allowJwk) => {
+  if (key2 instanceof Uint8Array)
+    return;
+  if (allowJwk && isJWK(key2)) {
+    if (isSecretJWK(key2) && jwkMatchesOp(alg, key2, usage))
+      return;
+    throw new TypeError(`JSON Web Key for symmetric algorithms must have JWK "kty" (Key Type) equal to "oct" and the JWK "k" (Key Value) present`);
+  }
+  if (!isKeyLike(key2)) {
+    throw new TypeError(withAlg(alg, key2, ...types, "Uint8Array", allowJwk ? "JSON Web Key" : null));
+  }
+  if (key2.type !== "secret") {
+    throw new TypeError(`${tag(key2)} instances for symmetric algorithms must be of type "secret"`);
+  }
+};
+const asymmetricTypeCheck = (alg, key2, usage, allowJwk) => {
+  if (allowJwk && isJWK(key2)) {
+    switch (usage) {
+      case "sign":
+        if (isPrivateJWK(key2) && jwkMatchesOp(alg, key2, usage))
+          return;
+        throw new TypeError(`JSON Web Key for this operation be a private JWK`);
+      case "verify":
+        if (isPublicJWK(key2) && jwkMatchesOp(alg, key2, usage))
+          return;
+        throw new TypeError(`JSON Web Key for this operation be a public JWK`);
+    }
+  }
+  if (!isKeyLike(key2)) {
+    throw new TypeError(withAlg(alg, key2, ...types, allowJwk ? "JSON Web Key" : null));
+  }
+  if (key2.type === "secret") {
+    throw new TypeError(`${tag(key2)} instances for asymmetric algorithms must not be of type "secret"`);
+  }
+  if (usage === "sign" && key2.type === "public") {
+    throw new TypeError(`${tag(key2)} instances for asymmetric algorithm signing must be of type "private"`);
+  }
+  if (usage === "decrypt" && key2.type === "public") {
+    throw new TypeError(`${tag(key2)} instances for asymmetric algorithm decryption must be of type "private"`);
+  }
+  if (key2.algorithm && usage === "verify" && key2.type === "private") {
+    throw new TypeError(`${tag(key2)} instances for asymmetric algorithm verifying must be of type "public"`);
+  }
+  if (key2.algorithm && usage === "encrypt" && key2.type === "private") {
+    throw new TypeError(`${tag(key2)} instances for asymmetric algorithm encryption must be of type "public"`);
+  }
+};
+function checkKeyType(allowJwk, alg, key2, usage) {
+  const symmetric = alg.startsWith("HS") || alg === "dir" || alg.startsWith("PBES2") || /^A\d{3}(?:GCM)?KW$/.test(alg);
+  if (symmetric) {
+    symmetricTypeCheck(alg, key2, usage, allowJwk);
+  } else {
+    asymmetricTypeCheck(alg, key2, usage, allowJwk);
+  }
+}
+checkKeyType.bind(void 0, false);
+const checkKeyTypeWithJwk = checkKeyType.bind(void 0, true);
+function validateCrit(Err, recognizedDefault, recognizedOption, protectedHeader, joseHeader) {
+  if (joseHeader.crit !== void 0 && protectedHeader?.crit === void 0) {
+    throw new Err('"crit" (Critical) Header Parameter MUST be integrity protected');
+  }
+  if (!protectedHeader || protectedHeader.crit === void 0) {
+    return /* @__PURE__ */ new Set();
+  }
+  if (!Array.isArray(protectedHeader.crit) || protectedHeader.crit.length === 0 || protectedHeader.crit.some((input) => typeof input !== "string" || input.length === 0)) {
+    throw new Err('"crit" (Critical) Header Parameter MUST be an array of non-empty strings when present');
+  }
+  let recognized;
+  if (recognizedOption !== void 0) {
+    recognized = new Map([...Object.entries(recognizedOption), ...recognizedDefault.entries()]);
+  } else {
+    recognized = recognizedDefault;
+  }
+  for (const parameter of protectedHeader.crit) {
+    if (!recognized.has(parameter)) {
+      throw new JOSENotSupported(`Extension Header Parameter "${parameter}" is not recognized`);
+    }
+    if (joseHeader[parameter] === void 0) {
+      throw new Err(`Extension Header Parameter "${parameter}" is missing`);
+    }
+    if (recognized.get(parameter) && protectedHeader[parameter] === void 0) {
+      throw new Err(`Extension Header Parameter "${parameter}" MUST be integrity protected`);
+    }
+  }
+  return new Set(protectedHeader.crit);
+}
+const validateAlgorithms = (option, algorithms) => {
+  if (algorithms !== void 0 && (!Array.isArray(algorithms) || algorithms.some((s) => typeof s !== "string"))) {
+    throw new TypeError(`"${option}" option must be an array of strings`);
+  }
+  if (!algorithms) {
+    return void 0;
+  }
+  return new Set(algorithms);
+};
+function dsaDigest(alg) {
+  switch (alg) {
+    case "PS256":
+    case "RS256":
+    case "ES256":
+    case "ES256K":
+      return "sha256";
+    case "PS384":
+    case "RS384":
+    case "ES384":
+      return "sha384";
+    case "PS512":
+    case "RS512":
+    case "ES512":
+      return "sha512";
+    case "Ed25519":
+    case "EdDSA":
+      return void 0;
+    default:
+      throw new JOSENotSupported(`alg ${alg} is not supported either by JOSE or your javascript runtime`);
+  }
+}
+const ecCurveAlgMap = /* @__PURE__ */ new Map([
+  ["ES256", "P-256"],
+  ["ES256K", "secp256k1"],
+  ["ES384", "P-384"],
+  ["ES512", "P-521"]
+]);
+function keyForCrypto(alg, key2) {
+  let asymmetricKeyType;
+  let asymmetricKeyDetails;
+  let isJWK2;
+  if (key2 instanceof KeyObject) {
+    asymmetricKeyType = key2.asymmetricKeyType;
+    asymmetricKeyDetails = key2.asymmetricKeyDetails;
+  } else {
+    isJWK2 = true;
+    switch (key2.kty) {
+      case "RSA":
+        asymmetricKeyType = "rsa";
+        break;
+      case "EC":
+        asymmetricKeyType = "ec";
+        break;
+      case "OKP": {
+        if (key2.crv === "Ed25519") {
+          asymmetricKeyType = "ed25519";
+          break;
+        }
+        if (key2.crv === "Ed448") {
+          asymmetricKeyType = "ed448";
+          break;
+        }
+        throw new TypeError("Invalid key for this operation, its crv must be Ed25519 or Ed448");
+      }
+      default:
+        throw new TypeError("Invalid key for this operation, its kty must be RSA, OKP, or EC");
+    }
+  }
+  let options;
+  switch (alg) {
+    case "Ed25519":
+      if (asymmetricKeyType !== "ed25519") {
+        throw new TypeError(`Invalid key for this operation, its asymmetricKeyType must be ed25519`);
+      }
+      break;
+    case "EdDSA":
+      if (!["ed25519", "ed448"].includes(asymmetricKeyType)) {
+        throw new TypeError("Invalid key for this operation, its asymmetricKeyType must be ed25519 or ed448");
+      }
+      break;
+    case "RS256":
+    case "RS384":
+    case "RS512":
+      if (asymmetricKeyType !== "rsa") {
+        throw new TypeError("Invalid key for this operation, its asymmetricKeyType must be rsa");
+      }
+      checkKeyLength(key2, alg);
+      break;
+    case "PS256":
+    case "PS384":
+    case "PS512":
+      if (asymmetricKeyType === "rsa-pss") {
+        const { hashAlgorithm, mgf1HashAlgorithm, saltLength } = asymmetricKeyDetails;
+        const length = parseInt(alg.slice(-3), 10);
+        if (hashAlgorithm !== void 0 && (hashAlgorithm !== `sha${length}` || mgf1HashAlgorithm !== hashAlgorithm)) {
+          throw new TypeError(`Invalid key for this operation, its RSA-PSS parameters do not meet the requirements of "alg" ${alg}`);
+        }
+        if (saltLength !== void 0 && saltLength > length >> 3) {
+          throw new TypeError(`Invalid key for this operation, its RSA-PSS parameter saltLength does not meet the requirements of "alg" ${alg}`);
+        }
+      } else if (asymmetricKeyType !== "rsa") {
+        throw new TypeError("Invalid key for this operation, its asymmetricKeyType must be rsa or rsa-pss");
+      }
+      checkKeyLength(key2, alg);
+      options = {
+        padding: constants.RSA_PKCS1_PSS_PADDING,
+        saltLength: constants.RSA_PSS_SALTLEN_DIGEST
+      };
+      break;
+    case "ES256":
+    case "ES256K":
+    case "ES384":
+    case "ES512": {
+      if (asymmetricKeyType !== "ec") {
+        throw new TypeError("Invalid key for this operation, its asymmetricKeyType must be ec");
+      }
+      const actual = getNamedCurve(key2);
+      const expected = ecCurveAlgMap.get(alg);
+      if (actual !== expected) {
+        throw new TypeError(`Invalid key curve for the algorithm, its curve must be ${expected}, got ${actual}`);
+      }
+      options = { dsaEncoding: "ieee-p1363" };
+      break;
+    }
+    default:
+      throw new JOSENotSupported(`alg ${alg} is not supported either by JOSE or your javascript runtime`);
+  }
+  if (isJWK2) {
+    return { format: "jwk", key: key2, ...options };
+  }
+  return options ? { ...options, key: key2 } : key2;
+}
+function hmacDigest(alg) {
+  switch (alg) {
+    case "HS256":
+      return "sha256";
+    case "HS384":
+      return "sha384";
+    case "HS512":
+      return "sha512";
+    default:
+      throw new JOSENotSupported(`alg ${alg} is not supported either by JOSE or your javascript runtime`);
+  }
+}
+function getSignVerifyKey(alg, key2, usage) {
+  if (key2 instanceof Uint8Array) {
+    if (!alg.startsWith("HS")) {
+      throw new TypeError(invalidKeyInput(key2, ...types));
+    }
+    return createSecretKey(key2);
+  }
+  if (key2 instanceof KeyObject) {
+    return key2;
+  }
+  if (isCryptoKey(key2)) {
+    checkSigCryptoKey(key2, alg, usage);
+    return KeyObject.from(key2);
+  }
+  if (isJWK(key2)) {
+    if (alg.startsWith("HS")) {
+      return createSecretKey(Buffer.from(key2.k, "base64url"));
+    }
+    return key2;
+  }
+  throw new TypeError(invalidKeyInput(key2, ...types, "Uint8Array", "JSON Web Key"));
+}
+const oneShotSign = promisify(crypto$1.sign);
+const sign = async (alg, key2, data) => {
+  const k = getSignVerifyKey(alg, key2, "sign");
+  if (alg.startsWith("HS")) {
+    const hmac = crypto$1.createHmac(hmacDigest(alg), k);
+    hmac.update(data);
+    return hmac.digest();
+  }
+  return oneShotSign(dsaDigest(alg), data, keyForCrypto(alg, k));
+};
+const oneShotVerify = promisify(crypto$1.verify);
+const verify$1 = async (alg, key2, signature, data) => {
+  const k = getSignVerifyKey(alg, key2, "verify");
+  if (alg.startsWith("HS")) {
+    const expected = await sign(alg, k, data);
+    const actual = signature;
+    try {
+      return crypto$1.timingSafeEqual(actual, expected);
+    } catch {
+      return false;
+    }
+  }
+  const algorithm = dsaDigest(alg);
+  const keyInput = keyForCrypto(alg, k);
+  try {
+    return await oneShotVerify(algorithm, data, keyInput, signature);
+  } catch {
+    return false;
+  }
+};
+async function flattenedVerify(jws, key2, options) {
+  if (!isObject(jws)) {
+    throw new JWSInvalid("Flattened JWS must be an object");
+  }
+  if (jws.protected === void 0 && jws.header === void 0) {
+    throw new JWSInvalid('Flattened JWS must have either of the "protected" or "header" members');
+  }
+  if (jws.protected !== void 0 && typeof jws.protected !== "string") {
+    throw new JWSInvalid("JWS Protected Header incorrect type");
+  }
+  if (jws.payload === void 0) {
+    throw new JWSInvalid("JWS Payload missing");
+  }
+  if (typeof jws.signature !== "string") {
+    throw new JWSInvalid("JWS Signature missing or incorrect type");
+  }
+  if (jws.header !== void 0 && !isObject(jws.header)) {
+    throw new JWSInvalid("JWS Unprotected Header incorrect type");
+  }
+  let parsedProt = {};
+  if (jws.protected) {
+    try {
+      const protectedHeader = decode(jws.protected);
+      parsedProt = JSON.parse(decoder.decode(protectedHeader));
+    } catch {
+      throw new JWSInvalid("JWS Protected Header is invalid");
+    }
+  }
+  if (!isDisjoint(parsedProt, jws.header)) {
+    throw new JWSInvalid("JWS Protected and JWS Unprotected Header Parameter names must be disjoint");
+  }
+  const joseHeader = {
+    ...parsedProt,
+    ...jws.header
+  };
+  const extensions = validateCrit(JWSInvalid, /* @__PURE__ */ new Map([["b64", true]]), options?.crit, parsedProt, joseHeader);
+  let b64 = true;
+  if (extensions.has("b64")) {
+    b64 = parsedProt.b64;
+    if (typeof b64 !== "boolean") {
+      throw new JWSInvalid('The "b64" (base64url-encode payload) Header Parameter must be a boolean');
+    }
+  }
+  const { alg } = joseHeader;
+  if (typeof alg !== "string" || !alg) {
+    throw new JWSInvalid('JWS "alg" (Algorithm) Header Parameter missing or invalid');
+  }
+  const algorithms = options && validateAlgorithms("algorithms", options.algorithms);
+  if (algorithms && !algorithms.has(alg)) {
+    throw new JOSEAlgNotAllowed('"alg" (Algorithm) Header Parameter value not allowed');
+  }
+  if (b64) {
+    if (typeof jws.payload !== "string") {
+      throw new JWSInvalid("JWS Payload must be a string");
+    }
+  } else if (typeof jws.payload !== "string" && !(jws.payload instanceof Uint8Array)) {
+    throw new JWSInvalid("JWS Payload must be a string or an Uint8Array instance");
+  }
+  let resolvedKey = false;
+  if (typeof key2 === "function") {
+    key2 = await key2(parsedProt, jws);
+    resolvedKey = true;
+    checkKeyTypeWithJwk(alg, key2, "verify");
+    if (isJWK(key2)) {
+      key2 = await importJWK(key2, alg);
+    }
+  } else {
+    checkKeyTypeWithJwk(alg, key2, "verify");
+  }
+  const data = concat$2(encoder.encode(jws.protected ?? ""), encoder.encode("."), typeof jws.payload === "string" ? encoder.encode(jws.payload) : jws.payload);
+  let signature;
+  try {
+    signature = decode(jws.signature);
+  } catch {
+    throw new JWSInvalid("Failed to base64url decode the signature");
+  }
+  const verified = await verify$1(alg, key2, signature, data);
+  if (!verified) {
+    throw new JWSSignatureVerificationFailed();
+  }
+  let payload;
+  if (b64) {
+    try {
+      payload = decode(jws.payload);
+    } catch {
+      throw new JWSInvalid("Failed to base64url decode the payload");
+    }
+  } else if (typeof jws.payload === "string") {
+    payload = encoder.encode(jws.payload);
+  } else {
+    payload = jws.payload;
+  }
+  const result = { payload };
+  if (jws.protected !== void 0) {
+    result.protectedHeader = parsedProt;
+  }
+  if (jws.header !== void 0) {
+    result.unprotectedHeader = jws.header;
+  }
+  if (resolvedKey) {
+    return { ...result, key: key2 };
+  }
+  return result;
+}
+async function compactVerify(jws, key2, options) {
+  if (jws instanceof Uint8Array) {
+    jws = decoder.decode(jws);
+  }
+  if (typeof jws !== "string") {
+    throw new JWSInvalid("Compact JWS must be a string or Uint8Array");
+  }
+  const { 0: protectedHeader, 1: payload, 2: signature, length } = jws.split(".");
+  if (length !== 3) {
+    throw new JWSInvalid("Invalid Compact JWS");
+  }
+  const verified = await flattenedVerify({ payload, protected: protectedHeader, signature }, key2, options);
+  const result = { payload: verified.payload, protectedHeader: verified.protectedHeader };
+  if (typeof key2 === "function") {
+    return { ...result, key: verified.key };
+  }
+  return result;
+}
+const epoch = (date) => Math.floor(date.getTime() / 1e3);
+const minute = 60;
+const hour = minute * 60;
+const day = hour * 24;
+const week = day * 7;
+const year = day * 365.25;
+const REGEX = /^(\+|\-)? ?(\d+|\d+\.\d+) ?(seconds?|secs?|s|minutes?|mins?|m|hours?|hrs?|h|days?|d|weeks?|w|years?|yrs?|y)(?: (ago|from now))?$/i;
+const secs = (str) => {
+  const matched = REGEX.exec(str);
+  if (!matched || matched[4] && matched[1]) {
+    throw new TypeError("Invalid time period format");
+  }
+  const value = parseFloat(matched[2]);
+  const unit = matched[3].toLowerCase();
+  let numericDate;
+  switch (unit) {
+    case "sec":
+    case "secs":
+    case "second":
+    case "seconds":
+    case "s":
+      numericDate = Math.round(value);
+      break;
+    case "minute":
+    case "minutes":
+    case "min":
+    case "mins":
+    case "m":
+      numericDate = Math.round(value * minute);
+      break;
+    case "hour":
+    case "hours":
+    case "hr":
+    case "hrs":
+    case "h":
+      numericDate = Math.round(value * hour);
+      break;
+    case "day":
+    case "days":
+    case "d":
+      numericDate = Math.round(value * day);
+      break;
+    case "week":
+    case "weeks":
+    case "w":
+      numericDate = Math.round(value * week);
+      break;
+    default:
+      numericDate = Math.round(value * year);
+      break;
+  }
+  if (matched[1] === "-" || matched[4] === "ago") {
+    return -numericDate;
+  }
+  return numericDate;
+};
+const normalizeTyp = (value) => value.toLowerCase().replace(/^application\//, "");
+const checkAudiencePresence = (audPayload, audOption) => {
+  if (typeof audPayload === "string") {
+    return audOption.includes(audPayload);
+  }
+  if (Array.isArray(audPayload)) {
+    return audOption.some(Set.prototype.has.bind(new Set(audPayload)));
+  }
+  return false;
+};
+const jwtPayload = (protectedHeader, encodedPayload, options = {}) => {
+  let payload;
+  try {
+    payload = JSON.parse(decoder.decode(encodedPayload));
+  } catch {
+  }
+  if (!isObject(payload)) {
+    throw new JWTInvalid("JWT Claims Set must be a top-level JSON object");
+  }
+  const { typ } = options;
+  if (typ && (typeof protectedHeader.typ !== "string" || normalizeTyp(protectedHeader.typ) !== normalizeTyp(typ))) {
+    throw new JWTClaimValidationFailed('unexpected "typ" JWT header value', payload, "typ", "check_failed");
+  }
+  const { requiredClaims = [], issuer, subject, audience, maxTokenAge } = options;
+  const presenceCheck = [...requiredClaims];
+  if (maxTokenAge !== void 0)
+    presenceCheck.push("iat");
+  if (audience !== void 0)
+    presenceCheck.push("aud");
+  if (subject !== void 0)
+    presenceCheck.push("sub");
+  if (issuer !== void 0)
+    presenceCheck.push("iss");
+  for (const claim of new Set(presenceCheck.reverse())) {
+    if (!(claim in payload)) {
+      throw new JWTClaimValidationFailed(`missing required "${claim}" claim`, payload, claim, "missing");
+    }
+  }
+  if (issuer && !(Array.isArray(issuer) ? issuer : [issuer]).includes(payload.iss)) {
+    throw new JWTClaimValidationFailed('unexpected "iss" claim value', payload, "iss", "check_failed");
+  }
+  if (subject && payload.sub !== subject) {
+    throw new JWTClaimValidationFailed('unexpected "sub" claim value', payload, "sub", "check_failed");
+  }
+  if (audience && !checkAudiencePresence(payload.aud, typeof audience === "string" ? [audience] : audience)) {
+    throw new JWTClaimValidationFailed('unexpected "aud" claim value', payload, "aud", "check_failed");
+  }
+  let tolerance;
+  switch (typeof options.clockTolerance) {
+    case "string":
+      tolerance = secs(options.clockTolerance);
+      break;
+    case "number":
+      tolerance = options.clockTolerance;
+      break;
+    case "undefined":
+      tolerance = 0;
+      break;
+    default:
+      throw new TypeError("Invalid clockTolerance option type");
+  }
+  const { currentDate } = options;
+  const now = epoch(currentDate || /* @__PURE__ */ new Date());
+  if ((payload.iat !== void 0 || maxTokenAge) && typeof payload.iat !== "number") {
+    throw new JWTClaimValidationFailed('"iat" claim must be a number', payload, "iat", "invalid");
+  }
+  if (payload.nbf !== void 0) {
+    if (typeof payload.nbf !== "number") {
+      throw new JWTClaimValidationFailed('"nbf" claim must be a number', payload, "nbf", "invalid");
+    }
+    if (payload.nbf > now + tolerance) {
+      throw new JWTClaimValidationFailed('"nbf" claim timestamp check failed', payload, "nbf", "check_failed");
+    }
+  }
+  if (payload.exp !== void 0) {
+    if (typeof payload.exp !== "number") {
+      throw new JWTClaimValidationFailed('"exp" claim must be a number', payload, "exp", "invalid");
+    }
+    if (payload.exp <= now - tolerance) {
+      throw new JWTExpired('"exp" claim timestamp check failed', payload, "exp", "check_failed");
+    }
+  }
+  if (maxTokenAge) {
+    const age = now - payload.iat;
+    const max = typeof maxTokenAge === "number" ? maxTokenAge : secs(maxTokenAge);
+    if (age - tolerance > max) {
+      throw new JWTExpired('"iat" claim timestamp check failed (too far in the past)', payload, "iat", "check_failed");
+    }
+    if (age < 0 - tolerance) {
+      throw new JWTClaimValidationFailed('"iat" claim timestamp check failed (it should be in the past)', payload, "iat", "check_failed");
+    }
+  }
+  return payload;
+};
+async function jwtVerify(jwt, key2, options) {
+  const verified = await compactVerify(jwt, key2, options);
+  if (verified.protectedHeader.crit?.includes("b64") && verified.protectedHeader.b64 === false) {
+    throw new JWTInvalid("JWTs MUST NOT use unencoded payload");
+  }
+  const payload = jwtPayload(verified.protectedHeader, verified.payload, options);
+  const result = { payload, protectedHeader: verified.protectedHeader };
+  if (typeof key2 === "function") {
+    return { ...result, key: verified.key };
+  }
+  return result;
+}
+function getKtyFromAlg(alg) {
+  switch (typeof alg === "string" && alg.slice(0, 2)) {
+    case "RS":
+    case "PS":
+      return "RSA";
+    case "ES":
+      return "EC";
+    case "Ed":
+      return "OKP";
+    default:
+      throw new JOSENotSupported('Unsupported "alg" value for a JSON Web Key Set');
+  }
+}
+function isJWKSLike(jwks) {
+  return jwks && typeof jwks === "object" && Array.isArray(jwks.keys) && jwks.keys.every(isJWKLike);
+}
+function isJWKLike(key2) {
+  return isObject(key2);
+}
+function clone(obj) {
+  if (typeof structuredClone === "function") {
+    return structuredClone(obj);
+  }
+  return JSON.parse(JSON.stringify(obj));
+}
+class LocalJWKSet {
+  _jwks;
+  _cached = /* @__PURE__ */ new WeakMap();
+  constructor(jwks) {
+    if (!isJWKSLike(jwks)) {
+      throw new JWKSInvalid("JSON Web Key Set malformed");
+    }
+    this._jwks = clone(jwks);
+  }
+  async getKey(protectedHeader, token) {
+    const { alg, kid } = { ...protectedHeader, ...token?.header };
+    const kty = getKtyFromAlg(alg);
+    const candidates = this._jwks.keys.filter((jwk2) => {
+      let candidate = kty === jwk2.kty;
+      if (candidate && typeof kid === "string") {
+        candidate = kid === jwk2.kid;
+      }
+      if (candidate && typeof jwk2.alg === "string") {
+        candidate = alg === jwk2.alg;
+      }
+      if (candidate && typeof jwk2.use === "string") {
+        candidate = jwk2.use === "sig";
+      }
+      if (candidate && Array.isArray(jwk2.key_ops)) {
+        candidate = jwk2.key_ops.includes("verify");
+      }
+      if (candidate) {
+        switch (alg) {
+          case "ES256":
+            candidate = jwk2.crv === "P-256";
+            break;
+          case "ES256K":
+            candidate = jwk2.crv === "secp256k1";
+            break;
+          case "ES384":
+            candidate = jwk2.crv === "P-384";
+            break;
+          case "ES512":
+            candidate = jwk2.crv === "P-521";
+            break;
+          case "Ed25519":
+            candidate = jwk2.crv === "Ed25519";
+            break;
+          case "EdDSA":
+            candidate = jwk2.crv === "Ed25519" || jwk2.crv === "Ed448";
+            break;
+        }
+      }
+      return candidate;
+    });
+    const { 0: jwk, length } = candidates;
+    if (length === 0) {
+      throw new JWKSNoMatchingKey();
+    }
+    if (length !== 1) {
+      const error = new JWKSMultipleMatchingKeys();
+      const { _cached } = this;
+      error[Symbol.asyncIterator] = async function* () {
+        for (const jwk2 of candidates) {
+          try {
+            yield await importWithAlgCache(_cached, jwk2, alg);
+          } catch {
+          }
+        }
+      };
+      throw error;
+    }
+    return importWithAlgCache(this._cached, jwk, alg);
+  }
+}
+async function importWithAlgCache(cache, jwk, alg) {
+  const cached = cache.get(jwk) || cache.set(jwk, {}).get(jwk);
+  if (cached[alg] === void 0) {
+    const key2 = await importJWK({ ...jwk, ext: true }, alg);
+    if (key2 instanceof Uint8Array || key2.type !== "public") {
+      throw new JWKSInvalid("JSON Web Key Set members must be public keys");
+    }
+    cached[alg] = key2;
+  }
+  return cached[alg];
+}
+function createLocalJWKSet(jwks) {
+  const set = new LocalJWKSet(jwks);
+  const localJWKSet = async (protectedHeader, token) => set.getKey(protectedHeader, token);
+  Object.defineProperties(localJWKSet, {
+    jwks: {
+      value: () => clone(set._jwks),
+      enumerable: true,
+      configurable: false,
+      writable: false
+    }
+  });
+  return localJWKSet;
+}
+const fetchJwks = async (url, timeout, options) => {
+  let get;
+  switch (url.protocol) {
+    case "https:":
+      get = https.get;
+      break;
+    case "http:":
+      get = http.get;
+      break;
+    default:
+      throw new TypeError("Unsupported URL protocol.");
+  }
+  const { agent, headers } = options;
+  const req = get(url.href, {
+    agent,
+    timeout,
+    headers
+  });
+  const [response] = await Promise.race([once(req, "response"), once(req, "timeout")]);
+  if (!response) {
+    req.destroy();
+    throw new JWKSTimeout();
+  }
+  if (response.statusCode !== 200) {
+    throw new JOSEError("Expected 200 OK from the JSON Web Key Set HTTP response");
+  }
+  const parts = [];
+  for await (const part of response) {
+    parts.push(part);
+  }
+  try {
+    return JSON.parse(decoder.decode(concat$2(...parts)));
+  } catch {
+    throw new JOSEError("Failed to parse the JSON Web Key Set HTTP response as JSON");
+  }
+};
+function isCloudflareWorkers() {
+  return typeof WebSocketPair !== "undefined" || typeof navigator !== "undefined" && navigator.userAgent === "Cloudflare-Workers" || typeof EdgeRuntime !== "undefined" && EdgeRuntime === "vercel";
+}
+let USER_AGENT;
+if (typeof navigator === "undefined" || !navigator.userAgent?.startsWith?.("Mozilla/5.0 ")) {
+  const NAME2 = "jose";
+  const VERSION = "v5.10.0";
+  USER_AGENT = `${NAME2}/${VERSION}`;
+}
+const jwksCache = Symbol();
+function isFreshJwksCache(input, cacheMaxAge) {
+  if (typeof input !== "object" || input === null) {
+    return false;
+  }
+  if (!("uat" in input) || typeof input.uat !== "number" || Date.now() - input.uat >= cacheMaxAge) {
+    return false;
+  }
+  if (!("jwks" in input) || !isObject(input.jwks) || !Array.isArray(input.jwks.keys) || !Array.prototype.every.call(input.jwks.keys, isObject)) {
+    return false;
+  }
+  return true;
+}
+class RemoteJWKSet {
+  _url;
+  _timeoutDuration;
+  _cooldownDuration;
+  _cacheMaxAge;
+  _jwksTimestamp;
+  _pendingFetch;
+  _options;
+  _local;
+  _cache;
+  constructor(url, options) {
+    if (!(url instanceof URL)) {
+      throw new TypeError("url must be an instance of URL");
+    }
+    this._url = new URL(url.href);
+    this._options = { agent: options?.agent, headers: options?.headers };
+    this._timeoutDuration = typeof options?.timeoutDuration === "number" ? options?.timeoutDuration : 5e3;
+    this._cooldownDuration = typeof options?.cooldownDuration === "number" ? options?.cooldownDuration : 3e4;
+    this._cacheMaxAge = typeof options?.cacheMaxAge === "number" ? options?.cacheMaxAge : 6e5;
+    if (options?.[jwksCache] !== void 0) {
+      this._cache = options?.[jwksCache];
+      if (isFreshJwksCache(options?.[jwksCache], this._cacheMaxAge)) {
+        this._jwksTimestamp = this._cache.uat;
+        this._local = createLocalJWKSet(this._cache.jwks);
+      }
+    }
+  }
+  coolingDown() {
+    return typeof this._jwksTimestamp === "number" ? Date.now() < this._jwksTimestamp + this._cooldownDuration : false;
+  }
+  fresh() {
+    return typeof this._jwksTimestamp === "number" ? Date.now() < this._jwksTimestamp + this._cacheMaxAge : false;
+  }
+  async getKey(protectedHeader, token) {
+    if (!this._local || !this.fresh()) {
+      await this.reload();
+    }
+    try {
+      return await this._local(protectedHeader, token);
+    } catch (err) {
+      if (err instanceof JWKSNoMatchingKey) {
+        if (this.coolingDown() === false) {
+          await this.reload();
+          return this._local(protectedHeader, token);
+        }
+      }
+      throw err;
+    }
+  }
+  async reload() {
+    if (this._pendingFetch && isCloudflareWorkers()) {
+      this._pendingFetch = void 0;
+    }
+    const headers = new Headers(this._options.headers);
+    if (USER_AGENT && !headers.has("User-Agent")) {
+      headers.set("User-Agent", USER_AGENT);
+      this._options.headers = Object.fromEntries(headers.entries());
+    }
+    this._pendingFetch ||= fetchJwks(this._url, this._timeoutDuration, this._options).then((json2) => {
+      this._local = createLocalJWKSet(json2);
+      if (this._cache) {
+        this._cache.uat = Date.now();
+        this._cache.jwks = json2;
+      }
+      this._jwksTimestamp = Date.now();
+      this._pendingFetch = void 0;
+    }).catch((err) => {
+      this._pendingFetch = void 0;
+      throw err;
+    });
+    await this._pendingFetch;
+  }
+}
+function createRemoteJWKSet(url, options) {
+  const set = new RemoteJWKSet(url, options);
+  const remoteJWKSet = async (protectedHeader, token) => set.getKey(protectedHeader, token);
+  Object.defineProperties(remoteJWKSet, {
+    coolingDown: {
+      get: () => set.coolingDown(),
+      enumerable: true,
+      configurable: false
+    },
+    fresh: {
+      get: () => set.fresh(),
+      enumerable: true,
+      configurable: false
+    },
+    reload: {
+      value: () => set.reload(),
+      enumerable: true,
+      configurable: false,
+      writable: false
+    },
+    reloading: {
+      get: () => !!set._pendingFetch,
+      enumerable: true,
+      configurable: false
+    },
+    jwks: {
+      value: () => set._local?.jwks(),
+      enumerable: true,
+      configurable: false,
+      writable: false
+    }
+  });
+  return remoteJWKSet;
+}
+function cloudflareAccessLoginConfigured(env) {
+  return env.CF_ACCESS_REQUIRED === "true" && Boolean(env.CF_ACCESS_TEAM_DOMAIN?.trim()) && Boolean(env.CF_ACCESS_AUDIENCE?.trim());
+}
 function assertCloudflareAccessBoundary(request, config) {
   if (!config.required)
     return;
@@ -6379,6 +7912,57 @@ function assertCloudflareAccessBoundary(request, config) {
   if (config.teamDomain && !request.headers.get("cf-access-authenticated-user-email")) {
     throw new DomainError("ACCESS_IDENTITY_MISSING", "Cloudflare Access identity headers are missing", 403);
   }
+}
+function readAccessIdentityEmail(request) {
+  return request.headers.get("cf-access-authenticated-user-email");
+}
+function normalizeTeamDomain(raw) {
+  const trimmed = raw.trim().replace(/\/$/, "");
+  return trimmed.startsWith("http://") || trimmed.startsWith("https://") ? trimmed : `https://${trimmed}`;
+}
+async function verifyCloudflareAccessJwt(token, config) {
+  const issuer = normalizeTeamDomain(config.teamDomain);
+  const JWKS = createRemoteJWKSet(new URL(`${issuer}/cdn-cgi/access/certs`));
+  try {
+    const { payload } = await jwtVerify(token, JWKS, {
+      issuer,
+      audience: config.audience.trim()
+    });
+    const email = typeof payload.email === "string" ? payload.email.trim() : "";
+    if (!email) {
+      throw new DomainError("ACCESS_IDENTITY_MISSING", "Cloudflare Access JWT does not include an email", 403);
+    }
+    const headerEmail = readAccessIdentityEmailFromPayload(payload);
+    return { email: headerEmail ?? email };
+  } catch (error) {
+    if (error instanceof DomainError)
+      throw error;
+    throw new DomainError("ACCESS_JWT_INVALID", "Cloudflare Access JWT verification failed", 403);
+  }
+}
+function readAccessIdentityEmailFromPayload(payload) {
+  if (typeof payload.email === "string" && payload.email.trim())
+    return payload.email.trim();
+  return null;
+}
+async function assertVerifiedAccessIdentity(request, env, verify2) {
+  if (!cloudflareAccessLoginConfigured(env)) {
+    throw new DomainError("ACCESS_LOGIN_DISABLED", "Cloudflare Access login is not configured", 403);
+  }
+  const token = request.headers.get("cf-access-jwt-assertion");
+  if (!token?.trim()) {
+    throw new DomainError("ACCESS_JWT_REQUIRED", "Cloudflare Access JWT is required for CMS login", 403);
+  }
+  const { email: jwtEmail } = await verify2(token);
+  const headerEmail = readAccessIdentityEmail(request);
+  if (headerEmail) {
+    const normalizedHeader = headerEmail.trim().toLowerCase();
+    const normalizedJwt = jwtEmail.trim().toLowerCase();
+    if (normalizedHeader !== normalizedJwt) {
+      throw new DomainError("ACCESS_IDENTITY_MISMATCH", "Cloudflare Access identity headers do not match JWT", 403);
+    }
+  }
+  return jwtEmail;
 }
 const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/", charsUrl = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-_", genLookup = (target) => {
   const lookupTemp = typeof Uint8Array === "undefined" ? [] : new Uint8Array(256);
@@ -6578,7 +8162,7 @@ class CBORTag {
    * @param tag Tag number
    * @param value Wrapped value
    */
-  constructor(tag, value) {
+  constructor(tag2, value) {
     Object.defineProperty(this, "tagId", {
       enumerable: true,
       configurable: true,
@@ -6591,7 +8175,7 @@ class CBORTag {
       writable: true,
       value: void 0
     });
-    this.tagId = tag;
+    this.tagId = tag2;
     this.tagValue = value;
   }
   /**
@@ -6705,9 +8289,9 @@ function decodeFloat64(data, index2) {
   return [result, 9];
 }
 function decodeTag(data, argument, index2) {
-  const [tag, tagBytes] = decodeLength(data, argument, index2);
+  const [tag2, tagBytes] = decodeLength(data, argument, index2);
   const [value, valueBytes] = decodeNext(data, index2 + tagBytes);
-  return [new CBORTag(tag, value), tagBytes + valueBytes];
+  return [new CBORTag(tag2, value), tagBytes + valueBytes];
 }
 function decodeNext(data, index2) {
   if (index2 >= data.byteLength) {
@@ -6825,9 +8409,9 @@ function encodeMap(data, output) {
     encodePartialCBOR(value, output);
   }
 }
-function encodeTag(tag, output) {
-  output.push(...encodeLength(MAJOR_TYPE_TAG, tag.tag));
-  encodePartialCBOR(tag.value, output);
+function encodeTag(tag2, output) {
+  output.push(...encodeLength(MAJOR_TYPE_TAG, tag2.tag));
+  encodePartialCBOR(tag2.value, output);
 }
 function encodePartialCBOR(data, output) {
   if (typeof data == "boolean" || data === null || data == void 0) {
@@ -6993,8 +8577,8 @@ function getWebCrypto() {
 }
 class MissingWebCrypto extends Error {
   constructor() {
-    const message = "An instance of the Crypto API could not be located";
-    super(message);
+    const message2 = "An instance of the Crypto API could not be located";
+    super(message2);
     this.name = "MissingWebCrypto";
   }
 }
@@ -7204,16 +8788,16 @@ ${PEMKey}-----END CERTIFICATE-----
 }
 function convertCOSEtoPKCS(cosePublicKey) {
   const struct = decodeFirst(cosePublicKey);
-  const tag = Uint8Array.from([4]);
+  const tag2 = Uint8Array.from([4]);
   const x = struct.get(COSEKEYS.x);
   const y = struct.get(COSEKEYS.y);
   if (!x) {
     throw new Error("COSE public key was missing x");
   }
   if (y) {
-    return concat([tag, x, y]);
+    return concat([tag2, x, y]);
   }
-  return concat([tag, x]);
+  return concat([tag2, x]);
 }
 function decodeAttestationObject(attestationObject) {
   return _decodeAttestationObjectInternals.stubThis(decodeFirst(attestationObject));
@@ -10180,11 +11764,11 @@ class UTCTime extends VisibleString {
       this.error = "Wrong input string for conversion";
       return;
     }
-    const year = parseInt(parserArray[1], 10);
-    if (year >= 50)
-      this.year = 1900 + year;
+    const year2 = parseInt(parserArray[1], 10);
+    if (year2 >= 50)
+      this.year = 1900 + year2;
     else
-      this.year = 2e3 + year;
+      this.year = 2e3 + year2;
     this.month = parseInt(parserArray[2], 10);
     this.day = parseInt(parserArray[3], 10);
     this.hour = parseInt(parserArray[4], 10);
@@ -11855,8 +13439,8 @@ function __classPrivateFieldSet(receiver, state, value, kind, f) {
   if (typeof state === "function" ? receiver !== state || !f : !state.has(receiver)) throw new TypeError("Cannot write private member to an object whose class did not declare it");
   return kind === "a" ? f.call(receiver, value) : f ? f.value = value : state.set(receiver, value), value;
 }
-typeof SuppressedError === "function" ? SuppressedError : function(error, suppressed, message) {
-  var e = new Error(message);
+typeof SuppressedError === "function" ? SuppressedError : function(error, suppressed, message2) {
+  var e = new Error(message2);
   return e.name = "SuppressedError", e.error = error, e.suppressed = suppressed, e;
 };
 function groupPairs(pairs, group) {
@@ -18728,16 +20312,16 @@ class PemConverter {
     }
     return items[0];
   }
-  static encode(rawData, tag) {
+  static encode(rawData, tag2) {
     if (Array.isArray(rawData)) {
       const raws = new Array();
-      if (tag) {
+      if (tag2) {
         rawData.forEach((element) => {
           if (!BufferSourceConverter.isBufferSource(element)) {
             throw new TypeError("Cannot encode array of BufferSource in PEM format. Not all items of the array are BufferSource");
           }
           raws.push(this.encodeStruct({
-            type: tag,
+            type: tag2,
             rawData: BufferSourceConverter.toArrayBuffer(element)
           }));
         });
@@ -18751,11 +20335,11 @@ class PemConverter {
       }
       return raws.join("\n");
     } else {
-      if (!tag) {
+      if (!tag2) {
         throw new Error("Required argument 'tag' is missed");
       }
       return this.encodeStruct({
-        type: tag,
+        type: tag2,
         rawData: BufferSourceConverter.toArrayBuffer(rawData)
       });
     }
@@ -20870,8 +22454,8 @@ function assertCertIsWithinValidTimeWindow(certNotBefore, certNotAfter) {
 }
 class InvalidCertificatePath extends Error {
   constructor() {
-    const message = "x5c could not be chained to any specified trust anchor";
-    super(message);
+    const message2 = "x5c could not be chained to any specified trust anchor";
+    super(message2);
     this.name = "InvalidX5CChain";
   }
 }
@@ -21266,12 +22850,12 @@ async function verifyMDSBlob(blob) {
       statements.push(entry.metadataStatement);
     }
   }
-  const [year, month, day] = payload.nextUpdate.split("-");
+  const [year2, month, day2] = payload.nextUpdate.split("-");
   const parsedNextUpdate = new Date(
-    parseInt(year, 10),
+    parseInt(year2, 10),
     // Months need to be zero-indexed
     parseInt(month, 10) - 1,
-    parseInt(day, 10)
+    parseInt(day2, 10)
   );
   return {
     statements,
@@ -21413,12 +22997,12 @@ function concat(arrays) {
   return toReturn;
 }
 function toUTF8String(array) {
-  const decoder = new globalThis.TextDecoder("utf-8");
-  return decoder.decode(array);
+  const decoder2 = new globalThis.TextDecoder("utf-8");
+  return decoder2.decode(array);
 }
 function fromUTF8String(utf8String) {
-  const encoder = new globalThis.TextEncoder();
-  return encoder.encode(utf8String);
+  const encoder2 = new globalThis.TextEncoder();
+  return encoder2.encode(utf8String);
 }
 function fromASCIIString(value) {
   return Uint8Array.from(value.split("").map((x) => x.charCodeAt(0)));
@@ -21542,8 +23126,8 @@ function parseBackupFlags({ be, bs }) {
   return { credentialDeviceType, credentialBackedUp };
 }
 class InvalidBackupFlags extends Error {
-  constructor(message) {
-    super(message);
+  constructor(message2) {
+    super(message2);
     this.name = "InvalidBackupFlags";
   }
 }
@@ -21571,8 +23155,8 @@ async function matchExpectedRPID(rpIDHash, expectedRPIDs) {
 }
 class UnexpectedRPIDHash extends Error {
   constructor() {
-    const message = "Unexpected RP ID hash";
-    super(message);
+    const message2 = "Unexpected RP ID hash";
+    super(message2);
     this.name = "UnexpectedRPIDHash";
   }
 }
@@ -23787,6 +25371,16 @@ class AuthService {
     }
     return issue;
   }
+  /** Verified Cloudflare identity (OAuth or Access JWT). Step-up required for high-risk CMS operations. */
+  async issueCloudflareIdentitySession(input) {
+    await this.#requireHumanPrincipal(input.principalId, input.workspaceId);
+    return this.#issueSession({
+      workspaceId: input.workspaceId,
+      principalId: input.principalId,
+      userAgent: input.userAgent ?? null,
+      ipHint: input.ipHint ?? null
+    });
+  }
   async finishLogin(input) {
     const record = await this.#requireChallenge(input.challengeId, "authentication");
     assertDomain(record.identityId, "IDENTITY_REQUIRED", "Authentication identity is missing", 422);
@@ -24086,6 +25680,79 @@ function base64UrlToBytes(value) {
   const binary = atob(padded);
   return Uint8Array.from(binary, (character) => character.charCodeAt(0));
 }
+const CF_OAUTH_AUTH_URL = "https://dash.cloudflare.com/oauth2/auth";
+const CF_OAUTH_TOKEN_URL = "https://dash.cloudflare.com/oauth2/token";
+const CF_API_BASE = "https://api.cloudflare.com/client/v4";
+const CF_CMS_LOGIN_OAUTH_SCOPES = "user.read account.read";
+function randomHex(bytes) {
+  const buffer = new Uint8Array(bytes);
+  crypto.getRandomValues(buffer);
+  return [...buffer].map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+async function createCfOAuthPkce() {
+  const state = randomHex(16);
+  const verifierBytes = new Uint8Array(32);
+  crypto.getRandomValues(verifierBytes);
+  const codeVerifier = base64UrlEncode(verifierBytes);
+  const digest2 = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(codeVerifier));
+  const codeChallenge = base64UrlEncode(new Uint8Array(digest2));
+  return { state, codeVerifier, codeChallenge };
+}
+function buildCfOAuthAuthorizationUrl(input) {
+  const params = new URLSearchParams({
+    client_id: input.clientId,
+    redirect_uri: input.redirectUri,
+    response_type: "code",
+    scope: input.scopes ?? CF_CMS_LOGIN_OAUTH_SCOPES,
+    state: input.state,
+    code_challenge: input.codeChallenge,
+    code_challenge_method: "S256"
+  });
+  return `${CF_OAUTH_AUTH_URL}?${params.toString()}`;
+}
+async function exchangeCfOAuthCode(input) {
+  const fetchImpl = input.fetchImpl ?? fetch;
+  const body = new URLSearchParams({
+    grant_type: "authorization_code",
+    code: input.code,
+    redirect_uri: input.redirectUri,
+    client_id: input.clientId,
+    client_secret: input.clientSecret,
+    code_verifier: input.codeVerifier
+  });
+  const res = await fetchImpl(CF_OAUTH_TOKEN_URL, {
+    method: "POST",
+    headers: { "content-type": "application/x-www-form-urlencoded" },
+    body
+  });
+  const json2 = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    throw new Error(json2.error_description || json2.error || `OAuth token exchange failed (${res.status})`);
+  }
+  if (!json2.access_token)
+    throw new Error("OAuth token response missing access_token");
+  return json2.access_token;
+}
+async function fetchCloudflareUserEmail(accessToken, fetchImpl = fetch) {
+  const res = await fetchImpl(`${CF_API_BASE}/user`, {
+    headers: { Authorization: `Bearer ${accessToken}` }
+  });
+  const json2 = await res.json().catch(() => ({}));
+  if (!res.ok || json2.success === false || !json2.result?.email) {
+    throw new Error("Failed to load Cloudflare user profile");
+  }
+  return json2.result.email;
+}
+async function listCloudflareAccountIds(accessToken, fetchImpl = fetch) {
+  const res = await fetchImpl(`${CF_API_BASE}/accounts`, {
+    headers: { Authorization: `Bearer ${accessToken}` }
+  });
+  const json2 = await res.json().catch(() => ({}));
+  if (!res.ok || json2.success === false || !Array.isArray(json2.result)) {
+    throw new Error("Failed to list Cloudflare accounts");
+  }
+  return json2.result.map((row) => row.id.toLowerCase());
+}
 function parseInstantOwnerHint(raw) {
   if (!raw?.trim())
     return null;
@@ -24106,6 +25773,8 @@ function parseInstantOwnerHint(raw) {
   return null;
 }
 function instantLoginEnabled(env) {
+  if (env.BASER_CF_OAUTH_CLIENT_ID?.trim() && env.BASER_CF_OAUTH_CLIENT_SECRET?.trim())
+    return false;
   return !isProductionEnv(env) && env.BASER_INSTANT_LOGIN === "true" && Boolean(parseInstantOwnerHint(env.BASER_INSTANT_OWNER_HINT));
 }
 function createPrincipalLookup(cms) {
@@ -24154,7 +25823,8 @@ async function handleAuthRoute(request, url, env, auth, readJson2) {
     return json$1({
       available: true,
       siteName: hint.siteName ?? "マイサイト",
-      siteId: hint.siteId
+      siteId: hint.siteId,
+      publicUrl: hint.publicUrl ?? ""
     });
   }
   if (request.method === "POST" && url.pathname === "/v1/auth/instant-login") {
@@ -24271,6 +25941,159 @@ function json$1(value, status = 200, setCookies = []) {
     headers.append("set-cookie", cookie);
   return new Response(JSON.stringify(value), { status, headers });
 }
+function cloudflareOAuthConfigured(env) {
+  return Boolean(env.BASER_CF_OAUTH_CLIENT_ID?.trim() && env.BASER_CF_OAUTH_CLIENT_SECRET?.trim());
+}
+function resolveCloudflareLoginMode(env) {
+  if (cloudflareOAuthConfigured(env))
+    return "oauth";
+  if (cloudflareAccessLoginConfigured(env))
+    return "access";
+  return false;
+}
+function cloudflareOAuthRedirectUri(env, requestUrl) {
+  const configured = env.BASER_CF_OAUTH_REDIRECT_URI?.trim();
+  if (configured)
+    return configured;
+  const base = (env.PUBLIC_BASE_URL ?? requestUrl.origin).replace(/\/$/, "");
+  return `${base}/v1/auth/cloudflare/callback`;
+}
+function createDefaultAccessJwtVerifier(env) {
+  if (!cloudflareAccessLoginConfigured(env))
+    return null;
+  const teamDomain = env.CF_ACCESS_TEAM_DOMAIN.trim();
+  const audience = env.CF_ACCESS_AUDIENCE.trim();
+  return (token) => verifyCloudflareAccessJwt(token, { teamDomain, audience });
+}
+async function handleCloudflareAuthRoute(request, url, env, cms, auth, challenges, now = Date.now(), deps = {}) {
+  const loginMode = resolveCloudflareLoginMode(env);
+  if (request.method === "GET" && url.pathname === "/v1/auth/access/entry") {
+    if (!await cms.hasCloudflareOwnerBinding()) {
+      return json({ available: false, reason: "owner_not_bound" });
+    }
+    if (loginMode !== "access") {
+      return json({ available: false, reason: "access_not_configured" });
+    }
+    return json({ available: true, mode: "access", label: "Cloudflare" });
+  }
+  if (request.method === "GET" && url.pathname === "/v1/auth/access/login") {
+    if (!await cms.hasCloudflareOwnerBinding()) {
+      throw new DomainError("CLOUDFLARE_OWNER_NOT_BOUND", "Cloudflare owner is not bound to this site", 503);
+    }
+    const verify2 = deps.verifyAccessJwt ?? createDefaultAccessJwtVerifier(env);
+    if (!verify2) {
+      throw new DomainError("ACCESS_LOGIN_DISABLED", "Cloudflare Access login is not configured", 403);
+    }
+    let rawEmail;
+    try {
+      rawEmail = await assertVerifiedAccessIdentity(request, env, verify2);
+    } catch (error) {
+      if (error instanceof DomainError && error.code === "ACCESS_JWT_REQUIRED") {
+        return redirectToLogin(url, "Cloudflare Access でこのサイトを開いてからログインしてください（Zero Trust → Access → アプリケーション）。");
+      }
+      throw error;
+    }
+    const email = normalizeCloudflareOwnerEmail(rawEmail);
+    const target = await cms.findCloudflareLoginTargetByEmail(email);
+    if (!target) {
+      throw new DomainError("CLOUDFLARE_LOGIN_NOT_AUTHORIZED", "This Cloudflare account is not authorized for CMS login", 403);
+    }
+    return issueCloudflareOwnerCmsSession(auth, request, url, target);
+  }
+  if (request.method === "GET" && url.pathname === "/v1/auth/cloudflare/entry") {
+    if (!await cms.hasCloudflareOwnerBinding()) {
+      return json({ available: false, reason: "owner_not_bound" });
+    }
+    if (loginMode === false) {
+      return json({ available: false, reason: "login_not_configured" });
+    }
+    return json({ available: true, mode: loginMode, label: "Cloudflare" });
+  }
+  if (request.method === "GET" && url.pathname === "/v1/auth/cloudflare/login") {
+    if (!await cms.hasCloudflareOwnerBinding()) {
+      throw new DomainError("CLOUDFLARE_OWNER_NOT_BOUND", "Cloudflare owner is not bound to this site", 503);
+    }
+    if (!cloudflareOAuthConfigured(env)) {
+      if (cloudflareAccessLoginConfigured(env)) {
+        return Response.redirect(`${url.origin}/v1/auth/access/login`, 302);
+      }
+      return redirectToLogin(url, "Cloudflare ログインが未設定です（OAuth シークレットまたは CF_ACCESS_* を設定してください）。");
+    }
+    const pkce = await createCfOAuthPkce();
+    await challenges.create(pkce.state, pkce.codeVerifier, now + 10 * 6e4, now);
+    const redirectUri = cloudflareOAuthRedirectUri(env, url);
+    const location = buildCfOAuthAuthorizationUrl({
+      clientId: env.BASER_CF_OAUTH_CLIENT_ID.trim(),
+      redirectUri,
+      state: pkce.state,
+      codeChallenge: pkce.codeChallenge
+    });
+    return Response.redirect(location, 302);
+  }
+  if (request.method === "GET" && url.pathname === "/v1/auth/cloudflare/callback") {
+    if (!cloudflareOAuthConfigured(env)) {
+      throw new DomainError("CLOUDFLARE_OAUTH_DISABLED", "Cloudflare OAuth is not configured", 503);
+    }
+    const err = url.searchParams.get("error");
+    if (err) {
+      return redirectToLogin(url, `Cloudflare OAuth error: ${url.searchParams.get("error_description") ?? err}`);
+    }
+    const code = url.searchParams.get("code");
+    const state = url.searchParams.get("state");
+    if (!code || !state) {
+      return redirectToLogin(url, "Cloudflare OAuth callback is incomplete");
+    }
+    const codeVerifier = await challenges.take(state, now);
+    if (!codeVerifier) {
+      return redirectToLogin(url, "OAuth session expired. Try again.");
+    }
+    const redirectUri = cloudflareOAuthRedirectUri(env, url);
+    const accessToken = await exchangeCfOAuthCode({
+      code,
+      codeVerifier,
+      redirectUri,
+      clientId: env.BASER_CF_OAUTH_CLIENT_ID.trim(),
+      clientSecret: env.BASER_CF_OAUTH_CLIENT_SECRET.trim()
+    });
+    const target = await resolveCloudflareLoginTarget(cms, accessToken);
+    return issueCloudflareOwnerCmsSession(auth, request, url, target);
+  }
+  return null;
+}
+async function issueCloudflareOwnerCmsSession(auth, request, url, target) {
+  const issue = await auth.issueCloudflareIdentitySession({
+    workspaceId: target.workspaceId,
+    principalId: asPrincipalId(target.ownerPrincipalId),
+    userAgent: request.headers.get("user-agent"),
+    ipHint: request.headers.get("cf-connecting-ip")
+  });
+  const headers = new Headers({ location: `${url.origin}/console/content` });
+  for (const cookie of auth.sessionCookieHeaders(issue))
+    headers.append("set-cookie", cookie);
+  return new Response(null, { status: 302, headers });
+}
+async function resolveCloudflareLoginTarget(cms, accessToken, fetchImpl) {
+  const email = normalizeCloudflareOwnerEmail(await fetchCloudflareUserEmail(accessToken, fetchImpl));
+  const accountIds = await listCloudflareAccountIds(accessToken, fetchImpl);
+  for (const rawAccountId of accountIds) {
+    const accountId = normalizeCloudflareAccountId(rawAccountId);
+    const target = await cms.findCloudflareLoginTarget(accountId, email);
+    if (target)
+      return target;
+  }
+  throw new DomainError("CLOUDFLARE_LOGIN_NOT_AUTHORIZED", "This Cloudflare account is not authorized for CMS login", 403);
+}
+function redirectToLogin(url, message2) {
+  const login = new URL(`${url.origin}/console/login`);
+  login.searchParams.set("error", message2);
+  return Response.redirect(login.toString(), 302);
+}
+function json(value, status = 200) {
+  return new Response(JSON.stringify(value), {
+    status,
+    headers: { "content-type": "application/json; charset=utf-8" }
+  });
+}
 function resolveConsoleCapabilities(env) {
   const assetPublicDelivery = Boolean(env.R2);
   return {
@@ -24278,6 +26101,7 @@ function resolveConsoleCapabilities(env) {
     assetStorage: assetPublicDelivery ? "r2" : "memory",
     environment: isProductionEnv(env) ? "production" : "preview",
     instantLogin: instantLoginEnabled(env),
+    cloudflareLogin: cloudflareOAuthConfigured(env),
     publicSiteUrl: pickPublicSiteUrl(env)
   };
 }
@@ -24296,6 +26120,64 @@ function pickPublicSiteUrl(env) {
 function isPlaceholderUrl(value) {
   return value.includes("example.invalid");
 }
+function createCorsContext(request, authOrigin) {
+  return {
+    requestOrigin: request.headers.get("Origin"),
+    ...authOrigin ? { authOrigin } : {}
+  };
+}
+function applyCors(response, context) {
+  const headers = new Headers(response.headers);
+  const origin = context.requestOrigin;
+  const authOrigin = context.authOrigin;
+  if (origin && (/^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin) || authOrigin && origin === authOrigin)) {
+    headers.set("access-control-allow-origin", origin);
+    headers.set("vary", "Origin");
+  } else {
+    headers.set("access-control-allow-origin", "*");
+  }
+  headers.set("access-control-allow-headers", `content-type,x-baser-bootstrap-secret,x-baser-principal-id,x-baser-principal-type,x-baser-on-behalf-of,x-baser-delegation-id,x-request-id,${CSRF_HEADER}`);
+  headers.set("access-control-allow-credentials", "true");
+  headers.set("access-control-allow-methods", "GET,POST,PUT,DELETE,OPTIONS");
+  return new Response(response.body, { status: response.status, statusText: response.statusText, headers });
+}
+function buildInitialHomepageBlocks(siteName) {
+  const heroImage = createBlock("image", {
+    assetId: BUILTIN_STARTER_HOME_HERO_ASSET_ID,
+    alt: "店内に飾られた花々のサンプル画像"
+  });
+  heroImage.id = "starter-home-hero";
+  return [
+    createBlock("heading", { level: 1, text: siteName }),
+    createBlock("richText", {
+      paragraphs: ["地域に根ざし、一つひとつのご相談に丁寧に向き合います。"]
+    }),
+    heroImage,
+    createBlock("heading", { level: 2, text: "私たちについて" }),
+    createBlock("richText", {
+      paragraphs: [
+        "ここに事業や活動の紹介を書きます。得意なこと、大切にしていること、選ばれる理由を簡潔に伝えましょう。"
+      ]
+    }),
+    createBlock("heading", { level: 2, text: "ご案内" }),
+    createBlock("richText", {
+      paragraphs: [
+        "サービス内容、営業時間、所在地、料金の目安など、お客様が知りたい情報を掲載できます。"
+      ]
+    }),
+    createBlock("heading", { level: 2, text: "お知らせ" }),
+    createBlock("richText", {
+      paragraphs: ["営業日や新しいサービスなど、最新情報をこのサイトから発信できます。"]
+    }),
+    createBlock("divider", {}),
+    createBlock("heading", { level: 2, text: "このページを編集する" }),
+    createBlock("richText", {
+      paragraphs: [
+        "管理画面の『コンテンツ』からホームを開き、文章と写真をあなたの内容へ置き換えてください。"
+      ]
+    })
+  ];
+}
 const memoryStore = new MemoryCmsStore();
 const memoryCms = new CmsService(memoryStore);
 const memoryAssetMetadata = new MemoryAssetMetadataStore();
@@ -24306,9 +26188,8 @@ const memoryCustomContentStore = new MemoryCustomContentStore();
 const memoryMailFormStore = new MemoryMailFormStore();
 const memoryThemeStore = new MemoryThemeStore();
 const memoryPluginStore = new MemoryPluginStore();
+const memoryCfOAuthChallenges = new MemoryCfOAuthChallengeStore();
 const memoryTrustedPluginRuntime = new MemoryTrustedPluginRuntime();
-let activeCorsRequest;
-let activeCorsEnv;
 function mapConsoleUrlToAssetPath(pathname) {
   if (pathname === "/console")
     return "/";
@@ -24337,7 +26218,7 @@ async function createInitialHomepage(cms, input) {
     return;
   const document = createEmptyDocument();
   const body = document.root.slots.body ??= [];
-  body.push(createBlock("heading", { level: 1, text: input.siteName }), createBlock("richText", { paragraphs: ["baserEdgeへようこそ。管理画面からこのページを編集できます。"] }));
+  body.push(...buildInitialHomepageBlocks(input.siteName));
   const page = await cms.createPage(owner, {
     siteId,
     parentId: null,
@@ -24371,695 +26252,712 @@ async function ensureTrialHomepage(cms, env) {
 function createApiWorker(resolveCms = defaultResolver, options = {}) {
   return {
     async fetch(request, env) {
-      activeCorsRequest = request;
-      activeCorsEnv = env;
+      const corsContext = createCorsContext(request, env.BASER_AUTH_ORIGIN);
+      const withCors = (response) => applyCors(response, corsContext);
+      const json2 = (value, status = 200) => withCors(new Response(JSON.stringify(value), { status, headers: { "content-type": "application/json; charset=utf-8" } }));
+      const errorResponse = (error) => {
+        if (error instanceof DomainError) {
+          return json2({ error: { code: error.code, message: error.message, details: error.details ?? {} } }, error.status);
+        }
+        console.error(error);
+        return json2({ error: { code: "INTERNAL_ERROR", message: "Internal server error" } }, 500);
+      };
+      if (request.method === "OPTIONS")
+        return withCors(new Response(null, { status: 204 }));
+      const url = new URL(request.url);
+      if (request.method === "GET" && url.pathname === "/") {
+        return Response.redirect(`${url.origin}/console/`, 302);
+      }
+      const cms = resolveCms(env);
+      if (request.method === "GET" && (url.pathname === "/console" || url.pathname === "/console/")) {
+        await ensureTrialHomepage(cms, env);
+      }
+      const consoleResponse = await tryServeConsole(request, env);
+      if (consoleResponse)
+        return consoleResponse;
+      const auth = options.resolveAuth?.(env, cms) ?? createAuthService(env, cms);
+      cms.attachSecurityHooks({ assertStepUp: (actor2, input) => auth.assertStepUp(actor2, input) });
+      const cfOAuthChallenges = env.DB ? new D1CfOAuthChallengeStore(env.DB) : memoryCfOAuthChallenges;
       try {
-        if (request.method === "OPTIONS")
-          return withCors(new Response(null, { status: 204 }));
-        const url = new URL(request.url);
-        if (request.method === "GET" && url.pathname === "/") {
-          return Response.redirect(`${url.origin}/console/`, 302);
+        const cloudflareAuthResponse = await handleCloudflareAuthRoute(request, url, env, cms, auth, cfOAuthChallenges, Date.now(), options.verifyCloudflareAccessJwt ? { verifyAccessJwt: options.verifyCloudflareAccessJwt } : {});
+        if (cloudflareAuthResponse)
+          return withCors(cloudflareAuthResponse);
+      } catch (error) {
+        return errorResponse(error);
+      }
+      const assets = options.resolveAssets?.(env, cms) ?? createAssetService(env, cms);
+      const previews = options.resolvePreviews?.(env, cms) ?? createPreviewService(env, cms);
+      const blog = options.resolveBlog?.(env, cms) ?? createBlogService(env, cms);
+      const customContent = options.resolveCustomContent?.(env, cms) ?? createCustomContentService(env, cms);
+      const mailForms = options.resolveMailForms?.(env, cms, customContent) ?? createMailFormService(env, cms, customContent);
+      const themes = options.resolveThemes?.(env, cms) ?? createThemeService(env, cms);
+      const plugins = options.resolvePlugins?.(env, cms) ?? createPluginService(env, cms);
+      cms.attachLifecycleHooks(plugins);
+      try {
+        if (request.method === "GET" && url.pathname === "/health") {
+          return json2({ ok: true, service: "baser-edge-api", version: "0.9.0" });
         }
-        const cms = resolveCms(env);
-        if (request.method === "GET" && (url.pathname === "/console" || url.pathname === "/console/")) {
-          await ensureTrialHomepage(cms, env);
+        if (url.pathname === "/v1/console/capabilities") {
+          if (request.method !== "GET") {
+            throw new DomainError("METHOD_NOT_ALLOWED", "Only GET is supported", 405);
+          }
+          return json2(resolveConsoleCapabilities(env));
         }
-        const consoleResponse = await tryServeConsole(request, env);
-        if (consoleResponse)
-          return consoleResponse;
-        const auth = options.resolveAuth?.(env, cms) ?? createAuthService(env, cms);
-        cms.attachSecurityHooks({ assertStepUp: (actor2, input) => auth.assertStepUp(actor2, input) });
-        const assets = options.resolveAssets?.(env, cms) ?? createAssetService(env, cms);
-        const previews = options.resolvePreviews?.(env, cms) ?? createPreviewService(env, cms);
-        const blog = options.resolveBlog?.(env, cms) ?? createBlogService(env, cms);
-        const customContent = options.resolveCustomContent?.(env, cms) ?? createCustomContentService(env, cms);
-        const mailForms = options.resolveMailForms?.(env, cms, customContent) ?? createMailFormService(env, cms, customContent);
-        const themes = options.resolveThemes?.(env, cms) ?? createThemeService(env, cms);
-        const plugins = options.resolvePlugins?.(env, cms) ?? createPluginService(env, cms);
-        cms.attachLifecycleHooks(plugins);
-        try {
-          if (request.method === "GET" && url.pathname === "/health") {
-            return json({ ok: true, service: "baser-edge-api", version: "0.9.0" });
-          }
-          if (url.pathname === "/v1/console/capabilities") {
-            if (request.method !== "GET") {
-              throw new DomainError("METHOD_NOT_ALLOWED", "Only GET is supported", 405);
-            }
-            return json(resolveConsoleCapabilities(env));
-          }
-          if (request.method === "GET" && url.pathname === "/v1/dev/local-login-hint") {
-            if (!env.LOCAL_DEV_LOGIN_HINT) {
-              return json({
-                error: {
-                  code: "LOCAL_STACK_REQUIRED",
-                  message: "ローカルログイン情報がありません。ルートで npm run dev:stack を起動し、http://localhost:8787/console/ を開いてください。"
-                }
-              }, 503);
-            }
-            return json(JSON.parse(env.LOCAL_DEV_LOGIN_HINT));
-          }
-          const authResponse = await handleAuthRoute(request, url, env, auth, readJson);
-          if (authResponse)
-            return withCors(authResponse);
-          if (request.method === "POST" && url.pathname === "/v1/bootstrap/ready") {
-            assertBootstrapAllowed(request, env);
-            return json({ ready: true });
-          }
-          if (request.method === "POST" && url.pathname === "/v1/bootstrap") {
-            assertBootstrapAllowed(request, env);
-            const body = await readJson(request);
-            try {
-              const boot = await cms.bootstrap({
-                workspaceName: stringField(body, "workspaceName"),
-                siteName: stringField(body, "siteName"),
-                hostname: stringField(body, "hostname"),
-                ownerName: stringField(body, "ownerName"),
-                ...typeof body.locale === "string" ? { locale: body.locale } : {}
-              });
-              if (env.BASER_BOOTSTRAP_SECRET) {
-                await createInitialHomepage(cms, {
-                  siteId: boot.siteId,
-                  ownerPrincipalId: boot.ownerPrincipalId,
-                  siteName: stringField(body, "siteName")
-                });
+        if (request.method === "GET" && url.pathname === "/v1/dev/local-login-hint") {
+          if (!env.LOCAL_DEV_LOGIN_HINT) {
+            return json2({
+              error: {
+                code: "LOCAL_STACK_REQUIRED",
+                message: "ローカルログイン情報がありません。ルートで npm run dev:stack を起動し、ログに表示された管理画面 URL（/console/）を開いてください。"
               }
-              return json(boot, 201);
-            } catch (error) {
-              if (error instanceof DomainError)
-                throw error;
-              const cause = error instanceof Error ? error.message : String(error);
-              throw new DomainError("BOOTSTRAP_FAILED", "Bootstrap failed", 500, {
-                cause: cause.slice(0, 500)
-              });
-            }
+            }, 503);
           }
-          const uploadMatch = url.pathname.match(/^\/v1\/assets\/uploads\/([^/]+)$/);
-          if (request.method === "PUT" && uploadMatch?.[1]) {
-            const token = url.searchParams.get("token");
-            if (!token)
-              invalid("token is required");
-            if (!request.body)
-              invalid("upload body is required");
-            const contentLengthHeader = request.headers.get("content-length");
-            const contentLength = contentLengthHeader === null ? void 0 : Number(contentLengthHeader);
-            const uploaded = await assets.uploadWithToken({
-              sessionId: asUploadSessionId(uploadMatch[1]),
-              token,
-              mediaType: request.headers.get("content-type") ?? "application/octet-stream",
-              ...contentLength !== void 0 && Number.isFinite(contentLength) ? { contentLength } : {},
-              body: request.body
-            });
-            return json(uploaded, 201);
-          }
-          const context = await resolveActorContext(request, env, auth);
-          if (request.method === "POST" && url.pathname === "/v1/plugins") {
-            const body = await readJson(request);
-            return json(await plugins.createPlugin(context, {
-              workspaceId: stringField(body, "workspaceId"),
-              key: stringField(body, "key"),
-              name: stringField(body, "name"),
-              trust: pluginTrust(body.trust),
-              ...typeof body.description === "string" ? { description: body.description } : {}
-            }), 201);
-          }
-          const workspacePluginsMatch = url.pathname.match(/^\/v1\/workspaces\/([^/]+)\/plugins$/);
-          if (request.method === "GET" && workspacePluginsMatch?.[1])
-            return json(await plugins.listPlugins(context, workspacePluginsMatch[1]));
-          const pluginReleasesMatch = url.pathname.match(/^\/v1\/plugins\/([^/]+)\/releases$/);
-          if (request.method === "POST" && pluginReleasesMatch?.[1]) {
-            const body = await readJson(request);
-            return json(await plugins.createRelease(context, { pluginId: asPluginId(pluginReleasesMatch[1]), version: stringField(body, "version"), manifest: pluginManifestField(body.manifest), bundle: pluginBundleField(body.bundle) }), 201);
-          }
-          if (request.method === "GET" && pluginReleasesMatch?.[1])
-            return json(await plugins.listReleases(context, asPluginId(pluginReleasesMatch[1])));
-          const pluginInvocationsMatch = url.pathname.match(/^\/v1\/plugin-releases\/([^/]+)\/invocations$/);
-          if (request.method === "GET" && pluginInvocationsMatch?.[1])
-            return json(await plugins.listInvocations(context, asPluginReleaseId(pluginInvocationsMatch[1])));
-          const pluginActivationsMatch = url.pathname.match(/^\/v1\/workspaces\/([^/]+)\/plugin-activations$/);
-          if (request.method === "POST" && pluginActivationsMatch?.[1]) {
-            const body = await readJson(request);
-            return json(await plugins.activate(context, { workspaceId: pluginActivationsMatch[1], siteId: typeof body.siteId === "string" ? asSiteId(body.siteId) : null, pluginReleaseId: asPluginReleaseId(stringField(body, "pluginReleaseId")), grantedCapabilities: pluginCapabilitiesField(body.grantedCapabilities), allowedHosts: typeof body.allowedHosts === "undefined" ? [] : stringArray(body.allowedHosts, "allowedHosts") }), 201);
-          }
-          if (request.method === "GET" && pluginActivationsMatch?.[1]) {
-            const siteId = url.searchParams.get("siteId");
-            return json(await plugins.listActivations(context, pluginActivationsMatch[1], ...siteId ? [asSiteId(siteId)] : []));
-          }
-          const pluginActivationMatch = url.pathname.match(/^\/v1\/plugin-activations\/([^/]+)$/);
-          if (request.method === "DELETE" && pluginActivationMatch?.[1]) {
-            await plugins.deactivate(context, asPluginActivationId(pluginActivationMatch[1]));
-            return new Response(null, { status: 204 });
-          }
-          const pluginAdminMatch = url.pathname.match(/^\/v1\/workspaces\/([^/]+)\/plugin-admin-extensions$/);
-          if (request.method === "GET" && pluginAdminMatch?.[1])
-            return json(await plugins.listAdminExtensions(context, pluginAdminMatch[1], url.searchParams.get("siteId") ? asSiteId(url.searchParams.get("siteId")) : null));
-          const pluginRouteMatch = url.pathname.match(/^\/v1\/plugin-routes\/([^/]+)(\/.*)?$/);
-          if ((request.method === "GET" || request.method === "POST") && pluginRouteMatch?.[1]) {
-            const workspaceId = url.searchParams.get("workspaceId");
-            if (!workspaceId)
-              invalid("workspaceId query parameter is required");
-            const query = Object.fromEntries([...url.searchParams.entries()].filter(([key2]) => key2 !== "workspaceId" && key2 !== "siteId"));
-            const result = await plugins.invokeRoute(context, { workspaceId, siteId: url.searchParams.get("siteId") ? asSiteId(url.searchParams.get("siteId")) : null, pluginKey: pluginRouteMatch[1], method: request.method, path: pluginRouteMatch[2] ?? "/", query, headers: Object.fromEntries(request.headers), body: request.method === "POST" ? await readOptionalJson(request) : null });
-            return withCors(new Response(result.body, { status: result.status, headers: result.headers }));
-          }
-          if (request.method === "POST" && url.pathname === "/v1/principals") {
-            const body = await readJson(request);
-            return json(await cms.createPrincipal(context, {
-              workspaceId: stringField(body, "workspaceId"),
-              type: principalType(body.type),
-              displayName: stringField(body, "displayName")
-            }), 201);
-          }
-          if (request.method === "POST" && url.pathname === "/v1/grants") {
-            const body = await readJson(request);
-            return json(await cms.grantCapability(context, {
-              principalId: asPrincipalId(stringField(body, "principalId")),
-              capability: stringField(body, "capability"),
-              ...isRecord(body.scope) ? { scope: body.scope } : {},
-              ...typeof body.validUntil === "number" ? { validUntil: body.validUntil } : {}
-            }), 201);
-          }
-          if (request.method === "POST" && url.pathname === "/v1/themes") {
-            const body = await readJson(request);
-            return json(await themes.createTheme(context, { workspaceId: stringField(body, "workspaceId"), key: stringField(body, "key"), name: stringField(body, "name"), ...typeof body.description === "string" ? { description: body.description } : {} }), 201);
-          }
-          const workspaceThemesMatch = url.pathname.match(/^\/v1\/workspaces\/([^/]+)\/themes$/);
-          if (request.method === "GET" && workspaceThemesMatch?.[1])
-            return json(await themes.listThemes(context, workspaceThemesMatch[1]));
-          const tokenRevisionMatch = url.pathname.match(/^\/v1\/themes\/([^/]+)\/token-revisions$/);
-          if (request.method === "POST" && tokenRevisionMatch?.[1]) {
-            const body = await readJson(request);
-            return json(await themes.createTokenRevision(context, { themeId: asThemeId(tokenRevisionMatch[1]), name: stringField(body, "name"), tokens: designTokensField(body.tokens) }), 201);
-          }
-          const layoutRevisionMatch = url.pathname.match(/^\/v1\/themes\/([^/]+)\/layout-revisions$/);
-          if (request.method === "POST" && layoutRevisionMatch?.[1]) {
-            const body = await readJson(request);
-            return json(await themes.createLayoutRevision(context, { themeId: asThemeId(layoutRevisionMatch[1]), name: stringField(body, "name"), layout: layoutField(body.layout) }), 201);
-          }
-          const themeReleaseMatch = url.pathname.match(/^\/v1\/themes\/([^/]+)\/releases$/);
-          if (request.method === "POST" && themeReleaseMatch?.[1]) {
-            const body = await readJson(request);
-            return json(await themes.createRelease(context, { themeId: asThemeId(themeReleaseMatch[1]), version: stringField(body, "version"), designTokenRevisionId: asDesignTokenRevisionId(stringField(body, "designTokenRevisionId")), layoutRevisionId: asLayoutRevisionId(stringField(body, "layoutRevisionId")), manifest: themeManifestField(body.manifest) }), 201);
-          }
-          if (request.method === "GET" && themeReleaseMatch?.[1])
-            return json(await themes.listReleases(context, asThemeId(themeReleaseMatch[1])));
-          const siteThemeMatch = url.pathname.match(/^\/v1\/sites\/([^/]+)\/theme$/);
-          if (request.method === "GET" && siteThemeMatch?.[1])
-            return json(await themes.getActive(context, asSiteId(siteThemeMatch[1])));
-          const themeActivationMatch = url.pathname.match(/^\/v1\/sites\/([^/]+)\/theme-activations$/);
-          if (request.method === "POST" && themeActivationMatch?.[1]) {
-            const body = await readJson(request);
-            return json(await themes.activate(context, { siteId: asSiteId(themeActivationMatch[1]), themeReleaseId: asThemeReleaseId(stringField(body, "themeReleaseId")) }), 201);
-          }
-          if (request.method === "POST" && url.pathname === "/v1/delegations") {
-            const body = await readJson(request);
-            return json(await cms.createDelegation(context, {
-              humanPrincipalId: asPrincipalId(stringField(body, "humanPrincipalId")),
-              agentPrincipalId: asPrincipalId(stringField(body, "agentPrincipalId")),
-              capabilities: stringArray(body.capabilities, "capabilities"),
-              expiresAt: numberField(body, "expiresAt"),
-              ...isRecord(body.scope) ? { scope: body.scope } : {},
-              ...isRisk(body.maximumRisk) ? { maximumRisk: body.maximumRisk } : {}
-            }), 201);
-          }
-          if (request.method === "POST" && url.pathname === "/v1/pages") {
-            const body = await readJson(request);
-            return json(await cms.createPage(context, {
-              siteId: asSiteId(stringField(body, "siteId")),
-              parentId: typeof body.parentId === "string" ? asContentNodeId(body.parentId) : null,
-              slug: stringField(body, "slug"),
-              title: stringField(body, "title"),
-              document: documentField(body.document)
-            }), 201);
-          }
-          if (request.method === "POST" && url.pathname === "/v1/folders") {
-            const body = await readJson(request);
-            return json(await cms.createFolder(context, {
-              siteId: asSiteId(stringField(body, "siteId")),
-              parentId: typeof body.parentId === "string" ? asContentNodeId(body.parentId) : null,
-              slug: stringField(body, "slug"),
-              title: stringField(body, "title")
-            }), 201);
-          }
-          if (request.method === "POST" && url.pathname === "/v1/aliases") {
-            const body = await readJson(request);
-            return json(await cms.createAlias(context, {
-              siteId: asSiteId(stringField(body, "siteId")),
-              parentId: typeof body.parentId === "string" ? asContentNodeId(body.parentId) : null,
-              slug: stringField(body, "slug"),
-              title: stringField(body, "title"),
-              targetContentItemId: asContentItemId(stringField(body, "targetContentItemId"))
-            }), 201);
-          }
-          if (request.method === "POST" && url.pathname === "/v1/blogs") {
-            const body = await readJson(request);
-            return json(await blog.createBlog(context, {
-              siteId: asSiteId(stringField(body, "siteId")),
-              parentId: typeof body.parentId === "string" ? asContentNodeId(body.parentId) : null,
-              slug: stringField(body, "slug"),
-              title: stringField(body, "title"),
-              document: documentField(body.document),
-              ...typeof body.pageSize === "number" ? { pageSize: body.pageSize } : {},
-              ...typeof body.feedSize === "number" ? { feedSize: body.feedSize } : {},
-              ...body.sortDirection === "asc" || body.sortDirection === "desc" ? { sortDirection: body.sortDirection } : {}
-            }), 201);
-          }
-          const articleCreateMatch = url.pathname.match(/^\/v1\/blogs\/([^/]+)\/articles$/);
-          if (request.method === "POST" && articleCreateMatch?.[1]) {
-            const body = await readJson(request);
-            return json(await blog.createArticle(context, {
-              collectionId: asCollectionId(articleCreateMatch[1]),
-              slug: stringField(body, "slug"),
-              title: stringField(body, "title"),
-              document: documentField(body.document),
-              ...typeof body.postedAt === "number" ? { postedAt: body.postedAt } : {},
-              ...Array.isArray(body.termIds) ? { termIds: body.termIds.map((value) => asTermId(String(value))) } : {}
-            }), 201);
-          }
-          if (request.method === "GET" && articleCreateMatch?.[1]) {
-            const termIds = url.searchParams.getAll("termId").map(asTermId);
-            return json(await blog.listPublishedArticles(asCollectionId(articleCreateMatch[1]), {
-              ...url.searchParams.has("limit") ? { limit: optionalQueryInt(url.searchParams.get("limit"), "limit", 100) } : {},
-              ...url.searchParams.has("offset") ? { offset: optionalQueryInt(url.searchParams.get("offset"), "offset", 1e6) } : {},
-              ...termIds.length ? { termIds } : {}
-            }));
-          }
-          const taxonomyListMatch = url.pathname.match(/^\/v1\/blogs\/([^/]+)\/taxonomies$/);
-          if (request.method === "GET" && taxonomyListMatch?.[1])
-            return json(await blog.listTaxonomies(asCollectionId(taxonomyListMatch[1])));
-          if (request.method === "POST" && taxonomyListMatch?.[1]) {
-            const body = await readJson(request);
-            const kind = body.kind === "category" || body.kind === "tag" ? body.kind : invalid("kind must be category or tag");
-            return json(await blog.createTaxonomy(context, {
-              collectionId: asCollectionId(taxonomyListMatch[1]),
-              key: stringField(body, "key"),
-              title: stringField(body, "title"),
-              kind,
-              ...typeof body.hierarchical === "boolean" ? { hierarchical: body.hierarchical } : {}
-            }), 201);
-          }
-          const termCreateMatch = url.pathname.match(/^\/v1\/taxonomies\/([^/]+)\/terms$/);
-          if (request.method === "POST" && termCreateMatch?.[1]) {
-            const body = await readJson(request);
-            return json(await blog.createTerm(context, {
-              taxonomyId: asTaxonomyId(termCreateMatch[1]),
-              slug: stringField(body, "slug"),
-              title: stringField(body, "title"),
-              ...body.parentId === null ? { parentId: null } : typeof body.parentId === "string" ? { parentId: asTermId(body.parentId) } : {}
-            }), 201);
-          }
-          if (request.method === "POST" && url.pathname === "/v1/custom-fields") {
-            const body = await readJson(request);
-            return json(await customContent.createField(context, {
-              workspaceId: stringField(body, "workspaceId"),
-              key: stringField(body, "key"),
-              name: stringField(body, "name"),
-              type: customFieldType(body.type),
-              ...typeof body.description === "string" ? { description: body.description } : {},
-              ...Array.isArray(body.options) ? { options: body.options.map((item) => {
-                if (!isRecord(item))
-                  invalid("options entries must be objects");
-                return { value: stringField(item, "value"), label: stringField(item, "label") };
-              }) } : {}
-            }), 201);
-          }
-          if (request.method === "GET" && url.pathname === "/v1/custom-fields") {
-            const workspaceId = url.searchParams.get("workspaceId");
-            if (!workspaceId)
-              invalid("workspaceId is required");
-            return json(await customContent.listFields(workspaceId));
-          }
-          if (request.method === "POST" && url.pathname === "/v1/custom-tables") {
-            const body = await readJson(request);
-            const kind = body.kind === "content" || body.kind === "master" ? body.kind : invalid("kind must be content or master");
-            return json(await customContent.createTable(context, {
-              workspaceId: stringField(body, "workspaceId"),
-              key: stringField(body, "key"),
-              name: stringField(body, "name"),
-              kind,
-              ...typeof body.hierarchical === "boolean" ? { hierarchical: body.hierarchical } : {},
-              ...body.displayFieldKey === null || typeof body.displayFieldKey === "string" ? { displayFieldKey: body.displayFieldKey } : {}
-            }), 201);
-          }
-          if (request.method === "GET" && url.pathname === "/v1/custom-tables") {
-            const workspaceId = url.searchParams.get("workspaceId");
-            if (!workspaceId)
-              invalid("workspaceId is required");
-            return json(await customContent.listTables(workspaceId));
-          }
-          const customTableSchemaMatch = url.pathname.match(/^\/v1\/custom-tables\/([^/]+)\/schema$/);
-          if (request.method === "GET" && customTableSchemaMatch?.[1])
-            return json(await customContent.getTableSchema(asCustomTableId(customTableSchemaMatch[1])));
-          const customTableFieldsMatch = url.pathname.match(/^\/v1\/custom-tables\/([^/]+)\/fields$/);
-          if (request.method === "POST" && customTableFieldsMatch?.[1]) {
-            const body = await readJson(request);
-            return json(await customContent.attachField(context, {
-              tableId: asCustomTableId(customTableFieldsMatch[1]),
-              fieldId: asCustomFieldId(stringField(body, "fieldId")),
-              ...typeof body.required === "boolean" ? { required: body.required } : {},
-              ...typeof body.searchable === "boolean" ? { searchable: body.searchable } : {},
-              ...typeof body.unique === "boolean" ? { unique: body.unique } : {},
-              ...typeof body.sortOrder === "number" ? { sortOrder: body.sortOrder } : {},
-              ...body.labelOverride === null || typeof body.labelOverride === "string" ? { labelOverride: body.labelOverride } : {}
-            }), 201);
-          }
-          if (request.method === "POST" && url.pathname === "/v1/custom-contents") {
-            const body = await readJson(request);
-            return json(await customContent.createCustomContent(context, {
-              siteId: asSiteId(stringField(body, "siteId")),
-              parentId: typeof body.parentId === "string" ? asContentNodeId(body.parentId) : null,
-              slug: stringField(body, "slug"),
-              title: stringField(body, "title"),
-              tableId: asCustomTableId(stringField(body, "tableId")),
-              ...isRecord(body.document) ? { document: documentField(body.document) } : {},
-              ...typeof body.listCount === "number" ? { listCount: body.listCount } : {},
-              ...typeof body.listOrderFieldKey === "string" ? { listOrderFieldKey: body.listOrderFieldKey } : {},
-              ...body.listDirection === "asc" || body.listDirection === "desc" ? { listDirection: body.listDirection } : {},
-              ...typeof body.templateKey === "string" ? { templateKey: body.templateKey } : {}
-            }), 201);
-          }
-          const customEntriesMatch = url.pathname.match(/^\/v1\/custom-contents\/([^/]+)\/entries$/);
-          if (request.method === "POST" && customEntriesMatch?.[1]) {
-            const body = await readJson(request);
-            return json(await customContent.createEntry(context, {
-              customContentId: asCustomContentId(customEntriesMatch[1]),
-              values: recordField(body, "values"),
-              ...body.slug === null || typeof body.slug === "string" ? { slug: body.slug } : {},
-              ...body.parentEntryId === null || typeof body.parentEntryId === "string" ? { parentEntryId: body.parentEntryId ? asCustomEntryId(body.parentEntryId) : null } : {}
-            }), 201);
-          }
-          if (request.method === "GET" && customEntriesMatch?.[1])
-            return json(await customContent.listEntries(context, asCustomContentId(customEntriesMatch[1])));
-          const customEntryMatch = url.pathname.match(/^\/v1\/custom-entries\/([^/]+)$/);
-          if (request.method === "GET" && customEntryMatch?.[1])
-            return json(await customContent.getEntry(context, asCustomEntryId(customEntryMatch[1])));
-          const customEntryRevisionMatch = url.pathname.match(/^\/v1\/custom-entries\/([^/]+)\/revisions$/);
-          if (request.method === "POST" && customEntryRevisionMatch?.[1]) {
-            const body = await readJson(request);
-            return json(await customContent.reviseEntry(context, { entryId: asCustomEntryId(customEntryRevisionMatch[1]), baseRevisionId: asCustomEntryRevisionId(stringField(body, "baseRevisionId")), expectedLockVersion: numberField(body, "expectedLockVersion"), values: recordField(body, "values"), changeSummary: stringField(body, "changeSummary") }), 201);
-          }
-          const customEntryApprovalMatch = url.pathname.match(/^\/v1\/custom-entries\/([^/]+)\/approvals$/);
-          if (request.method === "POST" && customEntryApprovalMatch?.[1]) {
-            const body = await readJson(request);
-            return json(await customContent.requestApproval(context, { entryId: asCustomEntryId(customEntryApprovalMatch[1]), revisionId: asCustomEntryRevisionId(stringField(body, "revisionId")) }), 201);
-          }
-          const customApprovalDecisionMatch = url.pathname.match(/^\/v1\/custom-entry-approvals\/([^/]+)\/decide$/);
-          if (request.method === "POST" && customApprovalDecisionMatch?.[1]) {
-            const body = await readJson(request);
-            const decision = body.decision === "approved" || body.decision === "rejected" ? body.decision : invalid("decision must be approved or rejected");
-            return json(await customContent.decideApproval(context, { approvalId: asCustomEntryApprovalId(customApprovalDecisionMatch[1]), decision, ...typeof body.comment === "string" ? { comment: body.comment } : {} }));
-          }
-          const customEntryPublishMatch = url.pathname.match(/^\/v1\/custom-entries\/([^/]+)\/publish$/);
-          if (request.method === "POST" && customEntryPublishMatch?.[1]) {
-            const body = await readJson(request);
-            return json(await customContent.publishEntry(context, { entryId: asCustomEntryId(customEntryPublishMatch[1]), revisionId: asCustomEntryRevisionId(stringField(body, "revisionId")), approvalId: asCustomEntryApprovalId(stringField(body, "approvalId")) }));
-          }
-          const customEntryUnpublishMatch = url.pathname.match(/^\/v1\/custom-entries\/([^/]+)\/unpublish$/);
-          if (request.method === "POST" && customEntryUnpublishMatch?.[1]) {
-            return json(await customContent.unpublishEntry(context, { entryId: asCustomEntryId(customEntryUnpublishMatch[1]) }));
-          }
-          const classifyMatch = url.pathname.match(/^\/v1\/articles\/([^/]+)\/revisions\/([^/]+)\/terms$/);
-          if (request.method === "PUT" && classifyMatch?.[1] && classifyMatch[2]) {
-            const body = await readJson(request);
-            const termIds = stringArray(body.termIds, "termIds").map(asTermId);
-            await blog.classifyRevision(context, asContentItemId(classifyMatch[1]), asRevisionId(classifyMatch[2]), termIds);
-            return json({ ok: true });
-          }
-          const treeMatch = url.pathname.match(/^\/v1\/sites\/([^/]+)\/content-tree$/);
-          if (request.method === "GET" && treeMatch?.[1]) {
-            return json(await cms.listContentTree(context, asSiteId(treeMatch[1])));
-          }
-          const blogsListMatch = url.pathname.match(/^\/v1\/sites\/([^/]+)\/blogs$/);
-          if (request.method === "GET" && blogsListMatch?.[1]) {
-            const siteId = asSiteId(blogsListMatch[1]);
-            await cms.listContentTree(context, siteId);
-            const collections = await blog.listCollections(siteId);
-            return json(await Promise.all(collections.map(async (collection) => ({ collection, snapshot: await cms.getContent(context, collection.contentItemId) }))));
-          }
-          const customContentsListMatch = url.pathname.match(/^\/v1\/sites\/([^/]+)\/custom-contents$/);
-          if (request.method === "GET" && customContentsListMatch?.[1]) {
-            const siteId = asSiteId(customContentsListMatch[1]);
-            await cms.listContentTree(context, siteId);
-            const definitions = await customContent.listCustomContents(siteId);
-            return json(await Promise.all(definitions.map(async (definition2) => ({
-              definition: definition2,
-              snapshot: await cms.getContent(context, definition2.contentItemId),
-              schema: await customContent.getTableSchema(definition2.tableId)
-            }))));
-          }
-          const trashListMatch = url.pathname.match(/^\/v1\/sites\/([^/]+)\/trash$/);
-          if (request.method === "GET" && trashListMatch?.[1]) {
-            return json(await cms.listTrash(context, asSiteId(trashListMatch[1])));
-          }
-          const pendingApprovalsMatch = url.pathname.match(/^\/v1\/sites\/([^/]+)\/pending-approvals$/);
-          if (request.method === "GET" && pendingApprovalsMatch?.[1]) {
-            return json(await cms.listPendingApprovals(context, asSiteId(pendingApprovalsMatch[1])));
-          }
-          const pendingCustomApprovalsMatch = url.pathname.match(/^\/v1\/sites\/([^/]+)\/pending-custom-entry-approvals$/);
-          if (request.method === "GET" && pendingCustomApprovalsMatch?.[1]) {
-            return json(await customContent.listPendingApprovals(context, asSiteId(pendingCustomApprovalsMatch[1])));
-          }
-          const approvalInboxMatch = url.pathname.match(/^\/v1\/sites\/([^/]+)\/approval-inbox$/);
-          if (request.method === "GET" && approvalInboxMatch?.[1]) {
-            const siteId = asSiteId(approvalInboxMatch[1]);
-            return json({
-              content: await cms.listContentApprovalInbox(context, siteId),
-              customEntries: await customContent.listPendingApprovals(context, siteId)
-            });
-          }
-          if (request.method === "POST" && url.pathname === "/v1/mail-forms") {
-            const body = await readJson(request);
-            return json(await mailForms.createMailForm(context, {
-              siteId: asSiteId(stringField(body, "siteId")),
-              parentId: typeof body.parentId === "string" ? asContentNodeId(body.parentId) : null,
-              slug: stringField(body, "slug"),
-              title: stringField(body, "title"),
-              tableId: asCustomTableId(stringField(body, "tableId")),
-              recipientEmails: stringArray(body.recipientEmails, "recipientEmails"),
-              senderAddress: stringField(body, "senderAddress"),
-              ...typeof body.subjectTemplate === "string" ? { subjectTemplate: body.subjectTemplate } : {},
-              ...typeof body.autoReplyEnabled === "boolean" ? { autoReplyEnabled: body.autoReplyEnabled } : {},
-              ...typeof body.autoReplyEmailFieldKey === "string" || body.autoReplyEmailFieldKey === null ? { autoReplyEmailFieldKey: body.autoReplyEmailFieldKey } : {},
-              ...typeof body.autoReplySubject === "string" ? { autoReplySubject: body.autoReplySubject } : {},
-              ...typeof body.confirmationTtlSeconds === "number" ? { confirmationTtlSeconds: body.confirmationTtlSeconds } : {},
-              ...typeof body.retentionDays === "number" ? { retentionDays: body.retentionDays } : {},
-              ...typeof body.turnstileRequired === "boolean" ? { turnstileRequired: body.turnstileRequired } : {},
-              ...isRecord(body.document) ? { document: documentField(body.document) } : {},
-              ...Array.isArray(body.fieldPolicies) ? { fieldPolicies: body.fieldPolicies.map((value) => {
-                if (!isRecord(value))
-                  invalid("fieldPolicies entries must be objects");
-                return { fieldId: asCustomFieldId(stringField(value, "fieldId")), ...privacyClass(value.privacyClass) ? { privacyClass: privacyClass(value.privacyClass) } : {}, ...typeof value.includeInOwnerNotification === "boolean" ? { includeInOwnerNotification: value.includeInOwnerNotification } : {}, ...typeof value.includeInAutoReply === "boolean" ? { includeInAutoReply: value.includeInAutoReply } : {} };
-              }) } : {}
-            }), 201);
-          }
-          const siteMailFormsMatch = url.pathname.match(/^\/v1\/sites\/([^/]+)\/mail-forms$/);
-          if (request.method === "GET" && siteMailFormsMatch?.[1]) {
-            const siteId = asSiteId(siteMailFormsMatch[1]);
-            await cms.listContentTree(context, siteId);
-            return json(await mailForms.listForms(siteId));
-          }
-          const mailSubmissionsMatch = url.pathname.match(/^\/v1\/mail-forms\/([^/]+)\/submissions$/);
-          if (request.method === "GET" && mailSubmissionsMatch?.[1])
-            return json(await mailForms.listSubmissions(context, asMailFormId(mailSubmissionsMatch[1])));
-          const mailSubmissionMatch = url.pathname.match(/^\/v1\/mail-submissions\/([^/]+)$/);
-          if (request.method === "GET" && mailSubmissionMatch?.[1])
-            return json(await mailForms.getSubmission(context, asMailSubmissionId(mailSubmissionMatch[1]), { includeSensitive: url.searchParams.get("includeSensitive") === "true" }));
-          const mailPurgeMatch = url.pathname.match(/^\/v1\/mail-submissions\/([^/]+)\/purge$/);
-          if (request.method === "POST" && mailPurgeMatch?.[1])
-            return json(await mailForms.purgeSubmission(context, asMailSubmissionId(mailPurgeMatch[1])));
-          if (request.method === "POST" && url.pathname === "/v1/mail-notifications/deliver") {
-            const body = await readJson(request);
-            return json(await mailForms.deliverPending(context, typeof body.limit === "number" ? body.limit : 20));
-          }
-          const articleMetaMatch = url.pathname.match(/^\/v1\/content\/([^/]+)\/article-meta$/);
-          if (articleMetaMatch?.[1]) {
-            const contentItemId = asContentItemId(articleMetaMatch[1]);
-            if (request.method === "GET") {
-              const { article } = await blog.getArticleMetadata(context, contentItemId);
-              return json({ postedAt: article.postedAt, createdAt: article.createdAt });
-            }
-            if (request.method === "PATCH") {
-              const body = await readJson(request);
-              const updated = await blog.updateArticlePostedAt(context, {
-                contentItemId,
-                postedAt: numberField(body, "postedAt")
-              });
-              return json({ postedAt: updated.postedAt, createdAt: updated.createdAt });
-            }
-          }
-          const contentMatch = url.pathname.match(/^\/v1\/content\/([^/]+)$/);
-          if (request.method === "GET" && contentMatch?.[1]) {
-            return json(await cms.getContent(context, asContentItemId(contentMatch[1])));
-          }
-          const revisionsMatch = url.pathname.match(/^\/v1\/content\/([^/]+)\/revisions$/);
-          if (request.method === "POST" && revisionsMatch?.[1]) {
-            const body = await readJson(request);
-            return json(await cms.commitRevision(context, {
-              contentItemId: asContentItemId(revisionsMatch[1]),
-              baseRevisionId: asRevisionId(stringField(body, "baseRevisionId")),
-              expectedLockVersion: numberField(body, "expectedLockVersion"),
-              fields: recordField(body, "fields"),
-              document: documentField(body.document),
-              changeSummary: stringField(body, "changeSummary")
-            }), 201);
-          }
-          const proposalMatch = url.pathname.match(/^\/v1\/content\/([^/]+)\/agent-proposals$/);
-          if (request.method === "POST" && proposalMatch?.[1]) {
-            const body = await readJson(request);
-            const tools = new AgentOperations(cms);
-            return json(await tools.proposeDocumentChange(context, {
-              contentItemId: asContentItemId(proposalMatch[1]),
-              baseRevisionId: asRevisionId(stringField(body, "baseRevisionId")),
-              expectedLockVersion: numberField(body, "expectedLockVersion"),
-              operations: Array.isArray(body.operations) ? body.operations : invalid("operations must be an array"),
-              instructionSummary: stringField(body, "instructionSummary"),
-              modelProvider: stringField(body, "modelProvider"),
-              modelName: stringField(body, "modelName")
-            }), 201);
-          }
-          const approvalsMatch = url.pathname.match(/^\/v1\/content\/([^/]+)\/approvals$/);
-          if (request.method === "POST" && approvalsMatch?.[1]) {
-            const body = await readJson(request);
-            return json(await cms.requestApproval(context, {
-              contentItemId: asContentItemId(approvalsMatch[1]),
-              revisionId: asRevisionId(stringField(body, "revisionId")),
-              ...isRisk(body.riskLevel) ? { riskLevel: body.riskLevel } : {}
-            }), 201);
-          }
-          const decideMatch = url.pathname.match(/^\/v1\/approvals\/([^/]+)\/decide$/);
-          if (request.method === "POST" && decideMatch?.[1]) {
-            const body = await readJson(request);
-            const decision = body.decision === "approved" || body.decision === "rejected" ? body.decision : invalid("decision must be approved or rejected");
-            return json(await cms.decideApproval(context, {
-              approvalId: asApprovalId(decideMatch[1]),
-              decision,
-              ...typeof body.comment === "string" ? { comment: body.comment } : {}
-            }));
-          }
-          const publishMatch = url.pathname.match(/^\/v1\/content\/([^/]+)\/publish$/);
-          if (request.method === "POST" && publishMatch?.[1]) {
-            const body = await readJson(request);
-            return json(await cms.publish(context, {
-              contentItemId: asContentItemId(publishMatch[1]),
-              revisionId: asRevisionId(stringField(body, "revisionId")),
-              approvalId: asApprovalId(stringField(body, "approvalId"))
-            }));
-          }
-          const unpublishMatch = url.pathname.match(/^\/v1\/content\/([^/]+)\/unpublish$/);
-          if (request.method === "POST" && unpublishMatch?.[1]) {
-            return json(await cms.unpublish(context, { contentItemId: asContentItemId(unpublishMatch[1]) }));
-          }
-          const reorderMatch = url.pathname.match(/^\/v1\/content\/([^/]+)\/reorder$/);
-          if (request.method === "POST" && reorderMatch?.[1]) {
-            const body = await readJson(request);
-            const contentItemId = asContentItemId(reorderMatch[1]);
-            const snapshot = await cms.getContent(context, contentItemId);
-            return json(await cms.reorderContent(context, {
-              contentItemId,
-              targetParentId: body.targetParentId === null ? null : typeof body.targetParentId === "string" ? asContentNodeId(body.targetParentId) : snapshot.node.parentId,
-              insertAfterContentItemId: body.insertAfterContentItemId === null ? null : typeof body.insertAfterContentItemId === "string" ? asContentItemId(body.insertAfterContentItemId) : null,
-              expectedTreeVersion: numberField(body, "expectedTreeVersion")
-            }));
-          }
-          const moveImpactMatch = url.pathname.match(/^\/v1\/content\/([^/]+)\/move-impact$/);
-          if (request.method === "POST" && moveImpactMatch?.[1]) {
-            const body = await readJson(request);
-            return json(await cms.analyzeRelocation(context, {
-              contentItemId: asContentItemId(moveImpactMatch[1]),
-              targetParentId: typeof body.targetParentId === "string" ? asContentNodeId(body.targetParentId) : null,
-              newSlug: stringField(body, "newSlug")
-            }));
-          }
-          const moveMatch = url.pathname.match(/^\/v1\/content\/([^/]+)\/move$/);
-          if (request.method === "POST" && moveMatch?.[1]) {
-            const body = await readJson(request);
-            return json(await cms.relocateContent(context, {
-              contentItemId: asContentItemId(moveMatch[1]),
-              targetParentId: typeof body.targetParentId === "string" ? asContentNodeId(body.targetParentId) : null,
-              newSlug: stringField(body, "newSlug"),
-              expectedTreeVersion: numberField(body, "expectedTreeVersion")
-            }));
-          }
-          const copyMatch = url.pathname.match(/^\/v1\/content\/([^/]+)\/copy$/);
-          if (request.method === "POST" && copyMatch?.[1]) {
-            const body = await readJson(request);
-            return json(await cms.copyContent(context, {
-              contentItemId: asContentItemId(copyMatch[1]),
-              targetParentId: typeof body.targetParentId === "string" ? asContentNodeId(body.targetParentId) : null,
-              newSlug: stringField(body, "newSlug"),
-              expectedTreeVersion: numberField(body, "expectedTreeVersion"),
-              ...typeof body.includeDescendants === "boolean" ? { includeDescendants: body.includeDescendants } : {}
-            }), 201);
-          }
-          const trashMatch = url.pathname.match(/^\/v1\/content\/([^/]+)\/trash$/);
-          if (request.method === "POST" && trashMatch?.[1]) {
-            const body = await readJson(request);
-            return json(await cms.trashContent(context, {
-              contentItemId: asContentItemId(trashMatch[1]),
-              expectedTreeVersion: numberField(body, "expectedTreeVersion")
-            }));
-          }
-          const restoreMatch = url.pathname.match(/^\/v1\/content\/([^/]+)\/restore$/);
-          if (request.method === "POST" && restoreMatch?.[1]) {
-            const body = await readJson(request);
-            return json(await cms.restoreContent(context, {
-              contentItemId: asContentItemId(restoreMatch[1]),
-              expectedTreeVersion: numberField(body, "expectedTreeVersion"),
-              ...body.targetParentId === null ? { targetParentId: null } : typeof body.targetParentId === "string" ? { targetParentId: asContentNodeId(body.targetParentId) } : {},
-              ...typeof body.newSlug === "string" ? { newSlug: body.newSlug } : {}
-            }));
-          }
-          if (request.method === "POST" && url.pathname === "/v1/assets/upload-sessions") {
-            const body = await readJson(request);
-            return json(await assets.createUploadSession(context, {
-              workspaceId: stringField(body, "workspaceId"),
-              filename: stringField(body, "filename"),
-              mediaType: stringField(body, "mediaType"),
-              uploadBaseUrl: typeof body.uploadBaseUrl === "string" ? body.uploadBaseUrl : env.PUBLIC_BASE_URL ?? url.origin,
-              ...typeof body.maximumBytes === "number" ? { maximumBytes: body.maximumBytes } : {},
-              ...typeof body.expiresInSeconds === "number" ? { expiresInSeconds: body.expiresInSeconds } : {}
-            }), 201);
-          }
-          if (request.method === "GET" && url.pathname === "/v1/assets") {
-            const workspaceId = url.searchParams.get("workspaceId");
-            if (!workspaceId)
-              invalid("workspaceId is required");
-            return json(await assets.listAssets(context, workspaceId));
-          }
-          const assetMatch = url.pathname.match(/^\/v1\/assets\/([^/]+)$/);
-          if (request.method === "GET" && assetMatch?.[1])
-            return json(await assets.getAsset(context, asAssetId(assetMatch[1])));
-          if (request.method === "DELETE" && assetMatch?.[1])
-            return json(await assets.deleteAsset(context, asAssetId(assetMatch[1])));
-          const previewCreateMatch = url.pathname.match(/^\/v1\/content\/([^/]+)\/previews$/);
-          if (request.method === "POST" && previewCreateMatch?.[1]) {
-            const body = await readJson(request);
-            const contentItemId = asContentItemId(previewCreateMatch[1]);
-            const snapshot = await cms.getContent(context, contentItemId);
-            const themeRelease = typeof body.themeRelease === "string" ? body.themeRelease : (await themes.resolveActive(snapshot.item.siteId)).release.id;
-            return json(await previews.create(context, {
-              contentItemId,
-              revisionId: asRevisionId(stringField(body, "revisionId")),
-              previewBaseUrl: typeof body.previewBaseUrl === "string" ? body.previewBaseUrl : env.PREVIEW_BASE_URL ?? env.PUBLIC_BASE_URL ?? url.origin,
-              ...typeof body.expiresInSeconds === "number" ? { expiresInSeconds: body.expiresInSeconds } : {},
-              themeRelease
-            }), 201);
-          }
-          const previewRevokeMatch = url.pathname.match(/^\/v1\/previews\/([^/]+)\/revoke$/);
-          if (request.method === "POST" && previewRevokeMatch?.[1])
-            return json(await previews.revoke(context, asPreviewSessionId(previewRevokeMatch[1])));
-          if (request.method === "GET" && url.pathname === "/v1/audit") {
-            const workspaceId = url.searchParams.get("workspaceId");
-            if (!workspaceId)
-              invalid("workspaceId is required");
-            return json(await cms.listAudit(context, workspaceId));
-          }
-          return json({ error: { code: "NOT_FOUND", message: "Route not found" } }, 404);
-        } catch (error) {
-          return errorResponse(error);
+          return json2(JSON.parse(env.LOCAL_DEV_LOGIN_HINT));
         }
-      } finally {
-        activeCorsRequest = void 0;
-        activeCorsEnv = void 0;
+        const authResponse = await handleAuthRoute(request, url, env, auth, readJson);
+        if (authResponse)
+          return withCors(authResponse);
+        if (request.method === "POST" && url.pathname === "/v1/bootstrap/ready") {
+          assertBootstrapAllowed(request, env);
+          return json2({ ready: true });
+        }
+        if (request.method === "POST" && url.pathname === "/v1/bootstrap") {
+          assertBootstrapAllowed(request, env);
+          const body = await readJson(request);
+          try {
+            const boot = await cms.bootstrap({
+              workspaceName: stringField(body, "workspaceName"),
+              siteName: stringField(body, "siteName"),
+              hostname: stringField(body, "hostname"),
+              ownerName: stringField(body, "ownerName"),
+              ...typeof body.locale === "string" ? { locale: body.locale } : {},
+              ...typeof body.cloudflareAccountId === "string" ? { cloudflareAccountId: body.cloudflareAccountId } : {},
+              ...typeof body.cloudflareOwnerEmail === "string" ? { cloudflareOwnerEmail: body.cloudflareOwnerEmail } : {}
+            });
+            if (env.BASER_BOOTSTRAP_SECRET) {
+              await createInitialHomepage(cms, {
+                siteId: boot.siteId,
+                ownerPrincipalId: boot.ownerPrincipalId,
+                siteName: stringField(body, "siteName")
+              });
+            }
+            return json2(boot, 201);
+          } catch (error) {
+            if (error instanceof DomainError)
+              throw error;
+            const cause = error instanceof Error ? error.message : String(error);
+            throw new DomainError("BOOTSTRAP_FAILED", "Bootstrap failed", 500, {
+              cause: cause.slice(0, 500)
+            });
+          }
+        }
+        if (request.method === "POST" && url.pathname === "/v1/bootstrap/cloudflare-owner") {
+          assertBootstrapAllowed(request, env);
+          const body = await readJson(request);
+          const target = await cms.bindCloudflareOwner({
+            cloudflareAccountId: stringField(body, "cloudflareAccountId"),
+            cloudflareOwnerEmail: stringField(body, "cloudflareOwnerEmail")
+          });
+          return json2(target, 200);
+        }
+        const uploadMatch = url.pathname.match(/^\/v1\/assets\/uploads\/([^/]+)$/);
+        if (request.method === "PUT" && uploadMatch?.[1]) {
+          const token = url.searchParams.get("token");
+          if (!token)
+            invalid("token is required");
+          if (!request.body)
+            invalid("upload body is required");
+          const contentLengthHeader = request.headers.get("content-length");
+          const contentLength = contentLengthHeader === null ? void 0 : Number(contentLengthHeader);
+          const uploaded = await assets.uploadWithToken({
+            sessionId: asUploadSessionId(uploadMatch[1]),
+            token,
+            mediaType: request.headers.get("content-type") ?? "application/octet-stream",
+            ...contentLength !== void 0 && Number.isFinite(contentLength) ? { contentLength } : {},
+            body: request.body
+          });
+          return json2(uploaded, 201);
+        }
+        const context = await resolveActorContext(request, env, auth);
+        if (request.method === "POST" && url.pathname === "/v1/plugins") {
+          const body = await readJson(request);
+          return json2(await plugins.createPlugin(context, {
+            workspaceId: workspaceIdBodyField(body, "workspaceId"),
+            key: stringField(body, "key"),
+            name: stringField(body, "name"),
+            trust: pluginTrust(body.trust),
+            ...typeof body.description === "string" ? { description: body.description } : {}
+          }), 201);
+        }
+        const workspacePluginsMatch = url.pathname.match(/^\/v1\/workspaces\/([^/]+)\/plugins$/);
+        if (request.method === "GET" && workspacePluginsMatch?.[1])
+          return json2(await plugins.listPlugins(context, workspacePathId(workspacePluginsMatch[1])));
+        const pluginReleasesMatch = url.pathname.match(/^\/v1\/plugins\/([^/]+)\/releases$/);
+        if (request.method === "POST" && pluginReleasesMatch?.[1]) {
+          const body = await readJson(request);
+          return json2(await plugins.createRelease(context, { pluginId: asPluginId(pluginReleasesMatch[1]), version: stringField(body, "version"), manifest: pluginManifestField(body.manifest), bundle: pluginBundleField(body.bundle) }), 201);
+        }
+        if (request.method === "GET" && pluginReleasesMatch?.[1])
+          return json2(await plugins.listReleases(context, asPluginId(pluginReleasesMatch[1])));
+        const pluginInvocationsMatch = url.pathname.match(/^\/v1\/plugin-releases\/([^/]+)\/invocations$/);
+        if (request.method === "GET" && pluginInvocationsMatch?.[1])
+          return json2(await plugins.listInvocations(context, asPluginReleaseId(pluginInvocationsMatch[1])));
+        const pluginActivationsMatch = url.pathname.match(/^\/v1\/workspaces\/([^/]+)\/plugin-activations$/);
+        if (request.method === "POST" && pluginActivationsMatch?.[1]) {
+          const body = await readJson(request);
+          return json2(await plugins.activate(context, { workspaceId: workspacePathId(pluginActivationsMatch[1]), siteId: typeof body.siteId === "string" ? asSiteId(parsePrefixedId("site", body.siteId, "siteId")) : null, pluginReleaseId: asPluginReleaseId(stringField(body, "pluginReleaseId")), grantedCapabilities: pluginCapabilitiesField(body.grantedCapabilities), allowedHosts: typeof body.allowedHosts === "undefined" ? [] : stringArray(body.allowedHosts, "allowedHosts") }), 201);
+        }
+        if (request.method === "GET" && pluginActivationsMatch?.[1]) {
+          const siteId = url.searchParams.get("siteId");
+          return json2(await plugins.listActivations(context, workspacePathId(pluginActivationsMatch[1]), ...siteId ? [asSiteId(parsePrefixedId("site", siteId, "siteId"))] : []));
+        }
+        const pluginActivationMatch = url.pathname.match(/^\/v1\/plugin-activations\/([^/]+)$/);
+        if (request.method === "DELETE" && pluginActivationMatch?.[1]) {
+          await plugins.deactivate(context, asPluginActivationId(pluginActivationMatch[1]));
+          return new Response(null, { status: 204 });
+        }
+        const pluginAdminMatch = url.pathname.match(/^\/v1\/workspaces\/([^/]+)\/plugin-admin-extensions$/);
+        if (request.method === "GET" && pluginAdminMatch?.[1])
+          return json2(await plugins.listAdminExtensions(context, workspacePathId(pluginAdminMatch[1]), url.searchParams.get("siteId") ? asSiteId(parsePrefixedId("site", url.searchParams.get("siteId"), "siteId")) : null));
+        const pluginRouteMatch = url.pathname.match(/^\/v1\/plugin-routes\/([^/]+)(\/.*)?$/);
+        if ((request.method === "GET" || request.method === "POST") && pluginRouteMatch?.[1]) {
+          const workspaceId = workspaceQueryParam(url.searchParams);
+          const query = Object.fromEntries([...url.searchParams.entries()].filter(([key2]) => key2 !== "workspaceId" && key2 !== "siteId"));
+          const result = await plugins.invokeRoute(context, { workspaceId, siteId: optionalSiteQueryParam(url.searchParams), pluginKey: pluginRouteMatch[1], method: request.method, path: pluginRouteMatch[2] ?? "/", query, headers: Object.fromEntries(request.headers), body: request.method === "POST" ? await readOptionalPluginRouteBody(request) : null });
+          return withCors(new Response(result.body, { status: result.status, headers: result.headers }));
+        }
+        if (request.method === "POST" && url.pathname === "/v1/principals") {
+          const body = await readJson(request);
+          return json2(await cms.createPrincipal(context, {
+            workspaceId: workspaceIdBodyField(body, "workspaceId"),
+            type: principalType(body.type),
+            displayName: stringField(body, "displayName")
+          }), 201);
+        }
+        if (request.method === "POST" && url.pathname === "/v1/grants") {
+          const body = await readJson(request);
+          const scope = optionalCapabilityScopeField(body, "scope");
+          return json2(await cms.grantCapability(context, {
+            principalId: asPrincipalId(stringField(body, "principalId")),
+            capability: stringField(body, "capability"),
+            ...scope ? { scope } : {},
+            ...typeof body.validUntil === "number" ? { validUntil: body.validUntil } : {}
+          }), 201);
+        }
+        if (request.method === "POST" && url.pathname === "/v1/themes") {
+          const body = await readJson(request);
+          return json2(await themes.createTheme(context, { workspaceId: workspaceIdBodyField(body, "workspaceId"), key: stringField(body, "key"), name: stringField(body, "name"), ...typeof body.description === "string" ? { description: body.description } : {} }), 201);
+        }
+        const workspaceThemesMatch = url.pathname.match(/^\/v1\/workspaces\/([^/]+)\/themes$/);
+        if (request.method === "GET" && workspaceThemesMatch?.[1])
+          return json2(await themes.listThemes(context, workspacePathId(workspaceThemesMatch[1])));
+        const tokenRevisionMatch = url.pathname.match(/^\/v1\/themes\/([^/]+)\/token-revisions$/);
+        if (request.method === "POST" && tokenRevisionMatch?.[1]) {
+          const body = await readJson(request);
+          return json2(await themes.createTokenRevision(context, { themeId: asThemeId(tokenRevisionMatch[1]), name: stringField(body, "name"), tokens: designTokensField(body.tokens) }), 201);
+        }
+        const layoutRevisionMatch = url.pathname.match(/^\/v1\/themes\/([^/]+)\/layout-revisions$/);
+        if (request.method === "POST" && layoutRevisionMatch?.[1]) {
+          const body = await readJson(request);
+          return json2(await themes.createLayoutRevision(context, { themeId: asThemeId(layoutRevisionMatch[1]), name: stringField(body, "name"), layout: layoutField(body.layout) }), 201);
+        }
+        const themeReleaseMatch = url.pathname.match(/^\/v1\/themes\/([^/]+)\/releases$/);
+        if (request.method === "POST" && themeReleaseMatch?.[1]) {
+          const body = await readJson(request);
+          return json2(await themes.createRelease(context, { themeId: asThemeId(themeReleaseMatch[1]), version: stringField(body, "version"), designTokenRevisionId: asDesignTokenRevisionId(stringField(body, "designTokenRevisionId")), layoutRevisionId: asLayoutRevisionId(stringField(body, "layoutRevisionId")), manifest: themeManifestField(body.manifest) }), 201);
+        }
+        if (request.method === "GET" && themeReleaseMatch?.[1])
+          return json2(await themes.listReleases(context, asThemeId(themeReleaseMatch[1])));
+        const siteThemeMatch = url.pathname.match(/^\/v1\/sites\/([^/]+)\/theme$/);
+        if (request.method === "GET" && siteThemeMatch?.[1])
+          return json2(await themes.getActive(context, sitePathId(siteThemeMatch[1])));
+        const themeActivationMatch = url.pathname.match(/^\/v1\/sites\/([^/]+)\/theme-activations$/);
+        if (request.method === "POST" && themeActivationMatch?.[1]) {
+          const body = await readJson(request);
+          return json2(await themes.activate(context, { siteId: sitePathId(themeActivationMatch[1]), themeReleaseId: asThemeReleaseId(stringField(body, "themeReleaseId")) }), 201);
+        }
+        if (request.method === "POST" && url.pathname === "/v1/delegations") {
+          const body = await readJson(request);
+          return json2(await cms.createDelegation(context, {
+            humanPrincipalId: asPrincipalId(stringField(body, "humanPrincipalId")),
+            agentPrincipalId: asPrincipalId(stringField(body, "agentPrincipalId")),
+            capabilities: stringArray(body.capabilities, "capabilities"),
+            expiresAt: numberField(body, "expiresAt"),
+            ...isRecord(body.scope) ? { scope: body.scope } : {},
+            ...isRisk(body.maximumRisk) ? { maximumRisk: body.maximumRisk } : {}
+          }), 201);
+        }
+        if (request.method === "POST" && url.pathname === "/v1/pages") {
+          const body = await readJson(request);
+          return json2(await cms.createPage(context, {
+            siteId: siteIdBodyField(body, "siteId"),
+            parentId: typeof body.parentId === "string" ? asContentNodeId(body.parentId) : null,
+            slug: stringField(body, "slug"),
+            title: stringField(body, "title"),
+            document: documentField(body.document)
+          }), 201);
+        }
+        if (request.method === "POST" && url.pathname === "/v1/folders") {
+          const body = await readJson(request);
+          return json2(await cms.createFolder(context, {
+            siteId: siteIdBodyField(body, "siteId"),
+            parentId: typeof body.parentId === "string" ? asContentNodeId(body.parentId) : null,
+            slug: stringField(body, "slug"),
+            title: stringField(body, "title")
+          }), 201);
+        }
+        if (request.method === "POST" && url.pathname === "/v1/aliases") {
+          const body = await readJson(request);
+          return json2(await cms.createAlias(context, {
+            siteId: siteIdBodyField(body, "siteId"),
+            parentId: typeof body.parentId === "string" ? asContentNodeId(body.parentId) : null,
+            slug: stringField(body, "slug"),
+            title: stringField(body, "title"),
+            targetContentItemId: asContentItemId(stringField(body, "targetContentItemId"))
+          }), 201);
+        }
+        if (request.method === "POST" && url.pathname === "/v1/blogs") {
+          const body = await readJson(request);
+          return json2(await blog.createBlog(context, {
+            siteId: siteIdBodyField(body, "siteId"),
+            parentId: typeof body.parentId === "string" ? asContentNodeId(body.parentId) : null,
+            slug: stringField(body, "slug"),
+            title: stringField(body, "title"),
+            document: documentField(body.document),
+            ..."pageSize" in body ? { pageSize: boundedIntField(body, "pageSize", { defaultValue: 10, min: 1, max: 100 }) } : {},
+            ..."feedSize" in body ? { feedSize: boundedIntField(body, "feedSize", { defaultValue: 20, min: 1, max: 100 }) } : {},
+            ...body.sortDirection === "asc" || body.sortDirection === "desc" ? { sortDirection: body.sortDirection } : {}
+          }), 201);
+        }
+        const articleCreateMatch = url.pathname.match(/^\/v1\/blogs\/([^/]+)\/articles$/);
+        if (request.method === "POST" && articleCreateMatch?.[1]) {
+          const body = await readJson(request);
+          return json2(await blog.createArticle(context, {
+            collectionId: asCollectionId(articleCreateMatch[1]),
+            slug: stringField(body, "slug"),
+            title: stringField(body, "title"),
+            document: documentField(body.document),
+            ...typeof body.postedAt === "number" ? { postedAt: body.postedAt } : {},
+            ...Array.isArray(body.termIds) ? { termIds: body.termIds.map((value) => asTermId(String(value))) } : {}
+          }), 201);
+        }
+        if (request.method === "GET" && articleCreateMatch?.[1]) {
+          const termIds = url.searchParams.getAll("termId").map(asTermId);
+          return json2(await blog.listPublishedArticles(asCollectionId(articleCreateMatch[1]), {
+            ...url.searchParams.has("limit") ? { limit: optionalQueryInt(url.searchParams.get("limit"), "limit", 100) } : {},
+            ...url.searchParams.has("offset") ? { offset: optionalQueryInt(url.searchParams.get("offset"), "offset", 1e6) } : {},
+            ...termIds.length ? { termIds } : {}
+          }));
+        }
+        const taxonomyListMatch = url.pathname.match(/^\/v1\/blogs\/([^/]+)\/taxonomies$/);
+        if (request.method === "GET" && taxonomyListMatch?.[1])
+          return json2(await blog.listTaxonomies(asCollectionId(taxonomyListMatch[1])));
+        if (request.method === "POST" && taxonomyListMatch?.[1]) {
+          const body = await readJson(request);
+          const kind = body.kind === "category" || body.kind === "tag" ? body.kind : invalid("kind must be category or tag");
+          return json2(await blog.createTaxonomy(context, {
+            collectionId: asCollectionId(taxonomyListMatch[1]),
+            key: stringField(body, "key"),
+            title: stringField(body, "title"),
+            kind,
+            ...typeof body.hierarchical === "boolean" ? { hierarchical: body.hierarchical } : {}
+          }), 201);
+        }
+        const termCreateMatch = url.pathname.match(/^\/v1\/taxonomies\/([^/]+)\/terms$/);
+        if (request.method === "POST" && termCreateMatch?.[1]) {
+          const body = await readJson(request);
+          return json2(await blog.createTerm(context, {
+            taxonomyId: asTaxonomyId(termCreateMatch[1]),
+            slug: stringField(body, "slug"),
+            title: stringField(body, "title"),
+            ...body.parentId === null ? { parentId: null } : typeof body.parentId === "string" ? { parentId: asTermId(body.parentId) } : {}
+          }), 201);
+        }
+        if (request.method === "POST" && url.pathname === "/v1/custom-fields") {
+          const body = await readJson(request);
+          return json2(await customContent.createField(context, {
+            workspaceId: workspaceIdBodyField(body, "workspaceId"),
+            key: stringField(body, "key"),
+            name: stringField(body, "name"),
+            type: customFieldType(body.type),
+            ...typeof body.description === "string" ? { description: body.description } : {},
+            ...Array.isArray(body.options) ? { options: body.options.map((item) => {
+              if (!isRecord(item))
+                invalid("options entries must be objects");
+              return { value: stringField(item, "value"), label: stringField(item, "label") };
+            }) } : {}
+          }), 201);
+        }
+        if (request.method === "GET" && url.pathname === "/v1/custom-fields") {
+          const workspaceId = workspaceQueryParam(url.searchParams);
+          return json2(await customContent.listFields(workspaceId));
+        }
+        if (request.method === "POST" && url.pathname === "/v1/custom-tables") {
+          const body = await readJson(request);
+          const kind = body.kind === "content" || body.kind === "master" ? body.kind : invalid("kind must be content or master");
+          return json2(await customContent.createTable(context, {
+            workspaceId: workspaceIdBodyField(body, "workspaceId"),
+            key: stringField(body, "key"),
+            name: stringField(body, "name"),
+            kind,
+            ...typeof body.hierarchical === "boolean" ? { hierarchical: body.hierarchical } : {},
+            ...body.displayFieldKey === null || typeof body.displayFieldKey === "string" ? { displayFieldKey: body.displayFieldKey } : {}
+          }), 201);
+        }
+        if (request.method === "GET" && url.pathname === "/v1/custom-tables") {
+          const workspaceId = workspaceQueryParam(url.searchParams);
+          return json2(await customContent.listTables(workspaceId));
+        }
+        const customTableSchemaMatch = url.pathname.match(/^\/v1\/custom-tables\/([^/]+)\/schema$/);
+        if (request.method === "GET" && customTableSchemaMatch?.[1])
+          return json2(await customContent.getTableSchema(asCustomTableId(customTableSchemaMatch[1])));
+        const customTableFieldsMatch = url.pathname.match(/^\/v1\/custom-tables\/([^/]+)\/fields$/);
+        if (request.method === "POST" && customTableFieldsMatch?.[1]) {
+          const body = await readJson(request);
+          return json2(await customContent.attachField(context, {
+            tableId: asCustomTableId(customTableFieldsMatch[1]),
+            fieldId: asCustomFieldId(stringField(body, "fieldId")),
+            ...typeof body.required === "boolean" ? { required: body.required } : {},
+            ...typeof body.searchable === "boolean" ? { searchable: body.searchable } : {},
+            ...typeof body.unique === "boolean" ? { unique: body.unique } : {},
+            ...typeof body.sortOrder === "number" ? { sortOrder: body.sortOrder } : {},
+            ...body.labelOverride === null || typeof body.labelOverride === "string" ? { labelOverride: body.labelOverride } : {}
+          }), 201);
+        }
+        if (request.method === "POST" && url.pathname === "/v1/custom-contents") {
+          const body = await readJson(request);
+          return json2(await customContent.createCustomContent(context, {
+            siteId: siteIdBodyField(body, "siteId"),
+            parentId: typeof body.parentId === "string" ? asContentNodeId(body.parentId) : null,
+            slug: stringField(body, "slug"),
+            title: stringField(body, "title"),
+            tableId: asCustomTableId(stringField(body, "tableId")),
+            ...isRecord(body.document) ? { document: documentField(body.document) } : {},
+            ...typeof body.listCount === "number" ? { listCount: body.listCount } : {},
+            ...typeof body.listOrderFieldKey === "string" ? { listOrderFieldKey: body.listOrderFieldKey } : {},
+            ...body.listDirection === "asc" || body.listDirection === "desc" ? { listDirection: body.listDirection } : {},
+            ...typeof body.templateKey === "string" ? { templateKey: body.templateKey } : {}
+          }), 201);
+        }
+        const customEntriesMatch = url.pathname.match(/^\/v1\/custom-contents\/([^/]+)\/entries$/);
+        if (request.method === "POST" && customEntriesMatch?.[1]) {
+          const body = await readJson(request);
+          return json2(await customContent.createEntry(context, {
+            customContentId: asCustomContentId(customEntriesMatch[1]),
+            values: recordField(body, "values"),
+            ...body.slug === null || typeof body.slug === "string" ? { slug: body.slug } : {},
+            ...body.parentEntryId === null || typeof body.parentEntryId === "string" ? { parentEntryId: body.parentEntryId ? asCustomEntryId(body.parentEntryId) : null } : {}
+          }), 201);
+        }
+        if (request.method === "GET" && customEntriesMatch?.[1])
+          return json2(await customContent.listEntries(context, asCustomContentId(customEntriesMatch[1])));
+        const customEntryMatch = url.pathname.match(/^\/v1\/custom-entries\/([^/]+)$/);
+        if (request.method === "GET" && customEntryMatch?.[1])
+          return json2(await customContent.getEntry(context, asCustomEntryId(customEntryMatch[1])));
+        const customEntryRevisionMatch = url.pathname.match(/^\/v1\/custom-entries\/([^/]+)\/revisions$/);
+        if (request.method === "POST" && customEntryRevisionMatch?.[1]) {
+          const body = await readJson(request);
+          return json2(await customContent.reviseEntry(context, { entryId: asCustomEntryId(customEntryRevisionMatch[1]), baseRevisionId: asCustomEntryRevisionId(stringField(body, "baseRevisionId")), expectedLockVersion: numberField(body, "expectedLockVersion"), values: recordField(body, "values"), changeSummary: stringField(body, "changeSummary") }), 201);
+        }
+        const customEntryApprovalMatch = url.pathname.match(/^\/v1\/custom-entries\/([^/]+)\/approvals$/);
+        if (request.method === "POST" && customEntryApprovalMatch?.[1]) {
+          const body = await readJson(request);
+          return json2(await customContent.requestApproval(context, { entryId: asCustomEntryId(customEntryApprovalMatch[1]), revisionId: asCustomEntryRevisionId(stringField(body, "revisionId")) }), 201);
+        }
+        const customApprovalDecisionMatch = url.pathname.match(/^\/v1\/custom-entry-approvals\/([^/]+)\/decide$/);
+        if (request.method === "POST" && customApprovalDecisionMatch?.[1]) {
+          const body = await readJson(request);
+          const decision = body.decision === "approved" || body.decision === "rejected" ? body.decision : invalid("decision must be approved or rejected");
+          return json2(await customContent.decideApproval(context, { approvalId: asCustomEntryApprovalId(customApprovalDecisionMatch[1]), decision, ...typeof body.comment === "string" ? { comment: body.comment } : {} }));
+        }
+        const customEntryPublishMatch = url.pathname.match(/^\/v1\/custom-entries\/([^/]+)\/publish$/);
+        if (request.method === "POST" && customEntryPublishMatch?.[1]) {
+          const body = await readJson(request);
+          return json2(await customContent.publishEntry(context, { entryId: asCustomEntryId(customEntryPublishMatch[1]), revisionId: asCustomEntryRevisionId(stringField(body, "revisionId")), approvalId: asCustomEntryApprovalId(stringField(body, "approvalId")) }));
+        }
+        const customEntryUnpublishMatch = url.pathname.match(/^\/v1\/custom-entries\/([^/]+)\/unpublish$/);
+        if (request.method === "POST" && customEntryUnpublishMatch?.[1]) {
+          return json2(await customContent.unpublishEntry(context, { entryId: asCustomEntryId(customEntryUnpublishMatch[1]) }));
+        }
+        const classifyMatch = url.pathname.match(/^\/v1\/articles\/([^/]+)\/revisions\/([^/]+)\/terms$/);
+        if (request.method === "PUT" && classifyMatch?.[1] && classifyMatch[2]) {
+          const body = await readJson(request);
+          const termIds = stringArray(body.termIds, "termIds").map(asTermId);
+          await blog.classifyRevision(context, asContentItemId(classifyMatch[1]), asRevisionId(classifyMatch[2]), termIds);
+          return json2({ ok: true });
+        }
+        const treeMatch = url.pathname.match(/^\/v1\/sites\/([^/]+)\/content-tree$/);
+        if (request.method === "GET" && treeMatch?.[1]) {
+          return json2(await cms.listContentTree(context, sitePathId(treeMatch[1])));
+        }
+        const blogsListMatch = url.pathname.match(/^\/v1\/sites\/([^/]+)\/blogs$/);
+        if (request.method === "GET" && blogsListMatch?.[1]) {
+          const siteId = sitePathId(blogsListMatch[1]);
+          await cms.listContentTree(context, siteId);
+          const collections = await blog.listCollections(siteId);
+          return json2(await Promise.all(collections.map(async (collection) => ({ collection, snapshot: await cms.getContent(context, collection.contentItemId) }))));
+        }
+        const customContentsListMatch = url.pathname.match(/^\/v1\/sites\/([^/]+)\/custom-contents$/);
+        if (request.method === "GET" && customContentsListMatch?.[1]) {
+          const siteId = sitePathId(customContentsListMatch[1]);
+          await cms.listContentTree(context, siteId);
+          const definitions = await customContent.listCustomContents(siteId);
+          return json2(await Promise.all(definitions.map(async (definition2) => ({
+            definition: definition2,
+            snapshot: await cms.getContent(context, definition2.contentItemId),
+            schema: await customContent.getTableSchema(definition2.tableId)
+          }))));
+        }
+        const trashListMatch = url.pathname.match(/^\/v1\/sites\/([^/]+)\/trash$/);
+        if (request.method === "GET" && trashListMatch?.[1]) {
+          return json2(await cms.listTrash(context, sitePathId(trashListMatch[1])));
+        }
+        const pendingApprovalsMatch = url.pathname.match(/^\/v1\/sites\/([^/]+)\/pending-approvals$/);
+        if (request.method === "GET" && pendingApprovalsMatch?.[1]) {
+          return json2(await cms.listPendingApprovals(context, sitePathId(pendingApprovalsMatch[1])));
+        }
+        const pendingCustomApprovalsMatch = url.pathname.match(/^\/v1\/sites\/([^/]+)\/pending-custom-entry-approvals$/);
+        if (request.method === "GET" && pendingCustomApprovalsMatch?.[1]) {
+          return json2(await customContent.listPendingApprovals(context, sitePathId(pendingCustomApprovalsMatch[1])));
+        }
+        const approvalInboxMatch = url.pathname.match(/^\/v1\/sites\/([^/]+)\/approval-inbox$/);
+        if (request.method === "GET" && approvalInboxMatch?.[1]) {
+          const siteId = sitePathId(approvalInboxMatch[1]);
+          return json2({
+            content: await cms.listContentApprovalInbox(context, siteId),
+            customEntries: await customContent.listPendingApprovals(context, siteId)
+          });
+        }
+        if (request.method === "POST" && url.pathname === "/v1/mail-forms") {
+          const body = await readJson(request);
+          return json2(await mailForms.createMailForm(context, {
+            siteId: siteIdBodyField(body, "siteId"),
+            parentId: typeof body.parentId === "string" ? asContentNodeId(body.parentId) : null,
+            slug: stringField(body, "slug"),
+            title: stringField(body, "title"),
+            tableId: asCustomTableId(stringField(body, "tableId")),
+            recipientEmails: stringArray(body.recipientEmails, "recipientEmails"),
+            senderAddress: stringField(body, "senderAddress"),
+            ...typeof body.subjectTemplate === "string" ? { subjectTemplate: body.subjectTemplate } : {},
+            ...typeof body.autoReplyEnabled === "boolean" ? { autoReplyEnabled: body.autoReplyEnabled } : {},
+            ...typeof body.autoReplyEmailFieldKey === "string" || body.autoReplyEmailFieldKey === null ? { autoReplyEmailFieldKey: body.autoReplyEmailFieldKey } : {},
+            ...typeof body.autoReplySubject === "string" ? { autoReplySubject: body.autoReplySubject } : {},
+            ...typeof body.confirmationTtlSeconds === "number" ? { confirmationTtlSeconds: body.confirmationTtlSeconds } : {},
+            ...typeof body.retentionDays === "number" ? { retentionDays: body.retentionDays } : {},
+            ...typeof body.turnstileRequired === "boolean" ? { turnstileRequired: body.turnstileRequired } : {},
+            ...isRecord(body.document) ? { document: documentField(body.document) } : {},
+            ...Array.isArray(body.fieldPolicies) ? { fieldPolicies: body.fieldPolicies.map((value) => {
+              if (!isRecord(value))
+                invalid("fieldPolicies entries must be objects");
+              return { fieldId: asCustomFieldId(stringField(value, "fieldId")), ...privacyClass(value.privacyClass) ? { privacyClass: privacyClass(value.privacyClass) } : {}, ...typeof value.includeInOwnerNotification === "boolean" ? { includeInOwnerNotification: value.includeInOwnerNotification } : {}, ...typeof value.includeInAutoReply === "boolean" ? { includeInAutoReply: value.includeInAutoReply } : {} };
+            }) } : {}
+          }), 201);
+        }
+        const siteMailFormsMatch = url.pathname.match(/^\/v1\/sites\/([^/]+)\/mail-forms$/);
+        if (request.method === "GET" && siteMailFormsMatch?.[1]) {
+          const siteId = sitePathId(siteMailFormsMatch[1]);
+          await cms.listContentTree(context, siteId);
+          return json2(await mailForms.listForms(siteId));
+        }
+        const mailSubmissionsMatch = url.pathname.match(/^\/v1\/mail-forms\/([^/]+)\/submissions$/);
+        if (request.method === "GET" && mailSubmissionsMatch?.[1])
+          return json2(await mailForms.listSubmissions(context, asMailFormId(mailSubmissionsMatch[1])));
+        const mailSubmissionMatch = url.pathname.match(/^\/v1\/mail-submissions\/([^/]+)$/);
+        if (request.method === "GET" && mailSubmissionMatch?.[1])
+          return json2(await mailForms.getSubmission(context, asMailSubmissionId(mailSubmissionMatch[1]), { includeSensitive: url.searchParams.get("includeSensitive") === "true" }));
+        const mailPurgeMatch = url.pathname.match(/^\/v1\/mail-submissions\/([^/]+)\/purge$/);
+        if (request.method === "POST" && mailPurgeMatch?.[1])
+          return json2(await mailForms.purgeSubmission(context, asMailSubmissionId(mailPurgeMatch[1])));
+        if (request.method === "POST" && url.pathname === "/v1/mail-notifications/deliver") {
+          const body = await readJson(request);
+          const limit = boundedIntField(body, "limit", { defaultValue: 20, min: 1, max: 100 });
+          return json2(await mailForms.deliverPending(context, limit));
+        }
+        const articleMetaMatch = url.pathname.match(/^\/v1\/content\/([^/]+)\/article-meta$/);
+        if (articleMetaMatch?.[1]) {
+          const contentItemId = asContentItemId(articleMetaMatch[1]);
+          if (request.method === "GET") {
+            const { article } = await blog.getArticleMetadata(context, contentItemId);
+            return json2({ postedAt: article.postedAt, createdAt: article.createdAt });
+          }
+          if (request.method === "PATCH") {
+            const body = await readJson(request);
+            const updated = await blog.updateArticlePostedAt(context, {
+              contentItemId,
+              postedAt: numberField(body, "postedAt")
+            });
+            return json2({ postedAt: updated.postedAt, createdAt: updated.createdAt });
+          }
+        }
+        const contentMatch = url.pathname.match(/^\/v1\/content\/([^/]+)$/);
+        if (request.method === "GET" && contentMatch?.[1]) {
+          return json2(await cms.getContent(context, asContentItemId(contentMatch[1])));
+        }
+        const revisionsMatch = url.pathname.match(/^\/v1\/content\/([^/]+)\/revisions$/);
+        if (request.method === "POST" && revisionsMatch?.[1]) {
+          const body = await readJson(request);
+          return json2(await cms.commitRevision(context, {
+            contentItemId: asContentItemId(revisionsMatch[1]),
+            baseRevisionId: asRevisionId(stringField(body, "baseRevisionId")),
+            expectedLockVersion: numberField(body, "expectedLockVersion"),
+            fields: recordField(body, "fields"),
+            document: documentField(body.document),
+            changeSummary: stringField(body, "changeSummary")
+          }), 201);
+        }
+        const proposalMatch = url.pathname.match(/^\/v1\/content\/([^/]+)\/agent-proposals$/);
+        if (request.method === "POST" && proposalMatch?.[1]) {
+          const body = await readJson(request);
+          const tools = new AgentOperations(cms);
+          return json2(await tools.proposeDocumentChange(context, {
+            contentItemId: asContentItemId(proposalMatch[1]),
+            baseRevisionId: asRevisionId(stringField(body, "baseRevisionId")),
+            expectedLockVersion: numberField(body, "expectedLockVersion"),
+            operations: blockOperationsField(body.operations),
+            instructionSummary: stringField(body, "instructionSummary"),
+            modelProvider: stringField(body, "modelProvider"),
+            modelName: stringField(body, "modelName")
+          }), 201);
+        }
+        const approvalsMatch = url.pathname.match(/^\/v1\/content\/([^/]+)\/approvals$/);
+        if (request.method === "POST" && approvalsMatch?.[1]) {
+          const body = await readJson(request);
+          if ("riskLevel" in body && body.riskLevel !== void 0 && !isRisk(body.riskLevel)) {
+            invalid("riskLevel must be a valid risk level");
+          }
+          return json2(await cms.requestApproval(context, {
+            contentItemId: asContentItemId(approvalsMatch[1]),
+            revisionId: asRevisionId(stringField(body, "revisionId")),
+            ...isRisk(body.riskLevel) ? { riskLevel: body.riskLevel } : {}
+          }), 201);
+        }
+        const decideMatch = url.pathname.match(/^\/v1\/approvals\/([^/]+)\/decide$/);
+        if (request.method === "POST" && decideMatch?.[1]) {
+          const body = await readJson(request);
+          const decision = body.decision === "approved" || body.decision === "rejected" ? body.decision : invalid("decision must be approved or rejected");
+          return json2(await cms.decideApproval(context, {
+            approvalId: asApprovalId(decideMatch[1]),
+            decision,
+            ...typeof body.comment === "string" ? { comment: body.comment } : {}
+          }));
+        }
+        const publishMatch = url.pathname.match(/^\/v1\/content\/([^/]+)\/publish$/);
+        if (request.method === "POST" && publishMatch?.[1]) {
+          const body = await readJson(request);
+          return json2(await cms.publish(context, {
+            contentItemId: asContentItemId(publishMatch[1]),
+            revisionId: asRevisionId(stringField(body, "revisionId")),
+            approvalId: asApprovalId(stringField(body, "approvalId"))
+          }));
+        }
+        const unpublishMatch = url.pathname.match(/^\/v1\/content\/([^/]+)\/unpublish$/);
+        if (request.method === "POST" && unpublishMatch?.[1]) {
+          return json2(await cms.unpublish(context, { contentItemId: asContentItemId(unpublishMatch[1]) }));
+        }
+        const reorderMatch = url.pathname.match(/^\/v1\/content\/([^/]+)\/reorder$/);
+        if (request.method === "POST" && reorderMatch?.[1]) {
+          const body = await readJson(request);
+          const contentItemId = asContentItemId(reorderMatch[1]);
+          const snapshot = await cms.getContent(context, contentItemId);
+          return json2(await cms.reorderContent(context, {
+            contentItemId,
+            targetParentId: body.targetParentId === null ? null : typeof body.targetParentId === "string" ? asContentNodeId(body.targetParentId) : snapshot.node.parentId,
+            insertAfterContentItemId: body.insertAfterContentItemId === null ? null : typeof body.insertAfterContentItemId === "string" ? asContentItemId(body.insertAfterContentItemId) : null,
+            expectedTreeVersion: numberField(body, "expectedTreeVersion")
+          }));
+        }
+        const moveImpactMatch = url.pathname.match(/^\/v1\/content\/([^/]+)\/move-impact$/);
+        if (request.method === "POST" && moveImpactMatch?.[1]) {
+          const body = await readJson(request);
+          return json2(await cms.analyzeRelocation(context, {
+            contentItemId: asContentItemId(moveImpactMatch[1]),
+            targetParentId: typeof body.targetParentId === "string" ? asContentNodeId(body.targetParentId) : null,
+            newSlug: stringField(body, "newSlug")
+          }));
+        }
+        const moveMatch = url.pathname.match(/^\/v1\/content\/([^/]+)\/move$/);
+        if (request.method === "POST" && moveMatch?.[1]) {
+          const body = await readJson(request);
+          return json2(await cms.relocateContent(context, {
+            contentItemId: asContentItemId(moveMatch[1]),
+            targetParentId: typeof body.targetParentId === "string" ? asContentNodeId(body.targetParentId) : null,
+            newSlug: stringField(body, "newSlug"),
+            expectedTreeVersion: numberField(body, "expectedTreeVersion")
+          }));
+        }
+        const copyMatch = url.pathname.match(/^\/v1\/content\/([^/]+)\/copy$/);
+        if (request.method === "POST" && copyMatch?.[1]) {
+          const body = await readJson(request);
+          return json2(await cms.copyContent(context, {
+            contentItemId: asContentItemId(copyMatch[1]),
+            targetParentId: typeof body.targetParentId === "string" ? asContentNodeId(body.targetParentId) : null,
+            newSlug: stringField(body, "newSlug"),
+            expectedTreeVersion: numberField(body, "expectedTreeVersion"),
+            ...typeof body.includeDescendants === "boolean" ? { includeDescendants: body.includeDescendants } : {}
+          }), 201);
+        }
+        const trashMatch = url.pathname.match(/^\/v1\/content\/([^/]+)\/trash$/);
+        if (request.method === "POST" && trashMatch?.[1]) {
+          const body = await readJson(request);
+          return json2(await cms.trashContent(context, {
+            contentItemId: asContentItemId(trashMatch[1]),
+            expectedTreeVersion: numberField(body, "expectedTreeVersion")
+          }));
+        }
+        const restoreMatch = url.pathname.match(/^\/v1\/content\/([^/]+)\/restore$/);
+        if (request.method === "POST" && restoreMatch?.[1]) {
+          const body = await readJson(request);
+          return json2(await cms.restoreContent(context, {
+            contentItemId: asContentItemId(restoreMatch[1]),
+            expectedTreeVersion: numberField(body, "expectedTreeVersion"),
+            ...body.targetParentId === null ? { targetParentId: null } : typeof body.targetParentId === "string" ? { targetParentId: asContentNodeId(body.targetParentId) } : {},
+            ...typeof body.newSlug === "string" ? { newSlug: body.newSlug } : {}
+          }));
+        }
+        if (request.method === "POST" && url.pathname === "/v1/assets/upload-sessions") {
+          const body = await readJson(request);
+          return json2(await assets.createUploadSession(context, {
+            workspaceId: workspaceIdBodyField(body, "workspaceId"),
+            filename: stringField(body, "filename"),
+            mediaType: stringField(body, "mediaType"),
+            uploadBaseUrl: typeof body.uploadBaseUrl === "string" ? body.uploadBaseUrl : env.PUBLIC_BASE_URL ?? url.origin,
+            ...typeof body.maximumBytes === "number" ? { maximumBytes: body.maximumBytes } : {},
+            ...typeof body.expiresInSeconds === "number" ? { expiresInSeconds: body.expiresInSeconds } : {}
+          }), 201);
+        }
+        if (request.method === "GET" && url.pathname === "/v1/assets") {
+          const workspaceId = workspaceQueryParam(url.searchParams);
+          return json2(await assets.listAssets(context, workspaceId));
+        }
+        const assetMatch = url.pathname.match(/^\/v1\/assets\/([^/]+)$/);
+        if (request.method === "GET" && assetMatch?.[1])
+          return json2(await assets.getAsset(context, asAssetId(assetMatch[1])));
+        if (request.method === "DELETE" && assetMatch?.[1])
+          return json2(await assets.deleteAsset(context, asAssetId(assetMatch[1])));
+        const previewCreateMatch = url.pathname.match(/^\/v1\/content\/([^/]+)\/previews$/);
+        if (request.method === "POST" && previewCreateMatch?.[1]) {
+          const body = await readJson(request);
+          const contentItemId = asContentItemId(previewCreateMatch[1]);
+          const snapshot = await cms.getContent(context, contentItemId);
+          const themeRelease = typeof body.themeRelease === "string" ? body.themeRelease : (await themes.resolveActive(snapshot.item.siteId)).release.id;
+          return json2(await previews.create(context, {
+            contentItemId,
+            revisionId: asRevisionId(stringField(body, "revisionId")),
+            previewBaseUrl: typeof body.previewBaseUrl === "string" ? body.previewBaseUrl : env.PREVIEW_BASE_URL ?? env.PUBLIC_BASE_URL ?? url.origin,
+            ...typeof body.expiresInSeconds === "number" ? { expiresInSeconds: body.expiresInSeconds } : {},
+            themeRelease
+          }), 201);
+        }
+        const previewRevokeMatch = url.pathname.match(/^\/v1\/previews\/([^/]+)\/revoke$/);
+        if (request.method === "POST" && previewRevokeMatch?.[1])
+          return json2(await previews.revoke(context, asPreviewSessionId(previewRevokeMatch[1])));
+        if (request.method === "GET" && url.pathname === "/v1/audit") {
+          const workspaceId = workspaceQueryParam(url.searchParams);
+          return json2(await cms.listAudit(context, workspaceId));
+        }
+        return json2({ error: { code: "NOT_FOUND", message: "Route not found" } }, 404);
+      } catch (error) {
+        return errorResponse(error);
       }
     }
   };
@@ -25150,6 +27048,128 @@ async function readOptionalJson(request) {
     throw new DomainError("INVALID_JSON", "Request body is not valid JSON", 400);
   }
 }
+async function readOptionalPluginRouteBody(request) {
+  const value = await readOptionalJson(request);
+  if (value === null)
+    return null;
+  if (!isRecord(value))
+    invalid("request body must be a JSON object");
+  return value;
+}
+const PREFixed_ID_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+function parsePrefixedId(prefix, value, name) {
+  const head = `${prefix}_`;
+  if (!value.startsWith(head))
+    invalid(`${name} must start with ${head}`);
+  const suffix = value.slice(head.length);
+  if (!PREFixed_ID_UUID.test(suffix))
+    invalid(`${name} must be a valid id`);
+  return value;
+}
+function workspaceQueryParam(searchParams, name = "workspaceId") {
+  const raw = searchParams.get(name);
+  if (!raw?.trim())
+    invalid(`${name} is required`);
+  return asWorkspaceId(parsePrefixedId("ws", raw.trim(), name));
+}
+function optionalSiteQueryParam(searchParams) {
+  const raw = searchParams.get("siteId");
+  if (!raw?.trim())
+    return null;
+  return asSiteId(parsePrefixedId("site", raw.trim(), "siteId"));
+}
+function workspacePathId(segment) {
+  return asWorkspaceId(parsePrefixedId("ws", segment, "workspaceId"));
+}
+function sitePathId(segment) {
+  return asSiteId(parsePrefixedId("site", segment, "siteId"));
+}
+function siteIdBodyField(body, key2) {
+  return asSiteId(parsePrefixedId("site", stringField(body, key2), key2));
+}
+function workspaceIdBodyField(body, key2) {
+  return asWorkspaceId(parsePrefixedId("ws", stringField(body, key2), key2));
+}
+function blockOperationsField(value) {
+  if (!Array.isArray(value))
+    invalid("operations must be an array");
+  return value.map((entry, index2) => parseBlockOperation(entry, index2));
+}
+function parseBlockOperation(value, index2) {
+  if (!isRecord(value))
+    invalid(`operations[${index2}] must be an object`);
+  const kind = value.kind;
+  if (kind === "updateProps") {
+    return {
+      kind,
+      blockId: stringField(value, "blockId"),
+      patch: recordField(value, "patch")
+    };
+  }
+  if (kind === "remove") {
+    return { kind, blockId: stringField(value, "blockId") };
+  }
+  if (kind === "insert") {
+    const record = value;
+    const slot = stringField(record, "slot");
+    const indexValue = record.index;
+    if (typeof indexValue !== "number" || !Number.isInteger(indexValue) || indexValue < 0) {
+      invalid(`operations[${index2}].index must be a non-negative integer`);
+    }
+    return {
+      kind: "insert",
+      parentId: stringField(record, "parentId"),
+      slot,
+      index: indexValue,
+      block: blockNodeField(record.block, `operations[${index2}].block`)
+    };
+  }
+  if (kind === "move") {
+    const record = value;
+    const indexValue = record.index;
+    if (typeof indexValue !== "number" || !Number.isInteger(indexValue) || indexValue < 0) {
+      invalid(`operations[${index2}].index must be a non-negative integer`);
+    }
+    return {
+      kind: "move",
+      blockId: stringField(record, "blockId"),
+      parentId: stringField(record, "parentId"),
+      slot: stringField(record, "slot"),
+      index: indexValue
+    };
+  }
+  if (kind === "duplicate") {
+    const record = value;
+    const indexValue = record.index;
+    if (typeof indexValue !== "number" || !Number.isInteger(indexValue) || indexValue < 0) {
+      invalid(`operations[${index2}].index must be a non-negative integer`);
+    }
+    return {
+      kind: "duplicate",
+      blockId: stringField(record, "blockId"),
+      parentId: stringField(record, "parentId"),
+      slot: stringField(record, "slot"),
+      index: indexValue
+    };
+  }
+  invalid(`operations[${index2}].kind is invalid`);
+}
+function blockNodeField(value, path) {
+  if (!isRecord(value))
+    invalid(`${path} must be an object`);
+  const id = typeof value.id === "string" && value.id.length > 0 ? value.id : invalid(`${path}.id must be a non-empty string`);
+  const type = typeof value.type === "string" && value.type.length > 0 ? value.type : invalid(`${path}.type must be a non-empty string`);
+  const componentVersion = typeof value.componentVersion === "number" && Number.isInteger(value.componentVersion) && value.componentVersion >= 1 ? value.componentVersion : invalid(`${path}.componentVersion must be a positive integer`);
+  const props = isRecord(value.props) ? value.props : invalid(`${path}.props must be an object`);
+  const slotsRaw = isRecord(value.slots) ? value.slots : invalid(`${path}.slots must be an object`);
+  const slots = {};
+  for (const [slotName, children] of Object.entries(slotsRaw)) {
+    if (!Array.isArray(children))
+      invalid(`${path}.slots.${slotName} must be an array`);
+    slots[slotName] = children.map((child, childIndex) => blockNodeField(child, `${path}.slots.${slotName}[${childIndex}]`));
+  }
+  return { id, type, componentVersion, props, slots };
+}
 async function readJson(request) {
   try {
     const value = await request.json();
@@ -25178,6 +27198,43 @@ function stringField(body, key2) {
 function numberField(body, key2) {
   const value = body[key2];
   return typeof value === "number" && Number.isFinite(value) ? value : invalid(`${key2} must be a number`);
+}
+function boundedIntField(body, key2, bounds) {
+  if (!(key2 in body))
+    return bounds.defaultValue;
+  const value = numberField(body, key2);
+  if (!Number.isInteger(value))
+    invalid(`${key2} must be an integer`);
+  if (value < bounds.min || value > bounds.max)
+    invalid(`${key2} must be between ${bounds.min} and ${bounds.max}`);
+  return value;
+}
+const CAPABILITY_SCOPE_KEYS = /* @__PURE__ */ new Set(["workspaceId", "siteId", "contentType", "pathPrefix", "maximumRisk"]);
+function optionalCapabilityScopeField(body, key2) {
+  if (!(key2 in body))
+    return void 0;
+  const raw = body[key2];
+  if (!isRecord(raw))
+    invalid(`${key2} must be an object`);
+  for (const entryKey of Object.keys(raw)) {
+    if (!CAPABILITY_SCOPE_KEYS.has(entryKey))
+      invalid(`scope.${entryKey} is not allowed`);
+  }
+  const scope = {};
+  if (raw.workspaceId !== void 0)
+    scope.workspaceId = workspaceIdBodyField({ workspaceId: raw.workspaceId }, "workspaceId");
+  if (raw.siteId !== void 0)
+    scope.siteId = asSiteId(parsePrefixedId("site", stringField({ siteId: raw.siteId }, "siteId"), "siteId"));
+  if (raw.contentType !== void 0)
+    scope.contentType = stringField({ contentType: raw.contentType }, "contentType");
+  if (raw.pathPrefix !== void 0)
+    scope.pathPrefix = stringField({ pathPrefix: raw.pathPrefix }, "pathPrefix");
+  if (raw.maximumRisk !== void 0) {
+    if (!isRisk(raw.maximumRisk))
+      invalid("scope.maximumRisk must be a valid risk level");
+    scope.maximumRisk = raw.maximumRisk;
+  }
+  return scope;
 }
 function optionalQueryInt(raw, name, max) {
   if (raw === null || raw.trim() === "")
@@ -25244,32 +27301,8 @@ function isRisk(value) {
 function isRecord(value) {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
 }
-function invalid(message) {
-  throw new DomainError("INVALID_REQUEST", message, 422);
-}
-function errorResponse(error) {
-  if (error instanceof DomainError)
-    return json({ error: { code: error.code, message: error.message, details: error.details ?? {} } }, error.status);
-  console.error(error);
-  return json({ error: { code: "INTERNAL_ERROR", message: "Internal server error" } }, 500);
-}
-function json(value, status = 200) {
-  return withCors(new Response(JSON.stringify(value), { status, headers: { "content-type": "application/json; charset=utf-8" } }));
-}
-function withCors(response) {
-  const headers = new Headers(response.headers);
-  const origin = activeCorsRequest?.headers.get("Origin");
-  const authOrigin = activeCorsEnv?.BASER_AUTH_ORIGIN;
-  if (origin && (/^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin) || authOrigin && origin === authOrigin)) {
-    headers.set("access-control-allow-origin", origin);
-    headers.set("vary", "Origin");
-  } else {
-    headers.set("access-control-allow-origin", "*");
-  }
-  headers.set("access-control-allow-headers", `content-type,x-baser-bootstrap-secret,x-baser-principal-id,x-baser-principal-type,x-baser-on-behalf-of,x-baser-delegation-id,x-request-id,${CSRF_HEADER}`);
-  headers.set("access-control-allow-credentials", "true");
-  headers.set("access-control-allow-methods", "GET,POST,PUT,DELETE,OPTIONS");
-  return new Response(response.body, { status: response.status, statusText: response.statusText, headers });
+function invalid(message2) {
+  throw new DomainError("INVALID_REQUEST", message2, 422);
 }
 const index = createApiWorker();
 export {

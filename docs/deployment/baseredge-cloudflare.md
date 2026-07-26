@@ -1,5 +1,7 @@
 # baserEdge on Cloudflare
 
+> **サイトを開設する利用者向けの正規ルートは [お試し開設](provisioning-paths.md)（ブラウザのみ）です。** この文書の `npm` / `wrangler` 手順は **開発者・メンテナ向け** です。
+
 **利用者は自分の Cloudflare アカウントを使う。** baserEdge はそのアカウント内に Workers / D1（必要なら R2）をデプロイする（運営の共有環境ではない）。
 
 **メディア（画像の公開 URL）には R2 が必要です。** 支払い方法の登録だけでは R2 は有効になりません（[R2 チェックアウト](https://developers.cloudflare.com/r2/get-started/)が別途必要）。詳細・支払い手段一覧・デプロイ形態は **[cloudflare-r2-and-media.md](cloudflare-r2-and-media.md)** を正本にしてください。
