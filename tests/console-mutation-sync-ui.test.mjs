@@ -72,3 +72,36 @@ test("TrashPage reloads trash list after restore", () => {
   const reloadAt = source.indexOf("await reload()", restoreAt);
   assert.ok(reloadAt > restoreAt, "restore must be followed by trash list reload");
 });
+
+test("MediaLayout shares media assets via provider; library and upload use context", () => {
+  const layout = readAdmin("pages/media/MediaLayout.tsx");
+  assert.match(layout, /MediaAssetsProvider/);
+  assert.match(layout, /useMediaAssets\(\)/);
+  const library = readAdmin("pages/media/MediaLibraryPage.tsx");
+  const upload = readAdmin("pages/media/MediaUploadPage.tsx");
+  assert.match(library, /useMediaAssetsContext/);
+  assert.match(upload, /useMediaAssetsContext/);
+});
+
+test("CustomEntriesLayout shares entries list; edit page reloads after mutations", () => {
+  const layout = readAdmin("pages/CustomEntriesLayout.tsx");
+  assert.match(layout, /CustomEntriesProvider/);
+  const entries = readAdmin("pages/CustomEntryPages.tsx");
+  assert.match(entries, /useCustomEntriesContext/);
+  assert.match(entries, /await reloadEntries\(\)/);
+  const saveFn = entries.indexOf("async function onSave()");
+  const publishFn = entries.indexOf("async function onPublish()");
+  const unpublishFn = entries.indexOf("async function onUnpublish()");
+  assert.ok(entries.indexOf("await reloadEntries()", saveFn) > saveFn);
+  assert.ok(entries.indexOf("await reloadEntries()", publishFn) > publishFn);
+  assert.ok(entries.indexOf("await reloadEntries()", unpublishFn) > unpublishFn);
+});
+
+test("PluginsPage reloads activations after activate and deactivate", () => {
+  const source = readAdmin("pages/PluginsPage.tsx");
+  assert.match(source, /async function loadActivations/);
+  const activateFn = source.indexOf("async function activate(");
+  const deactivateFn = source.indexOf("async function deactivate(");
+  assert.ok(source.indexOf("await loadActivations()", activateFn) > activateFn);
+  assert.ok(source.indexOf("await loadActivations()", deactivateFn) > deactivateFn);
+});

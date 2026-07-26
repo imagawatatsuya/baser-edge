@@ -13,25 +13,26 @@ Update this table when adding or changing admin mutations.
 | Content tree | Save / publish / unpublish (editor) | revisions, `publishContent` | `reloadContentTree()` + invalidate on trash/restore | Static (editor) |
 | Trash page | Restore | `restoreContent` | `reload()` trash list + `invalidateSiteContentViews` | Golden path restore; static |
 | Approvals | Approve / reject (+ publish) | inbox decide | `invalidateSiteContentViews` + `reload()` | API inbox test |
-| Media library | Upload | upload session | `useMediaAssets.reload()` on upload page | — |
-| Media library | Delete asset | `deleteAsset` | `reload()` on library page | format-asset-delete |
-| Custom entries | Create entry | `POST …/entries` | `reload()` before navigate to editor | — |
-| Custom entry editor | Save / publish / unpublish | custom-entry APIs | `setSnapshot` from GET (detail only); list refreshes on remount | Custom content kernel |
+| Media library | Upload | upload session | `MediaLayout` provider; upload page `reload()` | Static (media layout) |
+| Media library | Delete asset | `deleteAsset` | `useMediaAssetsContext().reload()` on library page | format-asset-delete; static |
+| Custom entries | Create entry | `POST …/entries` | `CustomEntriesLayout` + `reload()` before navigate | Static |
+| Custom entry editor | Save / publish / unpublish | custom-entry APIs | `setSnapshot` + `reloadEntries()` via context | Static; custom content kernel |
+| Plugins | Activate / deactivate | plugin-activations | `loadActivations()` after success | Static |
 | Auth | Logout / site switch | session | `invalidateSiteContentViews` | — |
 
-## P1 (not yet unified)
+## P2 (optional)
 
-| Surface | Gap | Planned sync |
-|---------|-----|----------------|
-| Custom entry editor | List badges stale if user navigates back without remount | Optional shared entries context + `reload()` after publish |
-| Media | Separate `useMediaAssets` per route child | Optional `MediaAssetsProvider` on `MediaLayout` |
-| Themes / plugins | Activation lists | Invalidate or reload when console shows dependent state |
+| Surface | Gap | Notes |
+|---------|-----|-------|
+| Themes (`ActivationsPage`) | Theme activation list | Reload when user returns from activate flow if stale reports appear |
 
 ## Shared helpers
 
 - `apps/admin-web/src/lib/siteViewSync.ts` — `invalidateSiteContentViews()` (content tree cache today)
 - `apps/admin-web/src/lib/contentTrash.ts` — trash/restore + invalidate
 - `apps/admin-web/src/hooks/useContentTree.ts` — tree fetch cache; `ContentTreeProvider` for child routes
+- `apps/admin-web/src/hooks/useMediaAssets.ts` — `MediaAssetsProvider` on `MediaLayout`
+- `apps/admin-web/src/hooks/useCustomEntries.ts` — `CustomEntriesProvider` on `CustomEntriesLayout`
 
 ## Regression tests
 
