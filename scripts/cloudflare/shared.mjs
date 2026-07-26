@@ -138,3 +138,37 @@ export function ensureLoggedIn() {
     throw new Error("Cloudflare に未ログインです。npx wrangler login または CLOUDFLARE_API_TOKEN を設定してください。");
   }
 }
+
+/** Opens the system browser to wrangler login when CLI is not authenticated. */
+export function ensureLoggedInWithBrowser() {
+  const hasToken = Boolean(process.env.CLOUDFLARE_API_TOKEN?.trim());
+  try {
+    wrangler(["whoami"], { silent: true });
+    return;
+  } catch {
+    if (hasToken) {
+      throw new Error("CLOUDFLARE_API_TOKEN が無効です。ダッシュボードでトークンを再作成してください。");
+    }
+  }
+  console.log("ブラウザで Cloudflare にログインします…");
+  wrangler(["login"]);
+  wrangler(["whoami"], { silent: true });
+}
+
+export function readWranglerWhoami() {
+  const raw = wrangler(["whoami", "--json"], { silent: true });
+  return JSON.parse(raw);
+}
+
+export function openInBrowser(url) {
+  const target = String(url);
+  if (process.platform === "win32") {
+    run("cmd", ["/c", "start", "", target], { silent: true });
+    return;
+  }
+  if (process.platform === "darwin") {
+    run("open", [target], { silent: true });
+    return;
+  }
+  run("xdg-open", [target], { silent: true });
+}

@@ -1,5 +1,6 @@
 import {
   DomainError,
+  assertDomain,
   asApprovalId,
   asContentItemId,
   asContentNodeId,
@@ -681,6 +682,56 @@ export class MemoryCmsStore implements CmsStore {
   }
   async getWorkspace(id: WorkspaceId): Promise<Workspace | null> { return clone(this.workspaces.get(id) ?? null); }
   async getSite(id: SiteId): Promise<Site | null> { return clone(this.sites.get(id) ?? null); }
+
+  async findCloudflareLoginTarget(accountId: string, ownerEmail: string): Promise<import("./entities.js").CloudflareLoginTarget | null> {
+    for (const workspace of this.workspaces.values()) {
+      if (workspace.cloudflareAccountId !== accountId || workspace.cloudflareOwnerEmail !== ownerEmail) continue;
+      return this.#cloudflareTargetForWorkspace(workspace);
+    }
+    return null;
+  }
+
+  async findCloudflareLoginTargetByEmail(ownerEmail: string): Promise<import("./entities.js").CloudflareLoginTarget | null> {
+    let match: import("./entities.js").CloudflareLoginTarget | null = null;
+    for (const workspace of this.workspaces.values()) {
+      if (workspace.cloudflareOwnerEmail !== ownerEmail) continue;
+      const target = this.#cloudflareTargetForWorkspace(workspace);
+      if (match) {
+        throw new DomainError("CLOUDFLARE_OWNER_AMBIGUOUS", "Multiple workspaces match this Cloudflare email", 409);
+      }
+      match = target;
+    }
+    return match;
+  }
+
+  async bindCloudflareOwner(input: { cloudflareAccountId: string; cloudflareOwnerEmail: string }): Promise<import("./entities.js").CloudflareLoginTarget> {
+    const workspaces = [...this.workspaces.values()];
+    assertDomain(workspaces.length === 1, "WORKSPACE_COUNT_INVALID", "Exactly one workspace is required to bind Cloudflare owner", 422);
+    const workspace = workspaces[0]!;
+    assertDomain(!workspace.cloudflareAccountId, "CLOUDFLARE_OWNER_ALREADY_BOUND", "Cloudflare owner is already bound", 409);
+    workspace.cloudflareAccountId = input.cloudflareAccountId;
+    workspace.cloudflareOwnerEmail = input.cloudflareOwnerEmail;
+    this.workspaces.set(workspace.id, structuredClone(workspace));
+    return this.#cloudflareTargetForWorkspace(workspace);
+  }
+
+  async hasCloudflareOwnerBinding(): Promise<boolean> {
+    return [...this.workspaces.values()].some((w) => Boolean(w.cloudflareAccountId && w.cloudflareOwnerEmail));
+  }
+
+  #cloudflareTargetForWorkspace(workspace: Workspace): import("./entities.js").CloudflareLoginTarget {
+    const owner = [...this.principals.values()].find((p) => p.workspaceId === workspace.id && p.type === "human");
+    assertDomain(owner, "OWNER_NOT_FOUND", "Workspace owner principal not found", 500);
+    const site = [...this.sites.values()].find((s) => s.workspaceId === workspace.id);
+    assertDomain(site, "SITE_NOT_FOUND", "Workspace site not found", 500);
+    return {
+      workspaceId: workspace.id,
+      ownerPrincipalId: owner.id,
+      siteId: site.id,
+      siteName: site.name,
+    };
+  }
+
   async listOutbox(): Promise<OutboxEvent[]> { return [...this.outbox.values()].map((event) => structuredClone(event)); }
   async listPublishedAssetReferences(assetId: AssetId): Promise<PublishedAssetReference[]> {
     const result: PublishedAssetReference[] = [];

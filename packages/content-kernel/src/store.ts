@@ -190,6 +190,10 @@ export interface CmsStore {
   listAudit(workspaceId: WorkspaceId): Promise<AuditEvent[]>;
   getWorkspace(id: WorkspaceId): Promise<Workspace | null>;
   getSite(id: SiteId): Promise<Site | null>;
+  findCloudflareLoginTarget(accountId: string, ownerEmail: string): Promise<import("./entities.js").CloudflareLoginTarget | null>;
+  findCloudflareLoginTargetByEmail(ownerEmail: string): Promise<import("./entities.js").CloudflareLoginTarget | null>;
+  bindCloudflareOwner(input: { cloudflareAccountId: string; cloudflareOwnerEmail: string }): Promise<import("./entities.js").CloudflareLoginTarget>;
+  hasCloudflareOwnerBinding(): Promise<boolean>;
   listOutbox(): Promise<import("./entities.js").OutboxEvent[]>;
   listPublishedAssetReferences(assetId: AssetId): Promise<PublishedAssetReference[]>;
 }

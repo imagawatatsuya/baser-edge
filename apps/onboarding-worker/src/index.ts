@@ -423,6 +423,14 @@ async function consumeTrialProvisionMessage(
           accountId: body.accountId,
           releaseBaseUrl: trialReleaseBaseUrl(env, body.requestOrigin),
           httpFetch: createTrialReleaseFetch(env.ASSETS, body.requestOrigin),
+          ...(oauthConfigured(env)
+            ? {
+                cmsOAuth: {
+                  clientId: env.BASER_CF_OAUTH_CLIENT_ID.trim(),
+                  clientSecret: env.BASER_CF_OAUTH_CLIENT_SECRET.trim(),
+                },
+              }
+            : {}),
         },
         provisionState,
       );

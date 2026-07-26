@@ -38,6 +38,15 @@ export interface Workspace {
   id: WorkspaceId;
   name: string;
   createdAt: number;
+  cloudflareAccountId?: string | null;
+  cloudflareOwnerEmail?: string | null;
+}
+
+export interface CloudflareLoginTarget {
+  workspaceId: WorkspaceId;
+  ownerPrincipalId: PrincipalId;
+  siteId: SiteId;
+  siteName: string;
 }
 
 export interface Site {

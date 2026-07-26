@@ -1,0 +1,6 @@
+# Never index for AI (secrets and local deploy state)
+deploy/cloudflare-secrets.json
+deploy/cloudflare-state.json
+deploy/cloudflare-state.*.json
+**/.env
+**/.env.*

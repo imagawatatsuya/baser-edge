@@ -59,6 +59,22 @@ export function normalizeSlug(input: string): string {
 }
 
 /** DNS-style hostname for site routing (ASCII labels, no port or path). */
+const CLOUDFLARE_ACCOUNT_ID_RE = /^[a-f0-9]{32}$/i;
+
+export function normalizeCloudflareOwnerEmail(input: string): string {
+  const email = input.normalize("NFC").trim().toLowerCase();
+  assertDomain(email.length > 0, "EMPTY_EMAIL", "Email cannot be empty", 422);
+  assertDomain(email.length <= 254, "EMAIL_TOO_LONG", "Email must be 254 characters or fewer", 422);
+  assertDomain(email.includes("@") && !email.startsWith("@") && !email.endsWith("@"), "INVALID_EMAIL", "Email format is invalid", 422);
+  return email;
+}
+
+export function normalizeCloudflareAccountId(input: string): string {
+  const accountId = input.trim().toLowerCase().replace(/-/g, "");
+  assertDomain(CLOUDFLARE_ACCOUNT_ID_RE.test(accountId), "INVALID_CLOUDFLARE_ACCOUNT_ID", "Cloudflare account id must be 32 hex characters", 422);
+  return accountId;
+}
+
 export function normalizeSiteHostname(input: string): string {
   const hostname = input.normalize("NFC").trim().toLowerCase();
   assertDomain(hostname.length > 0, "INVALID_HOSTNAME", "Hostname cannot be empty", 422);

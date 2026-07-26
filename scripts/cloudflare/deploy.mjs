@@ -28,6 +28,7 @@ import {
   d1DatabaseName,
 } from "./stack.mjs";
 import { applyD1MigrationsRemote } from "./apply-d1-migrations.mjs";
+import { getBootstrapSecret } from "./secrets-store.mjs";
 
 const args = new Set(process.argv.slice(2));
 const doBootstrap = args.has("--bootstrap");
@@ -79,9 +80,13 @@ async function bootstrapSite(state) {
   if (!apiUrl) throw new Error("apiUrl unknown; bootstrap manually via POST /v1/bootstrap");
   const base = apiUrl.replace(/\/$/, "");
   console.log("Bootstrapping workspace/site via POST /v1/bootstrap …");
+  const bootstrapSecret = getBootstrapSecret();
   const res = await fetch(`${base}/v1/bootstrap`, {
     method: "POST",
-    headers: { "content-type": "application/json" },
+    headers: {
+      "content-type": "application/json",
+      ...(bootstrapSecret ? { "x-baser-bootstrap-secret": bootstrapSecret } : {}),
+    },
     body: JSON.stringify({
       workspaceName: "baserEdge",
       siteName: "サイト",

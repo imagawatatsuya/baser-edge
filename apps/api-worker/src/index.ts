@@ -53,6 +53,8 @@ import {
   D1PreviewStore,
   D1ThemeStore,
   D1PluginStore,
+  D1CfOAuthChallengeStore,
+  MemoryCfOAuthChallengeStore,
   WorkersForPlatformsPluginRuntime,
   type DispatchNamespaceLike,
   R2AssetObjectStore,
@@ -91,6 +93,7 @@ import {
   parseInstantOwnerHint,
   resolveActorContext,
 } from "./auth-routes.js";
+import { handleCloudflareAuthRoute } from "./cloudflare-auth-routes.js";
 import { resolveConsoleCapabilities } from "./platform-capabilities.js";
 import { createCorsContext, applyCors } from "./http/cors.js";
 import { buildInitialHomepageBlocks } from "./initial-homepage-blocks.js";
@@ -120,6 +123,11 @@ export interface Env {
   BASER_AUTH_ORIGIN?: string;
   BASER_WEBAUTHN_GATEWAY?: string;
   CF_ACCESS_REQUIRED?: string;
+  CF_ACCESS_TEAM_DOMAIN?: string;
+  CF_ACCESS_AUDIENCE?: string;
+  BASER_CF_OAUTH_CLIENT_ID?: string;
+  BASER_CF_OAUTH_CLIENT_SECRET?: string;
+  BASER_CF_OAUTH_REDIRECT_URI?: string;
 }
 
 const memoryStore = new MemoryCmsStore();
@@ -132,6 +140,7 @@ const memoryCustomContentStore = new MemoryCustomContentStore();
 const memoryMailFormStore = new MemoryMailFormStore();
 const memoryThemeStore = new MemoryThemeStore();
 const memoryPluginStore = new MemoryPluginStore();
+const memoryCfOAuthChallenges = new MemoryCfOAuthChallengeStore();
 const memoryTrustedPluginRuntime = new MemoryTrustedPluginRuntime();
 
 export interface ApiWorkerOptions {
@@ -143,6 +152,8 @@ export interface ApiWorkerOptions {
   resolveThemes?: (env: Env, cms: CmsService) => ThemeService;
   resolvePlugins?: (env: Env, cms: CmsService) => PluginService;
   resolveAuth?: (env: Env, cms: CmsService) => AuthService;
+  /** Test hook: override Cloudflare Access JWT verification */
+  verifyCloudflareAccessJwt?: import("./cloudflare-auth-routes.js").VerifyCloudflareAccessJwtFn;
 }
 
 /** Map public /console/* URL to wrangler assets path (dist root is not under /console). */
@@ -233,6 +244,26 @@ export function createApiWorker(resolveCms: (env: Env) => CmsService = defaultRe
       if (consoleResponse) return consoleResponse;
       const auth = options.resolveAuth?.(env, cms) ?? createAuthService(env, cms);
       cms.attachSecurityHooks({ assertStepUp: (actor, input) => auth.assertStepUp(actor, input) });
+      const cfOAuthChallenges = env.DB
+        ? new D1CfOAuthChallengeStore(env.DB as never)
+        : memoryCfOAuthChallenges;
+      try {
+        const cloudflareAuthResponse = await handleCloudflareAuthRoute(
+          request,
+          url,
+          env,
+          cms,
+          auth,
+          cfOAuthChallenges,
+          Date.now(),
+          options.verifyCloudflareAccessJwt
+            ? { verifyAccessJwt: options.verifyCloudflareAccessJwt }
+            : {},
+        );
+        if (cloudflareAuthResponse) return withCors(cloudflareAuthResponse);
+      } catch (error) {
+        return errorResponse(error);
+      }
       const assets = options.resolveAssets?.(env, cms) ?? createAssetService(env, cms);
       const previews = options.resolvePreviews?.(env, cms) ?? createPreviewService(env, cms);
       const blog = options.resolveBlog?.(env, cms) ?? createBlogService(env, cms);
@@ -278,6 +309,8 @@ export function createApiWorker(resolveCms: (env: Env) => CmsService = defaultRe
               hostname: stringField(body, "hostname"),
               ownerName: stringField(body, "ownerName"),
               ...(typeof body.locale === "string" ? { locale: body.locale } : {}),
+              ...(typeof body.cloudflareAccountId === "string" ? { cloudflareAccountId: body.cloudflareAccountId } : {}),
+              ...(typeof body.cloudflareOwnerEmail === "string" ? { cloudflareOwnerEmail: body.cloudflareOwnerEmail } : {}),
             });
             if (env.BASER_BOOTSTRAP_SECRET) {
               await createInitialHomepage(cms, {
@@ -294,6 +327,15 @@ export function createApiWorker(resolveCms: (env: Env) => CmsService = defaultRe
               cause: cause.slice(0, 500),
             });
           }
+        }
+        if (request.method === "POST" && url.pathname === "/v1/bootstrap/cloudflare-owner") {
+          assertBootstrapAllowed(request, env);
+          const body = await readJson(request);
+          const target = await cms.bindCloudflareOwner({
+            cloudflareAccountId: stringField(body, "cloudflareAccountId"),
+            cloudflareOwnerEmail: stringField(body, "cloudflareOwnerEmail"),
+          });
+          return json(target, 200);
         }
 
         const uploadMatch = url.pathname.match(/^\/v1\/assets\/uploads\/([^/]+)$/);

@@ -136,6 +136,15 @@ export async function logoutApi(): Promise<void> {
   }
 }
 
+export async function fetchCloudflareEntry(): Promise<{ available: boolean; label?: string; mode?: "oauth" | "access" }> {
+  return apiFetch("/v1/auth/cloudflare/entry");
+}
+
+export function startCloudflareLogin(mode: "oauth" | "access" = "oauth"): void {
+  const path = mode === "access" ? "/v1/auth/access/login" : "/v1/auth/cloudflare/login";
+  window.location.assign(path);
+}
+
 export async function fetchInstantEntry(): Promise<{ available: boolean; siteName?: string; siteId?: string; publicUrl?: string }> {
   return apiFetch("/v1/auth/instant-entry");
 }

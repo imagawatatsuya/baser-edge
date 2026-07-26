@@ -192,6 +192,22 @@ export class AuthService {
     return issue;
   }
 
+  /** Verified Cloudflare identity (OAuth or Access JWT). Step-up required for high-risk CMS operations. */
+  async issueCloudflareIdentitySession(input: {
+    workspaceId: WorkspaceId;
+    principalId: PrincipalId;
+    userAgent?: string | null;
+    ipHint?: string | null;
+  }): Promise<SessionIssueResult> {
+    await this.#requireHumanPrincipal(input.principalId, input.workspaceId);
+    return this.#issueSession({
+      workspaceId: input.workspaceId,
+      principalId: input.principalId,
+      userAgent: input.userAgent ?? null,
+      ipHint: input.ipHint ?? null,
+    });
+  }
+
   async finishLogin(input: {
     challengeId: WebAuthnChallengeId;
     response: AuthenticationResponseJSON;

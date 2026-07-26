@@ -29,6 +29,7 @@ export type TrialReleaseConfig = {
   releaseBaseUrl: string;
   /** Use ASSETS binding for same-origin /trial-release (avoids worker self-fetch 404). */
   httpFetch?: typeof fetch;
+  cmsOAuth?: { clientId: string; clientSecret: string };
 };
 
 function releaseUrl(base: string, path: string): string {
@@ -65,7 +66,11 @@ export function randomTrialSecret(bytes = 32): string {
   return btoa(s).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
 }
 
-export async function bootstrapTrialRemote(apiUrl: string, bootstrapSecret: string): Promise<{
+export async function bootstrapTrialRemote(
+  apiUrl: string,
+  bootstrapSecret: string,
+  cloudflare?: { accountId: string; ownerEmail: string },
+): Promise<{
   workspaceId: string;
   siteId: string;
   ownerPrincipalId: string;
@@ -83,6 +88,9 @@ export async function bootstrapTrialRemote(apiUrl: string, bootstrapSecret: stri
       hostname: "demo.baseredge.local",
       ownerName: "Owner",
       locale: "ja-JP",
+      ...(cloudflare
+        ? { cloudflareAccountId: cloudflare.accountId, cloudflareOwnerEmail: cloudflare.ownerEmail }
+        : {}),
     }),
   });
   const body = (await res.json().catch(() => ({}))) as {

@@ -199,6 +199,12 @@ describe("cf-trial-provision log parse", () => {
         if (url.pathname.endsWith("/subdomain")) {
           return Response.json({ success: true, result: { enabled: true } });
         }
+        if (url.pathname === "/client/v4/user") {
+          return Response.json({ success: true, result: { email: "owner@example.com" } });
+        }
+        if (url.pathname === "/client/v4/accounts") {
+          return Response.json({ success: true, result: [{ id: "a".repeat(32) }] });
+        }
         return Response.json({ success: true, result: {} });
       }
       if (url.hostname.startsWith("baser-edge-trial-migrate.")) {

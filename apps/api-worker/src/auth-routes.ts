@@ -24,6 +24,8 @@ export interface AuthEnv {
   CF_ACCESS_REQUIRED?: string;
   BASER_INSTANT_LOGIN?: string;
   BASER_INSTANT_OWNER_HINT?: string;
+  BASER_CF_OAUTH_CLIENT_ID?: string;
+  BASER_CF_OAUTH_CLIENT_SECRET?: string;
 }
 
 export type InstantOwnerHint = {
@@ -58,6 +60,7 @@ export function parseInstantOwnerHint(raw: string | undefined): InstantOwnerHint
 }
 
 export function instantLoginEnabled(env: AuthEnv): boolean {
+  if (env.BASER_CF_OAUTH_CLIENT_ID?.trim() && env.BASER_CF_OAUTH_CLIENT_SECRET?.trim()) return false;
   return !isProductionEnv(env) && env.BASER_INSTANT_LOGIN === "true" && Boolean(parseInstantOwnerHint(env.BASER_INSTANT_OWNER_HINT));
 }
 

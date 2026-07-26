@@ -26,7 +26,7 @@ import {
   type CapabilityScope,
   type AuthorizationResource,
 } from "@baser-edge/authorization";
-import { childPath, normalizePath, normalizeSiteHostname, normalizeSlug } from "@baser-edge/baser-domain";
+import { childPath, normalizeCloudflareAccountId, normalizeCloudflareOwnerEmail, normalizePath, normalizeSiteHostname, normalizeSlug } from "@baser-edge/baser-domain";
 import {
   createDefaultComponentRegistry,
   createEmptyDocument,
@@ -57,6 +57,8 @@ export interface BootstrapInput {
   hostname: string;
   ownerName: string;
   locale?: string;
+  cloudflareAccountId?: string;
+  cloudflareOwnerEmail?: string;
 }
 
 export interface BootstrapResult {
@@ -172,6 +174,20 @@ export class CmsService {
   }
 
   async bootstrap(input: BootstrapInput): Promise<BootstrapResult> {
+    const cloudflareAccountId = input.cloudflareAccountId
+      ? normalizeCloudflareAccountId(input.cloudflareAccountId)
+      : null;
+    const cloudflareOwnerEmail = input.cloudflareOwnerEmail
+      ? normalizeCloudflareOwnerEmail(input.cloudflareOwnerEmail)
+      : null;
+    if (cloudflareAccountId !== null || cloudflareOwnerEmail !== null) {
+      assertDomain(
+        cloudflareAccountId !== null && cloudflareOwnerEmail !== null,
+        "CLOUDFLARE_OWNER_INCOMPLETE",
+        "cloudflareAccountId and cloudflareOwnerEmail must be set together",
+        422,
+      );
+    }
     const now = this.#clock.now();
     const workspaceId = newId("workspace") as WorkspaceId;
     const siteId = asSiteId(newId("site"));
@@ -191,7 +207,13 @@ export class CmsService {
       scope: { workspaceId },
     };
     await this.#store.bootstrap({
-      workspace: { id: workspaceId, name: input.workspaceName, createdAt: now },
+      workspace: {
+        id: workspaceId,
+        name: input.workspaceName,
+        createdAt: now,
+        cloudflareAccountId,
+        cloudflareOwnerEmail,
+      },
       owner,
       site: {
         id: siteId,
@@ -206,6 +228,25 @@ export class CmsService {
       ownerGrant,
     });
     return { workspaceId, siteId, ownerPrincipalId: ownerId };
+  }
+
+  async findCloudflareLoginTarget(accountId: string, ownerEmail: string): Promise<import("./entities.js").CloudflareLoginTarget | null> {
+    return this.#store.findCloudflareLoginTarget(accountId, ownerEmail);
+  }
+
+  async findCloudflareLoginTargetByEmail(ownerEmail: string): Promise<import("./entities.js").CloudflareLoginTarget | null> {
+    return this.#store.findCloudflareLoginTargetByEmail(ownerEmail);
+  }
+
+  async bindCloudflareOwner(input: { cloudflareAccountId: string; cloudflareOwnerEmail: string }): Promise<import("./entities.js").CloudflareLoginTarget> {
+    return this.#store.bindCloudflareOwner({
+      cloudflareAccountId: normalizeCloudflareAccountId(input.cloudflareAccountId),
+      cloudflareOwnerEmail: normalizeCloudflareOwnerEmail(input.cloudflareOwnerEmail),
+    });
+  }
+
+  async hasCloudflareOwnerBinding(): Promise<boolean> {
+    return this.#store.hasCloudflareOwnerBinding();
   }
 
   async createPrincipal(actor: ActorContext, input: { workspaceId: WorkspaceId; type: Principal["type"]; displayName: string }): Promise<Principal> {

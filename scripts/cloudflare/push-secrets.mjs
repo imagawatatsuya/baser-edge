@@ -10,9 +10,14 @@ const SECRET_KEYS = [
   "BASER_BOOTSTRAP_SECRET",
 ];
 
+const OPTIONAL_SECRET_KEYS = [
+  "BASER_CF_OAUTH_CLIENT_ID",
+  "BASER_CF_OAUTH_CLIENT_SECRET",
+];
+
 export function pushApiSecrets() {
   const secrets = ensureSecretsFile();
-  for (const key of SECRET_KEYS) {
+  for (const key of [...SECRET_KEYS, ...OPTIONAL_SECRET_KEYS]) {
     const value = secrets[key];
     if (!value) continue;
     console.log(`wrangler secret put ${key} (api)…`);

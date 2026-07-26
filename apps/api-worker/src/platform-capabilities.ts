@@ -1,3 +1,4 @@
+import { cloudflareOAuthConfigured } from "./cloudflare-auth-routes.js";
 import { instantLoginEnabled, isProductionEnv, type AuthEnv } from "./auth-routes.js";
 
 export type ConsoleCapabilities = {
@@ -5,6 +6,7 @@ export type ConsoleCapabilities = {
   assetStorage: "r2" | "memory";
   environment: "production" | "preview";
   instantLogin: boolean;
+  cloudflareLogin: boolean;
   publicSiteUrl: string | null;
 };
 
@@ -22,6 +24,7 @@ export function resolveConsoleCapabilities(env: PlatformEnv): ConsoleCapabilitie
     assetStorage: assetPublicDelivery ? "r2" : "memory",
     environment: isProductionEnv(env) ? "production" : "preview",
     instantLogin: instantLoginEnabled(env),
+    cloudflareLogin: cloudflareOAuthConfigured(env),
     publicSiteUrl: pickPublicSiteUrl(env),
   };
 }

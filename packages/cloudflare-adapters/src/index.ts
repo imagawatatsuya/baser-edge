@@ -52,6 +52,7 @@ import type {
   StoredRoute,
   TrashEntry,
   Workspace,
+  CloudflareLoginTarget,
   BootstrapRecordInput,
   CommitRevisionRecordInput,
   CopyContentRecordInput,
@@ -113,7 +114,14 @@ export class D1CmsStore implements CmsStore {
 
   async bootstrap(input: BootstrapRecordInput): Promise<void> {
     await this.#batch([
-      this.#db.prepare("INSERT INTO workspaces(id,name,created_at) VALUES(?,?,?)").bind(input.workspace.id, input.workspace.name, input.workspace.createdAt),
+      this.#db.prepare("INSERT INTO workspaces(id,name,created_at,cloudflare_account_id,cloudflare_owner_email) VALUES(?,?,?,?,?)")
+        .bind(
+          input.workspace.id,
+          input.workspace.name,
+          input.workspace.createdAt,
+          input.workspace.cloudflareAccountId ?? null,
+          input.workspace.cloudflareOwnerEmail ?? null,
+        ),
       this.#db.prepare("INSERT INTO principals(id,workspace_id,principal_type,display_name,state,created_at) VALUES(?,?,?,?,?,?)").bind(input.owner.id, input.owner.workspaceId, input.owner.type, input.owner.displayName, input.owner.state, input.owner.createdAt),
       this.#db.prepare("INSERT INTO sites(id,workspace_id,name,hostname,locale,state,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?)").bind(input.site.id, input.site.workspaceId, input.site.name, input.site.hostname, input.site.locale, input.site.state, input.site.createdAt, input.site.updatedAt),
       this.#grantStatement(input.ownerGrant, input.workspace.createdAt),
@@ -581,7 +589,60 @@ export class D1CmsStore implements CmsStore {
   }
   async getWorkspace(id: WorkspaceId): Promise<Workspace | null> {
     const row = await this.#db.prepare("SELECT * FROM workspaces WHERE id=?").bind(id).first<WorkspaceRow>();
-    return row ? { id: row.id as WorkspaceId, name: row.name, createdAt: row.created_at } : null;
+    return row ? mapWorkspace(row) : null;
+  }
+  async findCloudflareLoginTarget(accountId: string, ownerEmail: string): Promise<CloudflareLoginTarget | null> {
+    const row = await this.#db.prepare(
+      `SELECT w.id AS workspace_id, w.name AS workspace_name, p.id AS owner_principal_id, s.id AS site_id, s.name AS site_name
+       FROM workspaces w
+       JOIN principals p ON p.workspace_id = w.id AND p.principal_type = 'human'
+       JOIN sites s ON s.workspace_id = w.id
+       WHERE w.cloudflare_account_id = ? AND w.cloudflare_owner_email = ?
+       LIMIT 1`,
+    ).bind(accountId, ownerEmail).first<CloudflareLoginRow>();
+    return row ? {
+      workspaceId: row.workspace_id as WorkspaceId,
+      ownerPrincipalId: asPrincipalId(row.owner_principal_id),
+      siteId: asSiteId(row.site_id),
+      siteName: row.site_name,
+    } : null;
+  }
+  async findCloudflareLoginTargetByEmail(ownerEmail: string): Promise<CloudflareLoginTarget | null> {
+    const rows = await this.#db.prepare(
+      `SELECT w.id AS workspace_id, w.name AS workspace_name, p.id AS owner_principal_id, s.id AS site_id, s.name AS site_name
+       FROM workspaces w
+       JOIN principals p ON p.workspace_id = w.id AND p.principal_type = 'human'
+       JOIN sites s ON s.workspace_id = w.id
+       WHERE w.cloudflare_owner_email = ?`,
+    ).bind(ownerEmail).all<CloudflareLoginRow>();
+    if (rows.results.length === 0) return null;
+    if (rows.results.length > 1) {
+      throw new DomainError("CLOUDFLARE_OWNER_AMBIGUOUS", "Multiple workspaces match this Cloudflare email", 409);
+    }
+    const row = rows.results[0]!;
+    return {
+      workspaceId: row.workspace_id as WorkspaceId,
+      ownerPrincipalId: asPrincipalId(row.owner_principal_id),
+      siteId: asSiteId(row.site_id),
+      siteName: row.site_name,
+    };
+  }
+  async bindCloudflareOwner(input: { cloudflareAccountId: string; cloudflareOwnerEmail: string }): Promise<CloudflareLoginTarget> {
+    const workspaces = await this.#db.prepare("SELECT id, cloudflare_account_id FROM workspaces").all<{ id: string; cloudflare_account_id: string | null }>();
+    assertDomain(workspaces.results.length === 1, "WORKSPACE_COUNT_INVALID", "Exactly one workspace is required to bind Cloudflare owner", 422);
+    const workspace = workspaces.results[0]!;
+    assertDomain(!workspace.cloudflare_account_id, "CLOUDFLARE_OWNER_ALREADY_BOUND", "Cloudflare owner is already bound", 409);
+    await this.#db.prepare("UPDATE workspaces SET cloudflare_account_id=?, cloudflare_owner_email=? WHERE id=?")
+      .bind(input.cloudflareAccountId, input.cloudflareOwnerEmail, workspace.id).run();
+    const target = await this.findCloudflareLoginTarget(input.cloudflareAccountId, input.cloudflareOwnerEmail);
+    assertDomain(target, "CLOUDFLARE_OWNER_BIND_FAILED", "Failed to bind Cloudflare owner", 500);
+    return target;
+  }
+  async hasCloudflareOwnerBinding(): Promise<boolean> {
+    const row = await this.#db.prepare(
+      "SELECT 1 AS ok FROM workspaces WHERE cloudflare_account_id IS NOT NULL AND cloudflare_owner_email IS NOT NULL LIMIT 1",
+    ).first<{ ok: number }>();
+    return Boolean(row);
   }
   async getSite(id: SiteId): Promise<Site | null> {
     const row = await this.#db.prepare("SELECT * FROM sites WHERE id=?").bind(id).first<SiteRow>();
@@ -839,7 +900,17 @@ function pickLatestCanonicalRouteByContentItem(routeRows: RouteRow[]): Map<strin
   return map;
 }
 
-type WorkspaceRow={id:string;name:string;created_at:number};
+type WorkspaceRow={id:string;name:string;created_at:number;cloudflare_account_id:string|null;cloudflare_owner_email:string|null};
+type CloudflareLoginRow={workspace_id:string;workspace_name:string;owner_principal_id:string;site_id:string;site_name:string};
+function mapWorkspace(row: WorkspaceRow): Workspace {
+  return {
+    id: row.id as WorkspaceId,
+    name: row.name,
+    createdAt: row.created_at,
+    cloudflareAccountId: row.cloudflare_account_id,
+    cloudflareOwnerEmail: row.cloudflare_owner_email,
+  };
+}
 type SiteRow={id:string;workspace_id:string;name:string;hostname:string;locale:string;state:Site["state"];created_at:number;updated_at:number};
 type PrincipalRow={id:string;workspace_id:string;principal_type:Principal["type"];display_name:string;state:Principal["state"];created_at:number};
 type GrantRow={id:string;principal_id:string;capability:string;scope_json:string;valid_from:number|null;valid_until:number|null;revoked_at:number|null};
@@ -1111,3 +1182,4 @@ export * from "./theme.js";
 
 export * from "./plugin.js";
 export * from "./auth.js";
+export * from "./cf-oauth-challenges.js";

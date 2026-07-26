@@ -25,6 +25,7 @@ import {
   waitForBootstrapSecret,
   type TrialReleaseConfig,
 } from "./run-trial-provision-release.js";
+import { fetchTrialProvisionerIdentity } from "./cf-provisioner-identity.js";
 
 export const TRIAL_PROVISION_STEP_API_BUDGET = 35;
 export const TRIAL_PROVISION_ROUTE_PROBE_ATTEMPTS = 12;
@@ -354,7 +355,12 @@ export async function runTrialProvisionReleaseStep(
     case "secrets": {
       const secrets = requiredSecrets(state);
       const manifest = await loadTrialReleaseManifest(config);
-      await putWorkerSecrets(token, accountId, manifest.apiWorkerName, secrets, budget);
+      const apiSecrets: Record<string, string> = { ...secrets };
+      if (config.cmsOAuth?.clientId && config.cmsOAuth.clientSecret) {
+        apiSecrets.BASER_CF_OAUTH_CLIENT_ID = config.cmsOAuth.clientId;
+        apiSecrets.BASER_CF_OAUTH_CLIENT_SECRET = config.cmsOAuth.clientSecret;
+      }
+      await putWorkerSecrets(token, accountId, manifest.apiWorkerName, apiSecrets, budget);
       await putWorkerSecrets(token, accountId, manifest.publicWorkerName, {
         PREVIEW_SECRET: secrets.PREVIEW_SECRET,
         MAIL_FORM_SECRET: secrets.MAIL_FORM_SECRET,
@@ -387,7 +393,8 @@ export async function runTrialProvisionReleaseStep(
       requiredString(state, "databaseId");
       requiredString(state, "publicUrl");
       const secrets = requiredSecrets(state);
-      const bootstrap = await bootstrapTrialRemote(apiUrl, secrets.BASER_BOOTSTRAP_SECRET);
+      const identity = await fetchTrialProvisionerIdentity(token, accountId);
+      const bootstrap = await bootstrapTrialRemote(apiUrl, secrets.BASER_BOOTSTRAP_SECRET, identity);
       return {
         done: false,
         state: { ...state, stage: "deploy-public-final", bootstrap },
@@ -429,15 +436,6 @@ export async function runTrialProvisionReleaseStep(
       requiredSecrets(state);
       const manifest = await loadTrialReleaseManifest(config);
       const apiModule = await fetchTrialReleaseText(config, releaseUrl(releaseBaseUrl, manifest.apiModule));
-      const ownerHint = state.bootstrap
-        ? JSON.stringify({
-            workspaceId: state.bootstrap.workspaceId,
-            ownerPrincipalId: state.bootstrap.ownerPrincipalId,
-            siteId: state.bootstrap.siteId,
-            siteName: "マイサイト",
-            publicUrl: publicUrl.replace(/\/$/, ""),
-          })
-        : "";
       await putWorkerScript(token, accountId, manifest.apiWorkerName, "index.js", apiModule, {
         d1DatabaseId: databaseId,
         keepAssets: true,
@@ -447,8 +445,8 @@ export async function runTrialProvisionReleaseStep(
           PUBLIC_BASE_URL: apiUrl,
           PREVIEW_BASE_URL: publicUrl,
           PLUGIN_OUTBOUND_POLICY_ENFORCED: "false",
-          BASER_INSTANT_LOGIN: state.bootstrap ? "true" : "false",
-          BASER_INSTANT_OWNER_HINT: ownerHint,
+          BASER_INSTANT_LOGIN: "false",
+          BASER_INSTANT_OWNER_HINT: "",
         },
       }, budget);
       await publishWorkerToWorkersDev(token, accountId, manifest.apiWorkerName, budget, {

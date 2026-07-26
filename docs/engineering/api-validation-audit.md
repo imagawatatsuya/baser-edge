@@ -61,6 +61,12 @@ Living inventory of **existing** `/v1/*` routes against [validation-policy.md](.
 | `/v1/auth/sessions` | GET, DELETE | Y | Y | Partial | Partial | |
 | `/v1/auth/logout` | POST | Y | Y | Partial | Partial | CSRF |
 | `/v1/auth/step-up/*` | POST | Y | Y | Y | OK | Golden path |
+| `/v1/auth/cloudflare/entry` | GET | Y | — | Partial | Partial | OAuth or Access (`CF_ACCESS_*`); `tests/cloudflare-auth.test.mjs` |
+| `/v1/auth/cloudflare/login` | GET | Y | — | Partial | Partial | OAuth redirect; PKCE state in D1 |
+| `/v1/auth/cloudflare/callback` | GET | Y | — | Partial | Partial | Matches bound CF account + email |
+| `/v1/auth/access/entry` | GET | Y | — | Partial | Partial | Requires `CF_ACCESS_*` + owner bind |
+| `/v1/auth/access/login` | GET | Y | — | Partial | Partial | Verified Access JWT + owner email |
+| `/v1/bootstrap/cloudflare-owner` | POST | Y | Y | Partial | Partial | Bootstrap secret; bind once; domain normalizes IDs |
 
 ---
 

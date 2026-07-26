@@ -1,10 +1,15 @@
 import { buildTestAuthenticationResponse, buildTestRegistrationResponse } from "@baser-edge/auth-kernel";
+import { getBootstrapSecret } from "./secrets-store.mjs";
 
 export async function bootstrapRemote(apiUrl) {
   const base = apiUrl.replace(/\/$/, "");
+  const bootstrapSecret = getBootstrapSecret();
   const res = await fetch(`${base}/v1/bootstrap`, {
     method: "POST",
-    headers: { "content-type": "application/json" },
+    headers: {
+      "content-type": "application/json",
+      ...(bootstrapSecret ? { "x-baser-bootstrap-secret": bootstrapSecret } : {}),
+    },
     body: JSON.stringify({
       workspaceName: "baserEdge Demo",
       siteName: "デモサイト",
