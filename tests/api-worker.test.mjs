@@ -472,3 +472,79 @@ test("API tree mutations return 409 for stale expectedTreeVersion", async () => 
   assert.equal(stale.status, 409);
   assert.equal((await stale.json()).error?.code, "TREE_CONFLICT");
 });
+
+test("API rejects invalid workspaceId query on asset list", async () => {
+  const localCms = new CmsService(new MemoryCmsStore());
+  const localWorker = createApiWorker(() => localCms);
+  const bootstrapResponse = await localWorker.fetch(new Request("https://api.test/v1/bootstrap", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ workspaceName: "WsQuery", siteName: "S", hostname: "ws-query.test", ownerName: "Owner" }),
+  }), {});
+  const boot = await bootstrapResponse.json();
+  const headers = { "x-baser-principal-id": boot.ownerPrincipalId, "x-baser-principal-type": "human" };
+  const rejected = await localWorker.fetch(new Request("https://api.test/v1/assets?workspaceId=not-a-workspace", { headers }), {});
+  assert.equal(rejected.status, 422);
+});
+
+test("API rejects malformed agent proposal operations", async () => {
+  const localCms = new CmsService(new MemoryCmsStore());
+  const localWorker = createApiWorker(() => localCms);
+  const bootstrapResponse = await localWorker.fetch(new Request("https://api.test/v1/bootstrap", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ workspaceName: "Agent", siteName: "Agent", hostname: "agent-api.test", ownerName: "Owner" }),
+  }), {});
+  const boot = await bootstrapResponse.json();
+  const headers = { "content-type": "application/json", "x-baser-principal-id": boot.ownerPrincipalId, "x-baser-principal-type": "human" };
+  const pageResponse = await localWorker.fetch(new Request("https://api.test/v1/pages", {
+    method: "POST",
+    headers,
+    body: JSON.stringify({
+      siteId: boot.siteId,
+      slug: "agent-probe",
+      title: "Probe",
+      document: {
+        formatVersion: 1,
+        root: { id: "root", type: "page", componentVersion: 1, props: {}, slots: { body: [] } },
+      },
+    }),
+  }), {});
+  assert.equal(pageResponse.status, 201);
+  const page = await pageResponse.json();
+  const contentId = page.item.id;
+  const snapshotResponse = await localWorker.fetch(new Request(`https://api.test/v1/content/${contentId}`, { headers }), {});
+  const snapshot = await snapshotResponse.json();
+  const rejected = await localWorker.fetch(new Request(`https://api.test/v1/content/${contentId}/agent-proposals`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({
+      baseRevisionId: snapshot.workingRevision.id,
+      expectedLockVersion: snapshot.item.lockVersion,
+      operations: [{ kind: "not-supported" }],
+      instructionSummary: "test",
+      modelProvider: "test",
+      modelName: "test",
+    }),
+  }), {});
+  assert.equal(rejected.status, 422);
+  assert.match((await rejected.json()).error?.message ?? "", /operations\[0\]\.kind/);
+});
+
+test("API plugin-routes POST rejects non-object JSON body", async () => {
+  const localCms = new CmsService(new MemoryCmsStore());
+  const localWorker = createApiWorker(() => localCms);
+  const bootstrapResponse = await localWorker.fetch(new Request("https://api.test/v1/bootstrap", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ workspaceName: "PluginRoute", siteName: "P", hostname: "plugin-route.test", ownerName: "Owner" }),
+  }), {});
+  const boot = await bootstrapResponse.json();
+  const headers = { "content-type": "application/json", "x-baser-principal-id": boot.ownerPrincipalId, "x-baser-principal-type": "human" };
+  const rejected = await localWorker.fetch(new Request(`https://api.test/v1/plugin-routes/demo?workspaceId=${encodeURIComponent(boot.workspaceId)}`, {
+    method: "POST",
+    headers,
+    body: "[]",
+  }), {});
+  assert.equal(rejected.status, 422);
+});

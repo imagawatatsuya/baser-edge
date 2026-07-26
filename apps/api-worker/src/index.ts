@@ -27,6 +27,7 @@ import {
   asPluginId,
   asPluginReleaseId,
   asPluginActivationId,
+  asWorkspaceId,
   type ActorContext,
   type PrincipalType,
   type SiteId,
@@ -39,6 +40,8 @@ import {
 } from "@baser-edge/content-kernel";
 import {
   createEmptyDocument,
+  type BlockNode,
+  type BlockOperation,
 } from "@baser-edge/structured-document";
 import { AgentOperations } from "@baser-edge/agent-tools";
 import {
@@ -315,36 +318,36 @@ export function createApiWorker(resolveCms: (env: Env) => CmsService = defaultRe
         if (request.method === "POST" && url.pathname === "/v1/plugins") {
           const body = await readJson(request);
           return json(await plugins.createPlugin(context, {
-            workspaceId: stringField(body,"workspaceId") as WorkspaceId, key:stringField(body,"key"), name:stringField(body,"name"),
+            workspaceId: workspaceIdBodyField(body, "workspaceId"), key:stringField(body,"key"), name:stringField(body,"name"),
             trust: pluginTrust(body.trust), ...(typeof body.description === "string" ? {description:body.description}:{}),
           }),201);
         }
         const workspacePluginsMatch=url.pathname.match(/^\/v1\/workspaces\/([^/]+)\/plugins$/);
-        if(request.method==="GET"&&workspacePluginsMatch?.[1])return json(await plugins.listPlugins(context,workspacePluginsMatch[1] as WorkspaceId));
+        if(request.method==="GET"&&workspacePluginsMatch?.[1])return json(await plugins.listPlugins(context,workspacePathId(workspacePluginsMatch[1])));
         const pluginReleasesMatch=url.pathname.match(/^\/v1\/plugins\/([^/]+)\/releases$/);
         if(request.method==="POST"&&pluginReleasesMatch?.[1]){const body=await readJson(request);return json(await plugins.createRelease(context,{pluginId:asPluginId(pluginReleasesMatch[1]),version:stringField(body,"version"),manifest:pluginManifestField(body.manifest),bundle:pluginBundleField(body.bundle)}),201);}
         if(request.method==="GET"&&pluginReleasesMatch?.[1])return json(await plugins.listReleases(context,asPluginId(pluginReleasesMatch[1])));
         const pluginInvocationsMatch=url.pathname.match(/^\/v1\/plugin-releases\/([^/]+)\/invocations$/);
         if(request.method==="GET"&&pluginInvocationsMatch?.[1])return json(await plugins.listInvocations(context,asPluginReleaseId(pluginInvocationsMatch[1])));
         const pluginActivationsMatch=url.pathname.match(/^\/v1\/workspaces\/([^/]+)\/plugin-activations$/);
-        if(request.method==="POST"&&pluginActivationsMatch?.[1]){const body=await readJson(request);return json(await plugins.activate(context,{workspaceId:pluginActivationsMatch[1] as WorkspaceId,siteId:typeof body.siteId==="string"?asSiteId(body.siteId):null,pluginReleaseId:asPluginReleaseId(stringField(body,"pluginReleaseId")),grantedCapabilities:pluginCapabilitiesField(body.grantedCapabilities),allowedHosts:typeof body.allowedHosts==="undefined"?[]:stringArray(body.allowedHosts,"allowedHosts")}),201);}
-        if(request.method==="GET"&&pluginActivationsMatch?.[1]){const siteId=url.searchParams.get("siteId");return json(await plugins.listActivations(context,pluginActivationsMatch[1] as WorkspaceId,...(siteId?[asSiteId(siteId)]:[])));}
+        if(request.method==="POST"&&pluginActivationsMatch?.[1]){const body=await readJson(request);return json(await plugins.activate(context,{workspaceId:workspacePathId(pluginActivationsMatch[1]),siteId:typeof body.siteId==="string"?asSiteId(parsePrefixedId("site",body.siteId,"siteId")):null,pluginReleaseId:asPluginReleaseId(stringField(body,"pluginReleaseId")),grantedCapabilities:pluginCapabilitiesField(body.grantedCapabilities),allowedHosts:typeof body.allowedHosts==="undefined"?[]:stringArray(body.allowedHosts,"allowedHosts")}),201);}
+        if(request.method==="GET"&&pluginActivationsMatch?.[1]){const siteId=url.searchParams.get("siteId");return json(await plugins.listActivations(context,workspacePathId(pluginActivationsMatch[1]),...(siteId?[asSiteId(parsePrefixedId("site",siteId,"siteId"))]:[])));}
         const pluginActivationMatch=url.pathname.match(/^\/v1\/plugin-activations\/([^/]+)$/);
         if(request.method==="DELETE"&&pluginActivationMatch?.[1]){await plugins.deactivate(context,asPluginActivationId(pluginActivationMatch[1]));return new Response(null,{status:204});}
         const pluginAdminMatch=url.pathname.match(/^\/v1\/workspaces\/([^/]+)\/plugin-admin-extensions$/);
-        if(request.method==="GET"&&pluginAdminMatch?.[1])return json(await plugins.listAdminExtensions(context,pluginAdminMatch[1] as WorkspaceId,url.searchParams.get("siteId")?asSiteId(url.searchParams.get("siteId")!):null));
+        if(request.method==="GET"&&pluginAdminMatch?.[1])return json(await plugins.listAdminExtensions(context,workspacePathId(pluginAdminMatch[1]),url.searchParams.get("siteId")?asSiteId(parsePrefixedId("site",url.searchParams.get("siteId")!,"siteId")):null));
         const pluginRouteMatch=url.pathname.match(/^\/v1\/plugin-routes\/([^/]+)(\/.*)?$/);
         if((request.method==="GET"||request.method==="POST")&&pluginRouteMatch?.[1]){
-          const workspaceId=url.searchParams.get("workspaceId");if(!workspaceId)invalid("workspaceId query parameter is required");
+          const workspaceId=workspaceQueryParam(url.searchParams);
           const query=Object.fromEntries([...url.searchParams.entries()].filter(([key])=>key!=="workspaceId"&&key!=="siteId"));
-          const result=await plugins.invokeRoute(context,{workspaceId:workspaceId as WorkspaceId,siteId:url.searchParams.get("siteId")?asSiteId(url.searchParams.get("siteId")!):null,pluginKey:pluginRouteMatch[1],method:request.method,path:pluginRouteMatch[2]??"/",query,headers:Object.fromEntries(request.headers),body:request.method==="POST"?await readOptionalJson(request):null});
+          const result=await plugins.invokeRoute(context,{workspaceId,siteId:optionalSiteQueryParam(url.searchParams),pluginKey:pluginRouteMatch[1],method:request.method,path:pluginRouteMatch[2]??"/",query,headers:Object.fromEntries(request.headers),body:request.method==="POST"?await readOptionalPluginRouteBody(request):null});
           return withCors(new Response(result.body,{status:result.status,headers:result.headers}));
         }
 
         if (request.method === "POST" && url.pathname === "/v1/principals") {
           const body = await readJson(request);
           return json(await cms.createPrincipal(context, {
-            workspaceId: stringField(body, "workspaceId") as WorkspaceId,
+            workspaceId: workspaceIdBodyField(body, "workspaceId"),
             type: principalType(body.type),
             displayName: stringField(body, "displayName"),
           }), 201);
@@ -361,10 +364,10 @@ export function createApiWorker(resolveCms: (env: Env) => CmsService = defaultRe
         }
         if (request.method === "POST" && url.pathname === "/v1/themes") {
           const body = await readJson(request);
-          return json(await themes.createTheme(context, { workspaceId: stringField(body, "workspaceId") as WorkspaceId, key: stringField(body, "key"), name: stringField(body, "name"), ...(typeof body.description === "string" ? { description: body.description } : {}) }), 201);
+          return json(await themes.createTheme(context, { workspaceId: workspaceIdBodyField(body, "workspaceId"), key: stringField(body, "key"), name: stringField(body, "name"), ...(typeof body.description === "string" ? { description: body.description } : {}) }), 201);
         }
         const workspaceThemesMatch = url.pathname.match(/^\/v1\/workspaces\/([^/]+)\/themes$/);
-        if (request.method === "GET" && workspaceThemesMatch?.[1]) return json(await themes.listThemes(context, workspaceThemesMatch[1] as WorkspaceId));
+        if (request.method === "GET" && workspaceThemesMatch?.[1]) return json(await themes.listThemes(context, workspacePathId(workspaceThemesMatch[1])));
         const tokenRevisionMatch = url.pathname.match(/^\/v1\/themes\/([^/]+)\/token-revisions$/);
         if (request.method === "POST" && tokenRevisionMatch?.[1]) { const body=await readJson(request); return json(await themes.createTokenRevision(context,{themeId:asThemeId(tokenRevisionMatch[1]),name:stringField(body,"name"),tokens:designTokensField(body.tokens)}),201); }
         const layoutRevisionMatch = url.pathname.match(/^\/v1\/themes\/([^/]+)\/layout-revisions$/);
@@ -481,7 +484,7 @@ export function createApiWorker(resolveCms: (env: Env) => CmsService = defaultRe
         if (request.method === "POST" && url.pathname === "/v1/custom-fields") {
           const body = await readJson(request);
           return json(await customContent.createField(context, {
-            workspaceId: stringField(body, "workspaceId") as WorkspaceId,
+            workspaceId: workspaceIdBodyField(body, "workspaceId"),
             key: stringField(body, "key"),
             name: stringField(body, "name"),
             type: customFieldType(body.type),
@@ -493,22 +496,22 @@ export function createApiWorker(resolveCms: (env: Env) => CmsService = defaultRe
           }), 201);
         }
         if (request.method === "GET" && url.pathname === "/v1/custom-fields") {
-          const workspaceId = url.searchParams.get("workspaceId"); if (!workspaceId) invalid("workspaceId is required");
-          return json(await customContent.listFields(workspaceId as WorkspaceId));
+          const workspaceId = workspaceQueryParam(url.searchParams);
+          return json(await customContent.listFields(workspaceId));
         }
         if (request.method === "POST" && url.pathname === "/v1/custom-tables") {
           const body = await readJson(request);
           const kind = body.kind === "content" || body.kind === "master" ? body.kind : invalid("kind must be content or master");
           return json(await customContent.createTable(context, {
-            workspaceId: stringField(body, "workspaceId") as WorkspaceId,
+            workspaceId: workspaceIdBodyField(body, "workspaceId"),
             key: stringField(body, "key"), name: stringField(body, "name"), kind,
             ...(typeof body.hierarchical === "boolean" ? { hierarchical: body.hierarchical } : {}),
             ...(body.displayFieldKey === null || typeof body.displayFieldKey === "string" ? { displayFieldKey: body.displayFieldKey } : {}),
           }), 201);
         }
         if (request.method === "GET" && url.pathname === "/v1/custom-tables") {
-          const workspaceId = url.searchParams.get("workspaceId"); if (!workspaceId) invalid("workspaceId is required");
-          return json(await customContent.listTables(workspaceId as WorkspaceId));
+          const workspaceId = workspaceQueryParam(url.searchParams);
+          return json(await customContent.listTables(workspaceId));
         }
         const customTableSchemaMatch = url.pathname.match(/^\/v1\/custom-tables\/([^/]+)\/schema$/);
         if (request.method === "GET" && customTableSchemaMatch?.[1]) return json(await customContent.getTableSchema(asCustomTableId(customTableSchemaMatch[1])));
@@ -702,7 +705,7 @@ export function createApiWorker(resolveCms: (env: Env) => CmsService = defaultRe
             contentItemId: asContentItemId(proposalMatch[1]),
             baseRevisionId: asRevisionId(stringField(body, "baseRevisionId")),
             expectedLockVersion: numberField(body, "expectedLockVersion"),
-            operations: Array.isArray(body.operations) ? body.operations as never[] : invalid("operations must be an array"),
+            operations: blockOperationsField(body.operations),
             instructionSummary: stringField(body, "instructionSummary"),
             modelProvider: stringField(body, "modelProvider"),
             modelName: stringField(body, "modelName"),
@@ -822,7 +825,7 @@ export function createApiWorker(resolveCms: (env: Env) => CmsService = defaultRe
         if (request.method === "POST" && url.pathname === "/v1/assets/upload-sessions") {
           const body = await readJson(request);
           return json(await assets.createUploadSession(context, {
-            workspaceId: stringField(body, "workspaceId") as WorkspaceId,
+            workspaceId: workspaceIdBodyField(body, "workspaceId"),
             filename: stringField(body, "filename"),
             mediaType: stringField(body, "mediaType"),
             uploadBaseUrl: typeof body.uploadBaseUrl === "string" ? body.uploadBaseUrl : env.PUBLIC_BASE_URL ?? url.origin,
@@ -831,9 +834,8 @@ export function createApiWorker(resolveCms: (env: Env) => CmsService = defaultRe
           }), 201);
         }
         if (request.method === "GET" && url.pathname === "/v1/assets") {
-          const workspaceId = url.searchParams.get("workspaceId");
-          if (!workspaceId) invalid("workspaceId is required");
-          return json(await assets.listAssets(context, workspaceId as WorkspaceId));
+          const workspaceId = workspaceQueryParam(url.searchParams);
+          return json(await assets.listAssets(context, workspaceId));
         }
         const assetMatch = url.pathname.match(/^\/v1\/assets\/([^/]+)$/);
         if (request.method === "GET" && assetMatch?.[1]) return json(await assets.getAsset(context, asAssetId(assetMatch[1])));
@@ -857,9 +859,8 @@ export function createApiWorker(resolveCms: (env: Env) => CmsService = defaultRe
         if (request.method === "POST" && previewRevokeMatch?.[1]) return json(await previews.revoke(context, asPreviewSessionId(previewRevokeMatch[1])));
 
         if (request.method === "GET" && url.pathname === "/v1/audit") {
-          const workspaceId = url.searchParams.get("workspaceId");
-          if (!workspaceId) invalid("workspaceId is required");
-          return json(await cms.listAudit(context, workspaceId as WorkspaceId));
+          const workspaceId = workspaceQueryParam(url.searchParams);
+          return json(await cms.listAudit(context, workspaceId));
         }
 
         return json({ error: { code: "NOT_FOUND", message: "Route not found" } }, 404);
@@ -964,6 +965,124 @@ async function readOptionalJson(request: Request): Promise<unknown> {
   }
 }
 
+async function readOptionalPluginRouteBody(request: Request): Promise<Record<string, unknown> | null> {
+  const value = await readOptionalJson(request);
+  if (value === null) return null;
+  if (!isRecord(value)) invalid("request body must be a JSON object");
+  return value;
+}
+
+const PREFixed_ID_UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+function parsePrefixedId(prefix: string, value: string, name: string): string {
+  const head = `${prefix}_`;
+  if (!value.startsWith(head)) invalid(`${name} must start with ${head}`);
+  const suffix = value.slice(head.length);
+  if (!PREFixed_ID_UUID.test(suffix)) invalid(`${name} must be a valid id`);
+  return value;
+}
+
+function workspaceQueryParam(searchParams: URLSearchParams, name = "workspaceId"): WorkspaceId {
+  const raw = searchParams.get(name);
+  if (!raw?.trim()) invalid(`${name} is required`);
+  return asWorkspaceId(parsePrefixedId("ws", raw.trim(), name));
+}
+
+function optionalSiteQueryParam(searchParams: URLSearchParams): SiteId | null {
+  const raw = searchParams.get("siteId");
+  if (!raw?.trim()) return null;
+  return asSiteId(parsePrefixedId("site", raw.trim(), "siteId"));
+}
+
+function workspacePathId(segment: string): WorkspaceId {
+  return asWorkspaceId(parsePrefixedId("ws", segment, "workspaceId"));
+}
+
+function workspaceIdBodyField(body: Record<string, unknown>, key: string): WorkspaceId {
+  return asWorkspaceId(parsePrefixedId("ws", stringField(body, key), key));
+}
+
+function blockOperationsField(value: unknown): BlockOperation[] {
+  if (!Array.isArray(value)) invalid("operations must be an array");
+  return value.map((entry, index) => parseBlockOperation(entry, index));
+}
+
+function parseBlockOperation(value: unknown, index: number): BlockOperation {
+  if (!isRecord(value)) invalid(`operations[${index}] must be an object`);
+  const kind = value.kind;
+  if (kind === "updateProps") {
+    return {
+      kind,
+      blockId: stringField(value as Record<string, unknown>, "blockId"),
+      patch: recordField(value as Record<string, unknown>, "patch"),
+    };
+  }
+  if (kind === "remove") {
+    return { kind, blockId: stringField(value as Record<string, unknown>, "blockId") };
+  }
+  if (kind === "insert") {
+    const record = value as Record<string, unknown>;
+    const slot = stringField(record, "slot");
+    const indexValue = record.index;
+    if (typeof indexValue !== "number" || !Number.isInteger(indexValue) || indexValue < 0) {
+      invalid(`operations[${index}].index must be a non-negative integer`);
+    }
+    return {
+      kind: "insert",
+      parentId: stringField(record, "parentId"),
+      slot,
+      index: indexValue,
+      block: blockNodeField(record.block, `operations[${index}].block`),
+    };
+  }
+  if (kind === "move") {
+    const record = value as Record<string, unknown>;
+    const indexValue = record.index;
+    if (typeof indexValue !== "number" || !Number.isInteger(indexValue) || indexValue < 0) {
+      invalid(`operations[${index}].index must be a non-negative integer`);
+    }
+    return {
+      kind: "move",
+      blockId: stringField(record, "blockId"),
+      parentId: stringField(record, "parentId"),
+      slot: stringField(record, "slot"),
+      index: indexValue,
+    };
+  }
+  if (kind === "duplicate") {
+    const record = value as Record<string, unknown>;
+    const indexValue = record.index;
+    if (typeof indexValue !== "number" || !Number.isInteger(indexValue) || indexValue < 0) {
+      invalid(`operations[${index}].index must be a non-negative integer`);
+    }
+    return {
+      kind: "duplicate",
+      blockId: stringField(record, "blockId"),
+      parentId: stringField(record, "parentId"),
+      slot: stringField(record, "slot"),
+      index: indexValue,
+    };
+  }
+  invalid(`operations[${index}].kind is invalid`);
+}
+
+function blockNodeField(value: unknown, path: string): BlockNode {
+  if (!isRecord(value)) invalid(`${path} must be an object`);
+  const id = typeof value.id === "string" && value.id.length > 0 ? value.id : invalid(`${path}.id must be a non-empty string`);
+  const type = typeof value.type === "string" && value.type.length > 0 ? value.type : invalid(`${path}.type must be a non-empty string`);
+  const componentVersion = typeof value.componentVersion === "number" && Number.isInteger(value.componentVersion) && value.componentVersion >= 1
+    ? value.componentVersion
+    : invalid(`${path}.componentVersion must be a positive integer`);
+  const props = isRecord(value.props) ? value.props : invalid(`${path}.props must be an object`);
+  const slotsRaw = isRecord(value.slots) ? value.slots : invalid(`${path}.slots must be an object`);
+  const slots: Record<string, BlockNode[]> = {};
+  for (const [slotName, children] of Object.entries(slotsRaw)) {
+    if (!Array.isArray(children)) invalid(`${path}.slots.${slotName} must be an array`);
+    slots[slotName] = children.map((child, childIndex) => blockNodeField(child, `${path}.slots.${slotName}[${childIndex}]`));
+  }
+  return { id, type, componentVersion, props, slots };
+}
+
 async function readJson(request: Request): Promise<Record<string, unknown>> {
   try {
     const value = await request.json();
@@ -1008,8 +1127,8 @@ function optionalCapabilityScopeField(body: Record<string, unknown>, key: string
     pathPrefix?: string;
     maximumRisk?: "low" | "medium" | "high" | "critical";
   } = {};
-  if (raw.workspaceId !== undefined) scope.workspaceId = stringField({ workspaceId: raw.workspaceId }, "workspaceId") as WorkspaceId;
-  if (raw.siteId !== undefined) scope.siteId = asSiteId(stringField({ siteId: raw.siteId }, "siteId"));
+  if (raw.workspaceId !== undefined) scope.workspaceId = workspaceIdBodyField({ workspaceId: raw.workspaceId }, "workspaceId");
+  if (raw.siteId !== undefined) scope.siteId = asSiteId(parsePrefixedId("site", stringField({ siteId: raw.siteId }, "siteId"), "siteId"));
   if (raw.contentType !== undefined) scope.contentType = stringField({ contentType: raw.contentType }, "contentType");
   if (raw.pathPrefix !== undefined) scope.pathPrefix = stringField({ pathPrefix: raw.pathPrefix }, "pathPrefix");
   if (raw.maximumRisk !== undefined) {
