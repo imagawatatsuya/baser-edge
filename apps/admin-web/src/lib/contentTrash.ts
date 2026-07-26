@@ -1,5 +1,6 @@
 import { apiFetch } from "../api/client";
 import type { ContentSnapshot } from "../api/types";
+import { invalidateContentTreeCache } from "./contentTreeCache";
 import { normalizeSlugInput } from "./slug";
 
 export async function trashContent(snapshot: ContentSnapshot) {
@@ -7,6 +8,7 @@ export async function trashContent(snapshot: ContentSnapshot) {
     method: "POST",
     json: { expectedTreeVersion: snapshot.node.treeVersion },
   });
+  invalidateContentTreeCache();
 }
 
 export async function restoreContent(snapshot: ContentSnapshot, newSlug?: string) {
@@ -17,4 +19,5 @@ export async function restoreContent(snapshot: ContentSnapshot, newSlug?: string
       ...(newSlug ? { newSlug: normalizeSlugInput(newSlug) } : {}),
     },
   });
+  invalidateContentTreeCache();
 }
