@@ -58,6 +58,29 @@ export function normalizeSlug(input: string): string {
   return ascii;
 }
 
+/** DNS-style hostname for site routing (ASCII labels, no port or path). */
+export function normalizeSiteHostname(input: string): string {
+  const hostname = input.normalize("NFC").trim().toLowerCase();
+  assertDomain(hostname.length > 0, "INVALID_HOSTNAME", "Hostname cannot be empty", 422);
+  assertDomain(hostname.length <= 253, "INVALID_HOSTNAME", "Hostname must be 253 characters or fewer", 422);
+  assertDomain(
+    !hostname.includes("..") && !hostname.includes(":") && !hostname.includes("/") && !hostname.includes(" "),
+    "INVALID_HOSTNAME",
+    "Hostname must not contain spaces, slashes, or port syntax",
+    422,
+  );
+  const labelPattern = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?$/;
+  const labels = hostname.split(".");
+  assertDomain(labels.length >= 2, "INVALID_HOSTNAME", "Hostname must include a domain suffix (e.g. example.test)", 422);
+  assertDomain(
+    labels.every((label) => labelPattern.test(label)),
+    "INVALID_HOSTNAME",
+    "Hostname must use ASCII letters, numbers, hyphens, and dots only (e.g. example.test)",
+    422,
+  );
+  return hostname;
+}
+
 export function normalizePath(path: string): string {
   const normalized = `/${path}`.replace(/\/{2,}/g, "/");
   if (normalized === "/") return "/";

@@ -152,6 +152,95 @@ test("POST /v1/blogs rejects out-of-range pageSize", async () => {
   assert.equal(rejected.status, 422);
 });
 
+test("POST /v1/bootstrap rejects invalid hostnames with INVALID_HOSTNAME", async () => {
+  for (const hostname of ["日本語.test", "singlelabel", "bad host.test"]) {
+    const response = await worker.fetch(new Request("https://api.test/v1/bootstrap", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ workspaceName: "W", siteName: "S", hostname, ownerName: "Owner" }),
+    }), {});
+    assert.equal(response.status, 422, hostname);
+    assert.equal((await response.json()).error?.code, "INVALID_HOSTNAME", hostname);
+  }
+});
+
+test("POST /v1/aliases rejects non-ASCII slugs with INVALID_SLUG", async () => {
+  const { boot, headers } = await bootSession("slug-alias.test");
+  const pageResponse = await worker.fetch(new Request("https://api.test/v1/pages", {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ siteId: boot.siteId, slug: "target", title: "Target", document: emptyDocument }),
+  }), {});
+  const page = await pageResponse.json();
+  const rejected = await worker.fetch(new Request("https://api.test/v1/aliases", {
+    method: "POST",
+    headers,
+    body: JSON.stringify({
+      siteId: boot.siteId,
+      slug: "別名",
+      title: "Alias",
+      targetContentItemId: page.item.id,
+    }),
+  }), {});
+  assert.equal(rejected.status, 422);
+  assert.equal((await rejected.json()).error?.code, "INVALID_SLUG");
+});
+
+test("POST /v1/custom-contents rejects non-ASCII slugs with INVALID_SLUG", async () => {
+  const { CustomContentService, MemoryCustomContentStore } = await import("@baser-edge/custom-content-kernel");
+  const localCms = new CmsService(new MemoryCmsStore());
+  const localCustom = new CustomContentService(new MemoryCustomContentStore(), localCms);
+  const localWorker = createApiWorker(() => localCms, { resolveCustomContent: () => localCustom });
+  const bootstrapResponse = await localWorker.fetch(new Request("https://api.test/v1/bootstrap", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ workspaceName: "CustomSlug", siteName: "S", hostname: "custom-slug.test", ownerName: "Owner" }),
+  }), {});
+  const boot = await bootstrapResponse.json();
+  const headers = { "content-type": "application/json", "x-baser-principal-id": boot.ownerPrincipalId, "x-baser-principal-type": "human" };
+  const fieldResponse = await localWorker.fetch(new Request("https://api.test/v1/custom-fields", {
+    method: "POST", headers, body: JSON.stringify({ workspaceId: boot.workspaceId, key: "name", name: "名称", type: "text" }),
+  }), {});
+  const field = await fieldResponse.json();
+  const tableResponse = await localWorker.fetch(new Request("https://api.test/v1/custom-tables", {
+    method: "POST", headers, body: JSON.stringify({ workspaceId: boot.workspaceId, key: "items", name: "Items", kind: "content", displayFieldKey: "name" }),
+  }), {});
+  const table = await tableResponse.json();
+  await localWorker.fetch(new Request(`https://api.test/v1/custom-tables/${table.id}/fields`, {
+    method: "POST", headers, body: JSON.stringify({ fieldId: field.id, required: true }),
+  }), {});
+  const rejected = await localWorker.fetch(new Request("https://api.test/v1/custom-contents", {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ siteId: boot.siteId, slug: "商品", title: "商品", tableId: table.id }),
+  }), {});
+  assert.equal(rejected.status, 422);
+  assert.equal((await rejected.json()).error?.code, "INVALID_SLUG");
+});
+
+test("GET /v1/sites/:siteId/content-tree rejects malformed siteId", async () => {
+  const { boot, headers } = await bootSession("site-id.test");
+  const rejected = await worker.fetch(new Request("https://api.test/v1/sites/not-a-site/content-tree", { headers }), {});
+  assert.equal(rejected.status, 422);
+  const ok = await worker.fetch(new Request(`https://api.test/v1/sites/${boot.siteId}/content-tree`, { headers }), {});
+  assert.equal(ok.status, 200);
+});
+
+test("POST /v1/pages rejects malformed siteId in body", async () => {
+  const { headers } = await bootSession("site-body.test");
+  const rejected = await worker.fetch(new Request("https://api.test/v1/pages", {
+    method: "POST",
+    headers,
+    body: JSON.stringify({
+      siteId: "not-a-site",
+      slug: "ok",
+      title: "Ok",
+      document: emptyDocument,
+    }),
+  }), {});
+  assert.equal(rejected.status, 422);
+});
+
 test("GET /v1/blogs/:id/articles rejects invalid pagination query", async () => {
   const bootstrapResponse = await worker.fetch(new Request("https://api.test/v1/bootstrap", {
     method: "POST",

@@ -24,7 +24,7 @@ Living inventory of **existing** `/v1/*` routes against [validation-policy.md](.
 | `tests/mail-form.test.mjs` | Mail form admin + public submit/replay |
 | `tests/content-flow.test.mjs` | Approval/publish flow |
 | `tests/plugin.test.mjs` | Plugin lifecycle |
-| `tests/baser-domain.test.mjs` | `normalizeSlug` (not HTTP) |
+| `tests/baser-domain.test.mjs` | `normalizeSlug` (not HTTP); `normalizeSiteHostname` |
 
 ---
 
@@ -42,7 +42,7 @@ Living inventory of **existing** `/v1/*` routes against [validation-policy.md](.
 
 | Route | Methods | Domain | API | −T | Status | Notes |
 |-------|---------|--------|-----|-----|--------|-------|
-| `/v1/bootstrap` | POST | Y | Y | Partial | Partial | Prod gate + provision secret; authenticated bootstrap creates and publishes the initial `/home` through normal services; missing/wrong secret rejection tests; hostname rejection still pending |
+| `/v1/bootstrap` | POST | Y | Y | Y | OK | Prod gate + provision secret; `normalizeSiteHostname`; rejection tests in `api-validation.test.mjs` |
 | `/v1/bootstrap/ready` | POST | N/A | N/A | Y | OK | Non-mutating provision-secret readiness probe; missing/wrong secret rejection + success tests |
 | `/v1/principals` | POST | Y | Y | Partial | Partial | Happy path in flows only |
 | `/v1/grants` | POST | Y | Y | Y | OK | Closed `scope` keys; unknown fields → 422 |
@@ -70,10 +70,10 @@ Living inventory of **existing** `/v1/*` routes against [validation-policy.md](.
 |-------|---------|--------|-----|-----|--------|-------|
 | `/v1/pages` | POST | Y | Y | Y | OK | Slug via domain; `api-validation.test.mjs` INVALID_SLUG |
 | `/v1/folders` | POST | Y | Y | Y | OK | Same |
-| `/v1/aliases` | POST | Y | Y | Partial | Partial | |
+| `/v1/aliases` | POST | Y | Y | Y | OK | INVALID_SLUG in `api-validation.test.mjs` |
 | `/v1/blogs` | POST | Y | Y | Y | OK | `pageSize`/`feedSize` bounded 1–100 when present |
-| `/v1/sites/:siteId/content-tree` | GET | Y | — | Partial | Partial | |
-| `/v1/sites/:siteId/trash` | GET | Y | — | Partial | Partial | |
+| `/v1/sites/:siteId/content-tree` | GET | Y | Y | Y | OK | `sitePathId` (`site_` + UUID) |
+| `/v1/sites/:siteId/trash` | GET | Y | Y | Partial | Partial | `sitePathId` |
 | `/v1/content/:id` | GET | Y | — | Partial | Partial | |
 | `/v1/content/:id/revisions` | POST | Y | Y | Y | OK | Golden path: missing `expectedLockVersion` |
 | `/v1/content/:id/approvals` | POST | Y | Y | Partial | Partial | |
@@ -112,7 +112,7 @@ Living inventory of **existing** `/v1/*` routes against [validation-policy.md](.
 | `/v1/custom-tables` | GET, POST | Y | Y | Partial | Partial | |
 | `/v1/custom-tables/:id/schema` | GET | Y | — | Partial | Partial | |
 | `/v1/custom-tables/:id/fields` | POST | Y | Y | Partial | Partial | |
-| `/v1/custom-contents` | POST | Y | Y | Partial | Partial | |
+| `/v1/custom-contents` | POST | Y | Y | Y | OK | INVALID_SLUG in `api-validation.test.mjs` |
 | `/v1/sites/:siteId/custom-contents` | GET | Y | — | Partial | Partial | |
 | `/v1/custom-contents/:id/entries` | GET, POST | Y | Y | Partial | Partial | Typed values in kernel |
 | `/v1/custom-entries/:id` | GET | Y | — | Partial | Partial | |
@@ -192,6 +192,10 @@ Work in this order unless a feature touches a specific route.
 | P2 | Workspace query IDs | Many `GET ?workspaceId=` | Validate ID format before store | Done (`parsePrefixedId`) |
 | P2 | Plugin route proxy | `/v1/plugin-routes/*` | Document trust boundary; tighten optional body | Done |
 | P2 | Agent proposals | `agent-proposals` | Validate operation shapes; rejection tests | Done |
+
+| P3 | Bootstrap hostname | `POST /v1/bootstrap` | `normalizeSiteHostname` in domain; HTTP rejection tests | Done |
+| P3 | Alias / custom-content slugs | `POST /v1/aliases`, `/custom-contents` | INVALID_SLUG HTTP tests | Done |
+| P3 | Site path IDs | `GET /v1/sites/:siteId/*` | `sitePathId` + malformed path test | Done (partial route coverage) |
 
 ---
 

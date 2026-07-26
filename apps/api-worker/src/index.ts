@@ -376,9 +376,9 @@ export function createApiWorker(resolveCms: (env: Env) => CmsService = defaultRe
         if (request.method === "POST" && themeReleaseMatch?.[1]) { const body=await readJson(request); return json(await themes.createRelease(context,{themeId:asThemeId(themeReleaseMatch[1]),version:stringField(body,"version"),designTokenRevisionId:asDesignTokenRevisionId(stringField(body,"designTokenRevisionId")),layoutRevisionId:asLayoutRevisionId(stringField(body,"layoutRevisionId")),manifest:themeManifestField(body.manifest)}),201); }
         if (request.method === "GET" && themeReleaseMatch?.[1]) return json(await themes.listReleases(context,asThemeId(themeReleaseMatch[1])));
         const siteThemeMatch = url.pathname.match(/^\/v1\/sites\/([^/]+)\/theme$/);
-        if (request.method === "GET" && siteThemeMatch?.[1]) return json(await themes.getActive(context,asSiteId(siteThemeMatch[1])));
+        if (request.method === "GET" && siteThemeMatch?.[1]) return json(await themes.getActive(context, sitePathId(siteThemeMatch[1])));
         const themeActivationMatch = url.pathname.match(/^\/v1\/sites\/([^/]+)\/theme-activations$/);
-        if (request.method === "POST" && themeActivationMatch?.[1]) { const body=await readJson(request); return json(await themes.activate(context,{siteId:asSiteId(themeActivationMatch[1]),themeReleaseId:asThemeReleaseId(stringField(body,"themeReleaseId"))}),201); }
+        if (request.method === "POST" && themeActivationMatch?.[1]) { const body=await readJson(request); return json(await themes.activate(context,{siteId:sitePathId(themeActivationMatch[1]),themeReleaseId:asThemeReleaseId(stringField(body,"themeReleaseId"))}),201); }
 
         if (request.method === "POST" && url.pathname === "/v1/delegations") {
           const body = await readJson(request);
@@ -394,7 +394,7 @@ export function createApiWorker(resolveCms: (env: Env) => CmsService = defaultRe
         if (request.method === "POST" && url.pathname === "/v1/pages") {
           const body = await readJson(request);
           return json(await cms.createPage(context, {
-            siteId: asSiteId(stringField(body, "siteId")),
+            siteId: siteIdBodyField(body, "siteId"),
             parentId: typeof body.parentId === "string" ? asContentNodeId(body.parentId) : null,
             slug: stringField(body, "slug"),
             title: stringField(body, "title"),
@@ -404,7 +404,7 @@ export function createApiWorker(resolveCms: (env: Env) => CmsService = defaultRe
         if (request.method === "POST" && url.pathname === "/v1/folders") {
           const body = await readJson(request);
           return json(await cms.createFolder(context, {
-            siteId: asSiteId(stringField(body, "siteId")),
+            siteId: siteIdBodyField(body, "siteId"),
             parentId: typeof body.parentId === "string" ? asContentNodeId(body.parentId) : null,
             slug: stringField(body, "slug"),
             title: stringField(body, "title"),
@@ -413,7 +413,7 @@ export function createApiWorker(resolveCms: (env: Env) => CmsService = defaultRe
         if (request.method === "POST" && url.pathname === "/v1/aliases") {
           const body = await readJson(request);
           return json(await cms.createAlias(context, {
-            siteId: asSiteId(stringField(body, "siteId")),
+            siteId: siteIdBodyField(body, "siteId"),
             parentId: typeof body.parentId === "string" ? asContentNodeId(body.parentId) : null,
             slug: stringField(body, "slug"),
             title: stringField(body, "title"),
@@ -424,7 +424,7 @@ export function createApiWorker(resolveCms: (env: Env) => CmsService = defaultRe
         if (request.method === "POST" && url.pathname === "/v1/blogs") {
           const body = await readJson(request);
           return json(await blog.createBlog(context, {
-            siteId: asSiteId(stringField(body, "siteId")),
+            siteId: siteIdBodyField(body, "siteId"),
             parentId: typeof body.parentId === "string" ? asContentNodeId(body.parentId) : null,
             slug: stringField(body, "slug"),
             title: stringField(body, "title"),
@@ -530,7 +530,7 @@ export function createApiWorker(resolveCms: (env: Env) => CmsService = defaultRe
         if (request.method === "POST" && url.pathname === "/v1/custom-contents") {
           const body = await readJson(request);
           return json(await customContent.createCustomContent(context, {
-            siteId: asSiteId(stringField(body, "siteId")), parentId: typeof body.parentId === "string" ? asContentNodeId(body.parentId) : null,
+            siteId: siteIdBodyField(body, "siteId"), parentId: typeof body.parentId === "string" ? asContentNodeId(body.parentId) : null,
             slug: stringField(body, "slug"), title: stringField(body, "title"), tableId: asCustomTableId(stringField(body, "tableId")),
             ...(isRecord(body.document) ? { document: documentField(body.document) } : {}),
             ...(typeof body.listCount === "number" ? { listCount: body.listCount } : {}),
@@ -584,18 +584,18 @@ export function createApiWorker(resolveCms: (env: Env) => CmsService = defaultRe
 
         const treeMatch = url.pathname.match(/^\/v1\/sites\/([^/]+)\/content-tree$/);
         if (request.method === "GET" && treeMatch?.[1]) {
-          return json(await cms.listContentTree(context, asSiteId(treeMatch[1])));
+          return json(await cms.listContentTree(context, sitePathId(treeMatch[1])));
         }
         const blogsListMatch = url.pathname.match(/^\/v1\/sites\/([^/]+)\/blogs$/);
         if (request.method === "GET" && blogsListMatch?.[1]) {
-          const siteId = asSiteId(blogsListMatch[1]);
+          const siteId = sitePathId(blogsListMatch[1]);
           await cms.listContentTree(context, siteId);
           const collections = await blog.listCollections(siteId);
           return json(await Promise.all(collections.map(async (collection) => ({ collection, snapshot: await cms.getContent(context, collection.contentItemId) }))));
         }
         const customContentsListMatch = url.pathname.match(/^\/v1\/sites\/([^/]+)\/custom-contents$/);
         if (request.method === "GET" && customContentsListMatch?.[1]) {
-          const siteId = asSiteId(customContentsListMatch[1]);
+          const siteId = sitePathId(customContentsListMatch[1]);
           await cms.listContentTree(context, siteId);
           const definitions = await customContent.listCustomContents(siteId);
           return json(await Promise.all(definitions.map(async (definition) => ({
@@ -606,19 +606,19 @@ export function createApiWorker(resolveCms: (env: Env) => CmsService = defaultRe
         }
         const trashListMatch = url.pathname.match(/^\/v1\/sites\/([^/]+)\/trash$/);
         if (request.method === "GET" && trashListMatch?.[1]) {
-          return json(await cms.listTrash(context, asSiteId(trashListMatch[1])));
+          return json(await cms.listTrash(context, sitePathId(trashListMatch[1])));
         }
         const pendingApprovalsMatch = url.pathname.match(/^\/v1\/sites\/([^/]+)\/pending-approvals$/);
         if (request.method === "GET" && pendingApprovalsMatch?.[1]) {
-          return json(await cms.listPendingApprovals(context, asSiteId(pendingApprovalsMatch[1])));
+          return json(await cms.listPendingApprovals(context, sitePathId(pendingApprovalsMatch[1])));
         }
         const pendingCustomApprovalsMatch = url.pathname.match(/^\/v1\/sites\/([^/]+)\/pending-custom-entry-approvals$/);
         if (request.method === "GET" && pendingCustomApprovalsMatch?.[1]) {
-          return json(await customContent.listPendingApprovals(context, asSiteId(pendingCustomApprovalsMatch[1])));
+          return json(await customContent.listPendingApprovals(context, sitePathId(pendingCustomApprovalsMatch[1])));
         }
         const approvalInboxMatch = url.pathname.match(/^\/v1\/sites\/([^/]+)\/approval-inbox$/);
         if (request.method === "GET" && approvalInboxMatch?.[1]) {
-          const siteId = asSiteId(approvalInboxMatch[1]);
+          const siteId = sitePathId(approvalInboxMatch[1]);
           return json({
             content: await cms.listContentApprovalInbox(context, siteId),
             customEntries: await customContent.listPendingApprovals(context, siteId),
@@ -628,7 +628,7 @@ export function createApiWorker(resolveCms: (env: Env) => CmsService = defaultRe
         if (request.method === "POST" && url.pathname === "/v1/mail-forms") {
           const body = await readJson(request);
           return json(await mailForms.createMailForm(context, {
-            siteId: asSiteId(stringField(body, "siteId")),
+            siteId: siteIdBodyField(body, "siteId"),
             parentId: typeof body.parentId === "string" ? asContentNodeId(body.parentId) : null,
             slug: stringField(body, "slug"), title: stringField(body, "title"),
             tableId: asCustomTableId(stringField(body, "tableId")),
@@ -649,7 +649,7 @@ export function createApiWorker(resolveCms: (env: Env) => CmsService = defaultRe
           }), 201);
         }
         const siteMailFormsMatch = url.pathname.match(/^\/v1\/sites\/([^/]+)\/mail-forms$/);
-        if (request.method === "GET" && siteMailFormsMatch?.[1]) { const siteId=asSiteId(siteMailFormsMatch[1]);await cms.listContentTree(context,siteId);return json(await mailForms.listForms(siteId)); }
+        if (request.method === "GET" && siteMailFormsMatch?.[1]) { const siteId=sitePathId(siteMailFormsMatch[1]);await cms.listContentTree(context,siteId);return json(await mailForms.listForms(siteId)); }
         const mailSubmissionsMatch = url.pathname.match(/^\/v1\/mail-forms\/([^/]+)\/submissions$/);
         if (request.method === "GET" && mailSubmissionsMatch?.[1]) return json(await mailForms.listSubmissions(context, asMailFormId(mailSubmissionsMatch[1])));
         const mailSubmissionMatch = url.pathname.match(/^\/v1\/mail-submissions\/([^/]+)$/);
@@ -996,6 +996,14 @@ function optionalSiteQueryParam(searchParams: URLSearchParams): SiteId | null {
 
 function workspacePathId(segment: string): WorkspaceId {
   return asWorkspaceId(parsePrefixedId("ws", segment, "workspaceId"));
+}
+
+function sitePathId(segment: string): SiteId {
+  return asSiteId(parsePrefixedId("site", segment, "siteId"));
+}
+
+function siteIdBodyField(body: Record<string, unknown>, key: string): SiteId {
+  return asSiteId(parsePrefixedId("site", stringField(body, key), key));
 }
 
 function workspaceIdBodyField(body: Record<string, unknown>, key: string): WorkspaceId {

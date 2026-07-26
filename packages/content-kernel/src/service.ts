@@ -26,7 +26,7 @@ import {
   type CapabilityScope,
   type AuthorizationResource,
 } from "@baser-edge/authorization";
-import { childPath, normalizePath, normalizeSlug } from "@baser-edge/baser-domain";
+import { childPath, normalizePath, normalizeSiteHostname, normalizeSlug } from "@baser-edge/baser-domain";
 import {
   createDefaultComponentRegistry,
   createEmptyDocument,
@@ -197,7 +197,7 @@ export class CmsService {
         id: siteId,
         workspaceId,
         name: input.siteName,
-        hostname: input.hostname.toLowerCase(),
+        hostname: normalizeSiteHostname(input.hostname),
         locale: input.locale ?? "ja-JP",
         state: "active",
         createdAt: now,
