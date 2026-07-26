@@ -20,9 +20,11 @@ import {
 export interface Env {
   ASSETS: Fetcher;
   ONBOARDING_KV: KVNamespace;
+  OPS_SERVICE: Fetcher;
   TRIAL_PROVISION_QUEUE: Queue<TrialProvisionQueueMessage>;
   BASER_CF_OAUTH_CLIENT_ID: string;
   BASER_CF_OAUTH_CLIENT_SECRET: string;
+  BASER_OPS_BROKER_SECRET: string;
   BASER_CF_OAUTH_SCOPES?: string;
   BASER_ONBOARDING_PUBLIC?: string;
   GITHUB_REPO?: string;
@@ -79,6 +81,10 @@ function publicTrial(env: Env): boolean {
 
 function oauthConfigured(env: Env): boolean {
   return Boolean(env.BASER_CF_OAUTH_CLIENT_ID?.trim() && env.BASER_CF_OAUTH_CLIENT_SECRET?.trim());
+}
+
+function teardownBrokerConfigured(env: Env): boolean {
+  return Boolean(env.OPS_SERVICE && env.BASER_OPS_BROKER_SECRET?.trim());
 }
 
 function oauthScopes(env: Env): string {
@@ -550,6 +556,7 @@ async function handleApi(req: Request, env: Env, url: URL): Promise<Response> {
         oauthClientIdSuffix: oauthOn ? oauthClientIdSuffix(env) : undefined,
         oauthScopes: scopes,
         oauthScopeConfigError: oauthScopeConfigError ?? undefined,
+        teardownBrokerConfigured: teardownBrokerConfigured(env),
         trialProvisionMode: provisionMode(env),
         trialProvisionStrategy: provisionStrategy(env),
       },
@@ -569,14 +576,12 @@ async function handleApi(req: Request, env: Env, url: URL): Promise<Response> {
 
   if (url.pathname === "/api/onboarding/help") {
     const provisionFixed = env.BASER_ONBOARDING_PROVISION_STACK_ID?.trim().toLowerCase() || null;
-    const teardownUrl = env.BASER_EDGE_OPS_PUBLIC_URL?.trim() || undefined;
     const help = {
       ...helpJson,
       oauthEnabled: oauthOn,
       publicTrial: publicTrial(env),
       ready,
       provisionStackId: provisionFixed === "trial" ? "trial" : undefined,
-      teardownUrl,
     };
     return json(help);
   }
@@ -618,11 +623,25 @@ async function handleApi(req: Request, env: Env, url: URL): Promise<Response> {
       return json({ error: { message: scopeError } }, 500);
     }
     const intent = url.searchParams.get("intent") === "destroy" ? "destroy" : "deploy";
+    const fixedStackId = env.BASER_ONBOARDING_PROVISION_STACK_ID?.trim().toLowerCase();
+    const destroyStackId =
+      intent === "destroy"
+        ? fixedStackId === "trial"
+          ? "trial"
+          : url.searchParams.get("stackId")?.trim()
+        : undefined;
+    if (intent === "destroy" && !destroyStackId) {
+      return json({ error: { message: "削除対象のスタック ID がありません。" } }, 400);
+    }
     const redirectUri = `${requestOrigin(req)}/api/onboarding/oauth/callback`;
     const state = randomHex(16);
     const verifier = base64url(crypto.getRandomValues(new Uint8Array(32)));
     const challenge = await pkceChallenge(verifier);
-    await env.ONBOARDING_KV.put(`oauth:${state}`, JSON.stringify({ verifier, intent }), { expirationTtl: GRANT_TTL });
+    await env.ONBOARDING_KV.put(
+      `oauth:${state}`,
+      JSON.stringify({ verifier, intent, stackId: destroyStackId }),
+      { expirationTtl: GRANT_TTL },
+    );
     const params = new URLSearchParams({
       client_id: env.BASER_CF_OAUTH_CLIENT_ID.trim(),
       redirect_uri: redirectUri,
@@ -649,7 +668,7 @@ async function handleApi(req: Request, env: Env, url: URL): Promise<Response> {
       const pendingRaw = await env.ONBOARDING_KV.get(`oauth:${state}`);
       if (!pendingRaw) throw new Error("セッションの有効期限が切れました。もう一度お試しください。");
       await env.ONBOARDING_KV.delete(`oauth:${state}`);
-      const pending = JSON.parse(pendingRaw) as { verifier: string; intent: string };
+      const pending = JSON.parse(pendingRaw) as { verifier: string; intent: string; stackId?: string };
       const redirectUri = `${requestOrigin(req)}/api/onboarding/oauth/callback`;
       const body = new URLSearchParams({
         grant_type: "authorization_code",
@@ -674,7 +693,11 @@ async function handleApi(req: Request, env: Env, url: URL): Promise<Response> {
       }
       const grantId = await issueGrant(env, tokenJson.access_token);
       const intentQ = pending.intent === "destroy" ? "&oauth_intent=destroy" : "";
-      return redirect(`${ui}/start/?oauth_grant=${grantId}${intentQ}`);
+      const stackQ =
+        pending.intent === "destroy" && pending.stackId
+          ? `&oauth_stack_id=${encodeURIComponent(pending.stackId)}`
+          : "";
+      return redirect(`${ui}/start/?oauth_grant=${grantId}${intentQ}${stackQ}`);
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       return redirect(`${ui}/start/?oauth_error=${encodeURIComponent(msg)}`);
@@ -703,7 +726,34 @@ async function handleApi(req: Request, env: Env, url: URL): Promise<Response> {
         stackId?: string;
       };
       const token = await resolveApiToken(env, body);
-      const stackId = String(body.stackId ?? "").trim();
+      const fixedStackId = env.BASER_ONBOARDING_PROVISION_STACK_ID?.trim().toLowerCase();
+      const stackId = fixedStackId === "trial" ? "trial" : String(body.stackId ?? "").trim();
+      if (stackId === "trial") {
+        if (!teardownBrokerConfigured(env)) {
+          return json(
+            { error: { message: "削除サービスを準備しています。しばらくしてから再度お試しください。" } },
+            503,
+          );
+        }
+        const brokerResponse = await env.OPS_SERVICE.fetch(
+          new Request("https://baser-edge-cloud-operations.internal/v1/internal/teardown", {
+            method: "POST",
+            headers: {
+              "content-type": "application/json",
+              "x-baser-ops-broker-secret": env.BASER_OPS_BROKER_SECRET.trim(),
+            },
+            body: JSON.stringify({ accessToken: token, stackId }),
+          }),
+        );
+        const brokerBody = await brokerResponse.text();
+        return new Response(brokerBody, {
+          status: brokerResponse.status,
+          headers: {
+            "content-type": brokerResponse.headers.get("content-type") ?? "application/json; charset=utf-8",
+            ...corsHeaders(),
+          },
+        });
+      }
       if (!stackId || !stackId.startsWith("ob-") || stackId.length < 10) {
         return json({ error: { message: "スタック ID の形式が正しくありません（ob-…）" } }, 400);
       }

@@ -25,10 +25,11 @@
 | コンポーネント | ホスト | 責務 |
 |----------------|--------|------|
 | **CMS Worker**（利用者） | 利用者 CF | 編集・公開・`/console/`・コンテンツデータ |
-| **Operations Worker** | **メンテナ CF** | OAuth 開始/完了、**固定レシピ**の teardown（将来: upgrade apply）、レート制限、監査ログ |
+| **Onboarding Worker** | **メンテナ CF** | 開設と削除で共用するOAuth開始/完了、一回限りのgrant、OperationsへのService Binding |
+| **Operations Worker** | **メンテナ CF** | **固定レシピ**の teardown（将来: upgrade apply）、レート制限、監査ログ |
 | **Release manifest** | **GitHub Pages または静的 R2**（推奨） | 版情報のみ。Operations Worker に載せない（リクエスト爆発を避ける） |
 
-Operations Worker は **利用者データを保持しない**（D1 なし）。OAuth `state` / 一回限りのジョブ ID のみ **KV、TTL ≤ 15 分**。
+Operations Worker は **利用者データを保持しない**（D1 なし）。OAuth `state`と一回限りのgrantはOnboarding WorkerのKVへ **TTL ≤ 15 分**で保存し、アクセストークンはService Bindingの1リクエストだけでOperations Workerへ渡す。
 
 ### 2. 脅威モデルと失敗モード（fail closed）
 
@@ -57,7 +58,7 @@ Operations Worker は **利用者データを保持しない**（D1 なし）。
 
 ### 4. OAuth とシークレット
 
-- **PKCE 必須**（onboarding 同等）。
+- **PKCE 必須**。開設と削除はOnboarding Workerの同じOAuth Client・同じ登録済みコールバックを使用し、削除専用OAuth Clientは持たない。
 - **state** は KV に一回限り保存。再利用検知で拒否。
 - 利用者に **API トークンの手入力 UI を出さない**（フィッシング・全権トークン回避）。
 - OAuth / API トークンの **スコープは最小テンプレート**（当該アカウント内の上記リソース種別のみ）。可能なら Cloudflare の **限定権限トークン** テンプレをドキュメント化する。
@@ -116,7 +117,7 @@ Operations Worker は **メンテナの請求**に載る。以下を **実装要
 
 ### 9. 実装経路
 
-- **v1**: Cloudflare Worker（`apps/cloud-operations` 等新規）+ KV。削除は **REST API**（Worker 内で `wrangler` サブプロセスは使わない）。
+- **v1**: Onboarding WorkerをOAuthブローカー、Cloud Operations Workerを固定削除executorとし、Service Bindingで接続する。削除は **Cloudflare REST API**（Worker 内で `wrangler` サブプロセスは使わない）。
 - **ロジック共有**: `runDestroy` と同等の順序を **ライブラリ化**（`packages/` または `scripts/cloudflare/` から Worker 安全な API クライアントを抽出）。CLI `destroy:cloudflare` と Operations で **同じレシピ**。
 - **onboarding** の `ob-*` destroy は当面維持。trial は **Operations Worker** が正規経路。
 
@@ -136,7 +137,7 @@ Operations Worker は **メンテナの請求**に載る。以下を **実装要
 ## Consequences
 
 - メンテナは小さな常時Workerを運用し、レート制限と固定レシピに加えてCloudflare側の利用量・料金を継続監視する。
-- 一般ユーザーは開始ページの**お試しをやめる**からOperations URLへ進む。
+- 一般ユーザーは開始ページの**お試しをやめる**から共通OAuthへ進み、削除本体は内部のOperations Workerで実行される。
 - 新規コードは **汎用 CF 管理 API** を公開しない。レビューで「プロキシ化」していないか確認する。
 - [general-user-trial-experiment.md](../deployment/general-user-trial-experiment.md)はOAuth削除までを成功基準に含める。
 

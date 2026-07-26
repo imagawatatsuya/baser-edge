@@ -46,7 +46,7 @@ Workerの`/health`だけでは開設成功と判定しません。管理画面�
 
 ## お試しをやめる
 
-開始ページの**お試しをやめる**から、同じCloudflareアカウントでOAuth認証して`trial`環境を削除できます。復元できないため、必要な内容を退避してから実行してください。
+開始ページの**お試しをやめる**から、同じCloudflareアカウントでOAuth認証して`trial`環境を削除できます。開設ホストが既存のOAuthコールバックで一回限りの認証grantを受け取り、削除本体をService Binding経由でCloud Operations Workerへ委譲します。削除専用の別OAuth Clientは使用しません。復元できないため、必要な内容を退避してから実行してください。
 
 開発者がCLIで片付ける場合は[Cloudflare環境の削除](cloudflare-teardown.md)を参照してください。
 

@@ -11,6 +11,7 @@
     }
   ],
   "vars": {
+    "BASER_ONBOARDING_PUBLIC_URL": "https://baser-edge-trial-host.papehiko.workers.dev/",
     "BASER_CF_OAUTH_SCOPES": "account-settings.read workers-scripts.write workers-ci.write d1.write",
     "BASER_OPS_GLOBAL_TEARDOWN_PER_DAY": "500",
     "BASER_OPS_IP_OAUTH_START_PER_HOUR": "20",

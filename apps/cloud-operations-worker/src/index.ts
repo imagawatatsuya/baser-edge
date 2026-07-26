@@ -3,6 +3,8 @@ import {
   destroyTrialStack,
   resolveSingleAccountId,
   DestroyTrialError,
+  parseBrokerTeardownRequest,
+  BrokerTeardownRequestError,
 } from "@baser-edge/cf-stack-destroy";
 import { resolveBaserCfOAuthScopes } from "./cf-oauth-scopes";
 
@@ -10,6 +12,8 @@ export interface Env {
   OPS_KV: KVNamespace;
   BASER_CF_OAUTH_CLIENT_ID: string;
   BASER_CF_OAUTH_CLIENT_SECRET: string;
+  BASER_OPS_BROKER_SECRET?: string;
+  BASER_ONBOARDING_PUBLIC_URL?: string;
   BASER_CF_OAUTH_SCOPES?: string;
   TURNSTILE_SECRET_KEY: string;
   TURNSTILE_SITE_KEY?: string;
@@ -256,11 +260,146 @@ function oauthConfigured(env: Env): boolean {
   return Boolean(env.BASER_CF_OAUTH_CLIENT_ID?.trim() && env.BASER_CF_OAUTH_CLIENT_SECRET?.trim());
 }
 
+function brokerConfigured(env: Env): boolean {
+  return Boolean(env.BASER_OPS_BROKER_SECRET?.trim() && env.BASER_ONBOARDING_PUBLIC_URL?.trim());
+}
+
+function constantTimeEqual(a: string, b: string): boolean {
+  const max = Math.max(a.length, b.length);
+  let mismatch = a.length ^ b.length;
+  for (let i = 0; i < max; i += 1) {
+    mismatch |= (a.charCodeAt(i) || 0) ^ (b.charCodeAt(i) || 0);
+  }
+  return mismatch === 0;
+}
+
+function brokerJson(data: unknown, status = 200): Response {
+  return Response.json(data, {
+    status,
+    headers: { "cache-control": "no-store" },
+  });
+}
+
+async function handleBrokeredTeardown(req: Request, env: Env): Promise<Response> {
+  const expectedSecret = env.BASER_OPS_BROKER_SECRET?.trim() ?? "";
+  const suppliedSecret = req.headers.get("x-baser-ops-broker-secret") ?? "";
+  if (!expectedSecret || !constantTimeEqual(expectedSecret, suppliedSecret)) {
+    return brokerJson({ error: { message: "Forbidden" } }, 403);
+  }
+  if (opsDisabled(env)) {
+    return brokerJson({ error: { message: "現在、お試しの削除は停止しています。" } }, 503);
+  }
+
+  let parsedBody: unknown;
+  try {
+    parsedBody = await req.json();
+  } catch {
+    return brokerJson(
+      { error: { code: "INVALID_BODY", message: "リクエストの形式が正しくありません。" } },
+      400,
+    );
+  }
+  let accessToken: string;
+  try {
+    accessToken = parseBrokerTeardownRequest(parsedBody).accessToken;
+  } catch (e) {
+    const error =
+      e instanceof BrokerTeardownRequestError
+        ? e
+        : new BrokerTeardownRequestError("リクエストの形式が正しくありません。", "INVALID_BODY");
+    return brokerJson({ error: { code: error.code, message: error.message } }, 422);
+  }
+
+  const globalMax = numEnv(env, "BASER_OPS_GLOBAL_TEARDOWN_PER_DAY", 500);
+  const globalCounter = await incrementWindow(
+    env.OPS_KV,
+    `cap:global:${utcDayKey()}`,
+    86_400_000,
+    172_800,
+  );
+  if (globalCounter.count > globalMax) {
+    logEvent("teardown.denied", { reason: "global_cap", source: "oauth_broker" });
+    return brokerJson({ error: { message: "本日の削除受付上限に達しました。明日再度お試しください。" } }, 503);
+  }
+
+  let accountId: string;
+  try {
+    accountId = await resolveSingleAccountId(accessToken, 5);
+  } catch (e) {
+    const message = e instanceof Error ? e.message : String(e);
+    return brokerJson({ error: { message } }, 422);
+  }
+
+  const accountMax = numEnv(env, "BASER_OPS_ACCOUNT_TEARDOWN_PER_DAY", 3);
+  const accountHash = await accountIdHash(accountId);
+  const accountCounter = await incrementWindow(
+    env.OPS_KV,
+    `cap:acct:${accountHash}:${utcDayKey()}`,
+    86_400_000,
+    172_800,
+  );
+  if (accountCounter.count > accountMax) {
+    logEvent("teardown.denied", { reason: "account_cap", accountHash, source: "oauth_broker" });
+    return brokerJson(
+      { error: { message: `同じ Cloudflare アカウントでは 1 日に ${accountMax} 回までです。` } },
+      429,
+    );
+  }
+
+  if (!(await acquireAccountJob(env, accountId))) {
+    return brokerJson(
+      { error: { message: "同じアカウントで別の削除が進行中です。完了後に再度お試しください。" } },
+      409,
+    );
+  }
+
+  const requestId = randomHex(8);
+  try {
+    const result = await destroyTrialStack(accessToken, accountId, TRIAL_STACK_ID, {
+      dryRun: dryRun(env),
+      maxApiCalls: numEnv(env, "BASER_OPS_MAX_CF_API_CALLS", 50),
+      maxR2ObjectDeletes: numEnv(env, "BASER_OPS_MAX_R2_DELETES", 200),
+      // The public trial provisioner is intentionally fixed to no-R2.
+      // Do not require an undeclared R2 OAuth scope during teardown.
+      skipR2: true,
+    });
+    logEvent("teardown.completed", {
+      requestId,
+      stackId: TRIAL_STACK_ID,
+      accountHash,
+      source: "oauth_broker",
+      dryRun: dryRun(env),
+      partialR2: result.partialR2,
+      apiCallsUsed: result.apiCallsUsed,
+    });
+    return brokerJson({
+      ok: true,
+      message: dryRun(env)
+        ? "ドライランが完了しました。実際の削除は行っていません。"
+        : "お試しサイトの Worker とデータベースを削除しました。",
+      removed: result.removed,
+      partialR2: result.partialR2,
+    });
+  } catch (e) {
+    const message = e instanceof DestroyTrialError ? e.message : e instanceof Error ? e.message : String(e);
+    logEvent("teardown.denied", {
+      requestId,
+      reason: "destroy_failed",
+      accountHash,
+      source: "oauth_broker",
+      message,
+    });
+    return brokerJson({ error: { message } }, 422);
+  } finally {
+    await releaseAccountJob(env, accountId);
+  }
+}
+
 async function handleOAuthStart(req: Request, env: Env): Promise<Response> {
   if (opsDisabled(env)) {
     return html("メンテナンス中", `<p>現在、お試しの削除は停止しています。</p>`, 503);
   }
-  if (!oauthConfigured(env)) {
+  if (!oauthConfigured(env) && !brokerConfigured(env)) {
     return html("設定エラー", `<p>OAuth が構成されていません。</p>`, 503);
   }
 
@@ -286,6 +425,16 @@ async function handleOAuthStart(req: Request, env: Env): Promise<Response> {
           ? "チェックボックスが表示されていないか、完了前に送信されました。<a href=\"/\">トップ</a>からやり直してください。"
           : "ボット確認（Turnstile）に失敗しました。ページを再読み込みして再度お試しください。";
     return html("確認に失敗しました", `<p>${hint}</p>`, 422);
+  }
+
+  if (brokerConfigured(env)) {
+    const brokerStart = new URL(
+      "/api/onboarding/oauth/start",
+      env.BASER_ONBOARDING_PUBLIC_URL!.trim(),
+    );
+    brokerStart.searchParams.set("intent", "destroy");
+    brokerStart.searchParams.set("stackId", TRIAL_STACK_ID);
+    return Response.redirect(brokerStart.toString(), 303);
   }
 
   const origin = requestOrigin(req);
@@ -435,13 +584,18 @@ async function handleFetch(req: Request, env: Env): Promise<Response> {
   if (url.pathname === "/health" && req.method === "GET") {
     const disabled = opsDisabled(env);
     return Response.json({
-      ok: !disabled && oauthConfigured(env) && turnstileReady(env),
+      ok: !disabled && (oauthConfigured(env) || brokerConfigured(env)) && turnstileReady(env),
       service: "baser-edge-cloud-operations",
       disabled,
       dryRun: dryRun(env),
       oauthConfigured: oauthConfigured(env),
+      oauthBrokerConfigured: brokerConfigured(env),
       turnstileConfigured: turnstileReady(env),
     });
+  }
+
+  if (url.pathname === "/v1/internal/teardown" && req.method === "POST") {
+    return handleBrokeredTeardown(req, env);
   }
 
   if ((url.pathname === "/" || url.pathname === "/teardown") && req.method === "GET") {

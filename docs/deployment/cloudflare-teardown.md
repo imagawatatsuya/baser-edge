@@ -92,11 +92,13 @@ Wrangler 終了時のノイズとして報告がある。**削除成否は直前
 
 | 対象 | 片付け導線 |
 |------|------------|
-| 一般ユーザーのお試し | 開始ページの**お試しをやめる** → Cloud Operations Worker |
+| 一般ユーザーのお試し | 開始ページの**お試しをやめる** → 開設OAuth → Service Binding → Cloud Operations Worker |
 | 開発者の`default` / `lab`等 | `destroy:cloudflare` |
 | OAuth削除が利用できない場合 | Cloudflareダッシュボードで対象リソースを確認して手動削除 |
 
-Cloud Operations Workerは固定レシピとallowlistに従い、`trial`以外のリソースを削除対象にしません。実装と運用にはKV・OAuth等の設定が必要です。
+開設と削除は同じ有効なOAuth Clientと登録済みコールバックを使用します。開設ホストは一回限りのgrantを受け取り、共有Secretで認証したService BindingからCloud Operations Workerへ削除を委譲します。OAuthアクセストークンをブラウザへ返さず、公開された汎用Cloudflare APIも作りません。
+
+Cloud Operations Workerは固定レシピとallowlistに従い、`trial`以外のリソースを削除対象にしません。現在の標準trialはR2を作らないため、OAuth削除もR2 APIを呼びません。Operations Worker側ではグローバル上限、アカウント別上限、同時実行制限、Cloudflare API呼び出し上限を適用します。
 
 ---
 

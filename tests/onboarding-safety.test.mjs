@@ -125,6 +125,13 @@ test("hosted trial provisioning chains encrypted Queue checkpoints instead of on
   assert.match(config, /"max_batch_size":\s*1/);
   assert.match(config, /"max_retries":\s*2/);
   assert.match(config, /"max_concurrency":\s*1/);
+  assert.match(config, /"binding":\s*"OPS_SERVICE"/);
+  assert.match(config, /"service":\s*"baser-edge-cloud-operations"/);
+  assert.doesNotMatch(config, /BASER_EDGE_OPS_PUBLIC_URL/);
+  assert.match(worker, /x-baser-ops-broker-secret/);
+  assert.match(worker, /fixedStackId === "trial" \? "trial"/);
+  assert.match(web, /oauth_stack_id/);
+  assert.doesNotMatch(web, /help\?\.teardownUrl/);
   assert.match(worker, /body\.encryptedState !== currentCheckpoint/);
   assert.match(worker, /encryptedState:\s*nextProvisionState/);
   assert.match(worker, /trialProvisionStageProgress\(provisionState\?\.stage \?\? "prepare"\)/);

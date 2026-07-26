@@ -17,6 +17,12 @@
       "id": "e9154e26df3640889a38501e2b3bf491"
     }
   ],
+  "services": [
+    {
+      "binding": "OPS_SERVICE",
+      "service": "baser-edge-cloud-operations"
+    }
+  ],
   "queues": {
     "producers": [
       {
@@ -43,7 +49,6 @@
     "GITHUB_REPO": "imagawatatsuya/baser-edge",
     "BASER_CF_OAUTH_SCOPES": "account-settings.read workers-scripts.write d1.write",
     "BASER_ONBOARDING_PROVISION_STACK_ID": "trial",
-    "BASER_EDGE_OPS_PUBLIC_URL": "https://baser-edge-cloud-operations.papehiko.workers.dev/",
     "BASER_TRIAL_PROVISION_MODE": "cloudflare",
     "BASER_TRIAL_PROVISION_STRATEGY": "release"
   }

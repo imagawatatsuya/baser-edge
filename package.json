@@ -46,6 +46,7 @@
     "deploy:trial-host:prebundled": "npm run ensure:trial-provision-queue && npm run pack:trial-release && npm run build:onboarding-web && npm run bundle:onboarding-worker && wrangler deploy -c wrangler.onboarding-host.prebundled.jsonc",
     "check:onboarding-worker": "npm run check -w @baser-edge/onboarding-worker",
     "check:cloud-operations-worker": "npm run check -w @baser-edge/cloud-operations-worker",
+    "setup:ops-broker-secret": "node scripts/cloudflare/push-ops-broker-secret.mjs",
     "deploy:cloud-operations": "wrangler deploy -c wrangler.cloud-operations.jsonc",
     "prepare:public-snapshot": "node scripts/release/prepare-public-snapshot.mjs",
     "prepare:public-snapshot:git": "node scripts/release/prepare-public-snapshot.mjs --init-git"

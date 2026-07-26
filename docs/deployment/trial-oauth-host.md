@@ -28,19 +28,24 @@
 - `kv_namespaces` の KV ID を本番 ID に
 - `TRIAL_PROVISION_QUEUE` は `npm run deploy:trial-host` が初回だけ `baser-edge-trial-provision` を作成
 - `BASER_ONBOARDING_PROVISION_STACK_ID`: `trial`（固定お試し名）
-- `BASER_EDGE_OPS_PUBLIC_URL`: Operations Worker の URL
+- `OPS_SERVICE`: `baser-edge-cloud-operations` へのService Binding
 
 Worker Secrets（`wrangler secret put`）:
 
 - `BASER_CF_OAUTH_CLIENT_ID` / `BASER_CF_OAUTH_CLIENT_SECRET`
+- `BASER_OPS_BROKER_SECRET`（Operations Workerと同じ値）
 - OAuth Redirect に `https://<trial-host>/api/onboarding/oauth/callback` を追加
 
 ### 3. デプロイ
 
 ```bash
+npm run setup:ops-broker-secret
+npm run deploy:cloud-operations
 npm run build:onboarding-web
 npm run deploy:trial-host
 ```
+
+`setup:ops-broker-secret`は共有Secretを生成して両Workerへ同じ値を設定します。値は標準出力やリポジトリへ保存しません。
 
 ### 4. Pages 用 URL
 
@@ -63,3 +68,4 @@ npm run deploy:trial-host
 - bootstrapは所有者とサイトだけでなく、通常のApplication Serviceを通して初期`/home`を作成・承認・公開します。既存の空サイトは管理画面を開いたときに同じ初期化を一度だけ実行します。
 - **オプション `builds`:** 利用者の Cloudflare に **GitHub 連携** と `workers-ci.write` が必要（開発者向け）。
 - 利用者のブラウザに **wrangler / D1 バインディング UI は出ない**
+- 削除も同じOAuth Clientとコールバックを使う。`intent=destroy`のstateを一回限りで消費し、Operations WorkerへService Bindingで委譲するため、削除専用OAuth Clientは不要。

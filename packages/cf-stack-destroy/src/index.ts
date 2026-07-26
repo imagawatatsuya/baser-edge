@@ -14,3 +14,9 @@ export {
   type DestroyTrialOptions,
 } from "./destroy.js";
 export { createApiBudget, CfApiCallError } from "./cloudflare-api.js";
+export {
+  parseBrokerTeardownRequest,
+  BrokerTeardownRequestError,
+  type BrokerTeardownRequest,
+  type BrokerTeardownRequestErrorCode,
+} from "./broker-request.js";

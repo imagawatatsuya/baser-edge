@@ -213,4 +213,5 @@ This surface is outside `/v1/*`, but follows the same validation bar because it 
 | Route / surface | Methods | Domain | API | −T | Status | Notes |
 |-----------------|---------|--------|-----|-----|--------|-------|
 | `/api/onboarding/sessions` | POST | Y | Partial | Partial | Partial | OAuth grant or manual token; public mode rejects manual tokens |
+| `/api/onboarding/destroy` → Operations Service Binding | POST | Y | Y | Y | OK | Hosted `trial` is forced server-side; broker request requires shared Secret; success + missing-token + non-trial rejection tests in `cf-stack-destroy.test.mjs` |
 | `TRIAL_PROVISION_QUEUE` | Queue | Y | Y | Y | OK | `parseTrialProvisionQueueMessage`; encrypted token only; success + two rejection tests in `cf-trial-provision-parse.test.mjs` |

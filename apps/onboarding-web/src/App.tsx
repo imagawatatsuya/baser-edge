@@ -43,7 +43,6 @@ type Help = {
     publicUnavailable?: string;
   };
   provisionStackId?: string;
-  teardownUrl?: string;
   steps: { id: string; label: string }[];
 };
 
@@ -136,8 +135,13 @@ export function App() {
     });
   }
 
-  async function runDestroy(payload: { cloudflareApiToken?: string; oauthGrantId?: string }) {
-    const sid = stackId.trim();
+  async function runDestroy(
+    payload: { cloudflareApiToken?: string; oauthGrantId?: string },
+    requestedStackId?: string,
+  ) {
+    const sid =
+      requestedStackId?.trim() ||
+      (help?.provisionStackId === "trial" ? "trial" : stackId.trim());
     if (!sid) {
       throw new Error(
         "スタック ID がありません（開設済みのサイトがこのブラウザに記録されていない場合は ob-… を入力）",
@@ -210,6 +214,7 @@ export function App() {
     const oauthError = params.get("oauth_error");
     const oauthGrant = params.get("oauth_grant");
     const oauthIntent = params.get("oauth_intent");
+    const oauthStackId = params.get("oauth_stack_id") ?? undefined;
     if (oauthError) setError(decodeURIComponent(oauthError));
     if (oauthGrant) {
       window.history.replaceState({}, "", "/start/");
@@ -217,7 +222,7 @@ export function App() {
       markProvisionStart();
       const grant = oauthGrant;
       if (oauthIntent === "destroy") {
-        void runDestroy({ oauthGrantId: grant })
+        void runDestroy({ oauthGrantId: grant }, oauthStackId)
           .catch((e) => setDestroyError(e instanceof Error ? e.message : String(e)))
           .finally(() => setLoading(false));
       } else {
@@ -306,11 +311,12 @@ export function App() {
       setDestroyError(help?.oauth?.publicUnavailable ?? "現在ご利用いただけません。");
       return;
     }
-    if (!stackId.trim()) {
+    const sid = help?.provisionStackId === "trial" ? "trial" : stackId.trim();
+    if (!sid) {
       setDestroyError("スタック ID を入力するか、このブラウザで開設したサイトを選んでください。");
       return;
     }
-    window.location.href = "/api/onboarding/oauth/start?intent=destroy";
+    window.location.href = `/api/onboarding/oauth/start?intent=destroy&stackId=${encodeURIComponent(sid)}`;
   }
 
   async function onDestroyWithToken() {
@@ -563,62 +569,49 @@ export function App() {
 
       <section className="start-card destroy-card">
         <h2>お試しをやめる</h2>
-        {help?.teardownUrl ? (
+        <p className="note">
+          {useOAuthPrimary
+            ? (help?.oauth?.destroyTitle ??
+              "削除するときも Cloudflare にログインして許可するだけです（同じアカウントである必要があります）。")
+            : "削除には開設時と同じ API トークンが必要です。"}
+        </p>
+        {help?.provisionStackId !== "trial" && (
           <>
-            <p className="note">
-              Cloudflare にログインして許可するだけです。お試し環境（trial）だけを削除し、他のリソースには触れません。復元できません。
-            </p>
-            <a className="btn-danger" href={help.teardownUrl}>
-              お試しをやめる
-            </a>
-          </>
-        ) : (
-          <>
-            <p className="note">
-              {useOAuthPrimary
-                ? (help?.oauth?.destroyTitle ??
-                  "削除するときも Cloudflare にログインして許可するだけです（同じアカウントである必要があります）。")
-                : "削除には開設時と同じ API トークンが必要です。"}
-            </p>
-            {help?.provisionStackId !== "trial" && (
-              <>
-                <label className="field-label" htmlFor="stack-id">
-                  スタック ID
-                </label>
-                <input
-                  id="stack-id"
-                  className="stack-input"
-                  type="text"
-                  placeholder="ob-…（開設時にこのブラウザへ保存）"
-                  value={stackId}
-                  disabled={actionsDisabled}
-                  onChange={(e) => setStackId(e.target.value)}
-                />
-              </>
-            )}
-            {useOAuthPrimary ? (
-              <button
-                type="button"
-                className="btn-danger"
-                disabled={actionsDisabled || (help?.provisionStackId !== "trial" && !stackId.trim())}
-                onClick={onOAuthDestroy}
-              >
-                {destroying ? "削除しています…" : (help?.oauth?.destroyButton ?? "Cloudflare でログインして削除")}
-              </button>
-            ) : (
-              <button
-                type="button"
-                className="btn-danger"
-                disabled={actionsDisabled || !token.trim() || !stackId.trim()}
-                onClick={() => void onDestroyWithToken()}
-              >
-                {destroying ? "削除しています…" : "このサイトを削除"}
-              </button>
-            )}
-            {destroyMsg && <p className="success-msg">{destroyMsg}</p>}
-            {destroyError && <p className="error">{destroyError}</p>}
+            <label className="field-label" htmlFor="stack-id">
+              スタック ID
+            </label>
+            <input
+              id="stack-id"
+              className="stack-input"
+              type="text"
+              placeholder="ob-…（開設時にこのブラウザへ保存）"
+              value={stackId}
+              disabled={actionsDisabled}
+              onChange={(e) => setStackId(e.target.value)}
+            />
           </>
         )}
+        {useOAuthPrimary ? (
+          <button
+            type="button"
+            className="btn-danger"
+            disabled={actionsDisabled || (help?.provisionStackId !== "trial" && !stackId.trim())}
+            onClick={onOAuthDestroy}
+          >
+            {destroying ? "削除しています…" : (help?.oauth?.destroyButton ?? "Cloudflare でログインして削除")}
+          </button>
+        ) : (
+          <button
+            type="button"
+            className="btn-danger"
+            disabled={actionsDisabled || !token.trim() || !stackId.trim()}
+            onClick={() => void onDestroyWithToken()}
+          >
+            {destroying ? "削除しています…" : "このサイトを削除"}
+          </button>
+        )}
+        {destroyMsg && <p className="success-msg">{destroyMsg}</p>}
+        {destroyError && <p className="error">{destroyError}</p>}
       </section>
 
       <footer className="start-footer">
