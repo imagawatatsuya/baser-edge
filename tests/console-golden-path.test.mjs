@@ -220,6 +220,14 @@ test("console golden path: empty body publish, revise body, republish, public HT
   const firstRevisionId = article.json.workingRevision.id;
   const lockVersion = article.json.item.lockVersion;
 
+  const treeBeforeTrash = await apiJson(worker, `/v1/sites/${boot.siteId}/content-tree`, { cookies });
+  assert.equal(treeBeforeTrash.response.status, 200);
+  assert.equal(
+    treeBeforeTrash.json.some((entry) => entry.snapshot?.item?.id === contentItemId),
+    true,
+    "active article must appear in content-tree before trash",
+  );
+
   await publishRevision(worker, cookies, credentialId, contentItemId, firstRevisionId);
 
   let publicRes = await publicWorker.fetch(new Request(`https://public.test${path}`), { SITE_ID: boot.siteId });
@@ -283,10 +291,49 @@ test("console golden path: empty body publish, revise body, republish, public HT
   });
   assert.equal(trashed.response.status, 200, trashed.json.error?.message);
 
+  const treeAfterTrash = await apiJson(worker, `/v1/sites/${boot.siteId}/content-tree`, { cookies });
+  assert.equal(treeAfterTrash.response.status, 200);
+  assert.equal(
+    treeAfterTrash.json.some((entry) => entry.snapshot?.item?.id === contentItemId),
+    false,
+    "trashed article must not appear in content-tree",
+  );
+
   const trashList = await apiJson(worker, `/v1/sites/${boot.siteId}/trash`, { cookies });
   assert.equal(trashList.response.status, 200);
   assert.equal(trashList.json.some((entry) => entry.snapshot?.item?.id === contentItemId), true);
 
   publicRes = await publicWorker.fetch(new Request(`https://public.test${path}`), { SITE_ID: boot.siteId });
   assert.equal(publicRes.status, 404);
+
+  const trashedSnapshot = await apiJson(worker, `/v1/content/${contentItemId}`, { cookies });
+  assert.equal(trashedSnapshot.response.status, 200);
+  const restored = await apiJson(worker, `/v1/content/${contentItemId}/restore`, {
+    method: "POST",
+    cookies,
+    csrf: true,
+    body: { expectedTreeVersion: trashedSnapshot.json.node.treeVersion },
+  });
+  assert.equal(restored.response.status, 200, restored.json.error?.message);
+
+  const treeAfterRestore = await apiJson(worker, `/v1/sites/${boot.siteId}/content-tree`, { cookies });
+  assert.equal(treeAfterRestore.response.status, 200);
+  assert.equal(
+    treeAfterRestore.json.some((entry) => entry.snapshot?.item?.id === contentItemId),
+    true,
+    "restored article must reappear in content-tree",
+  );
+
+  const trashAfterRestore = await apiJson(worker, `/v1/sites/${boot.siteId}/trash`, { cookies });
+  assert.equal(trashAfterRestore.response.status, 200);
+  assert.equal(
+    trashAfterRestore.json.some((entry) => entry.snapshot?.item?.id === contentItemId),
+    false,
+    "restored article must leave trash list",
+  );
+
+  publicRes = await publicWorker.fetch(new Request(`https://public.test${path}`), { SITE_ID: boot.siteId });
+  assert.equal(publicRes.status, 200);
+  html = await publicRes.text();
+  assert.match(html, /追記した本文/);
 });

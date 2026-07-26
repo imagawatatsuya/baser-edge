@@ -1,0 +1,34 @@
+---
+description: After console mutations, UI must reflect server state (read-your-writes)
+globs: apps/admin-web/**/*
+alwaysApply: false
+---
+
+# Console mutation → view sync (required)
+
+Principle: **read-your-writes** — after a successful write (POST/PATCH/DELETE), any on-screen list, tree, or detail that depends on that data must update without requiring a full browser reload.
+
+## Rules
+
+1. **One source of truth per surface** — e.g. site tree state lives in `useContentTree` / `ContentTreeProvider`; child routes (`ContentEditPage`) must call `useContentTreeContext().reload()` (or shared invalidation), not keep a stale sibling copy.
+2. **After every successful mutation** that affects visible data: **invalidate cache** (if any) and **refetch or apply an optimistic patch** to all affected views on the current screen.
+3. **Prefer pessimistic refetch** unless the patch is trivial and local; optimistic updates must reconcile on API error.
+4. **Navigation alone is not sync** — `navigate()` without reloading shared state leaves split layouts (tree + editor) stale.
+5. **Logout / site switch** — clear client caches that are scoped by `siteId` (see `contentTreeCache.ts`).
+
+## Checklist for new console features
+
+- [ ] Identified all UI regions that show the mutated entity or its parent list
+- [ ] Mutation handler awaits sync (reload / invalidate / local state update)
+- [ ] No duplicate hook instances holding the same server-derived list
+- [ ] Golden path or UI-relevant test updated when `/console/` list/tree behavior changes
+
+## Tests
+
+- API: `tests/console-golden-path.test.mjs` (content-tree vs trash after trash)
+- UI contract: `tests/console-mutation-sync-ui.test.mjs` (editor/layout reload wiring)
+
+## References
+
+- Tree: `apps/admin-web/src/hooks/useContentTree.ts`, `lib/contentTreeCache.ts`
+- Example fix: trash from editor → `await reloadContentTree()` before `navigate("/content")`
