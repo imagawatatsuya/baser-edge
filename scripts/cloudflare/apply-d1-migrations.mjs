@@ -109,7 +109,8 @@ function recordMigration(databaseName, configRel, fileName, log) {
 }
 
 function isAlreadyExistsError(err) {
-  return /already exists/i.test(String(err));
+  const msg = String(err);
+  return /already exists/i.test(msg) || /duplicate column name/i.test(msg);
 }
 
 /**
