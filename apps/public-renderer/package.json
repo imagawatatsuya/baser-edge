@@ -5,6 +5,7 @@
   "type": "module",
   "main": "./dist/index.js",
   "dependencies": {
+    "@baser-edge/baser-domain": "0.8.0",
     "@baser-edge/core-types": "0.8.0",
     "@baser-edge/content-kernel": "0.8.0",
     "@baser-edge/renderer": "0.8.0",

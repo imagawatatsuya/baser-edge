@@ -161,19 +161,29 @@ test("ContentPage and TreeModals gate create flows on validateSlugInput", () => 
   assert.match(treeModals, /validateSlugInput\(newSlug\)/);
 });
 
+test("public renderer imports ADMIN_VIEW_QUERY from baser-domain", () => {
+  const repoRoot = join(fileURLToPath(new URL("..", import.meta.url)));
+  const source = readFileSync(join(repoRoot, "apps/public-renderer/src/admin-view-banner.ts"), "utf8");
+  assert.match(source, /@baser-edge\/baser-domain/);
+  assert.match(source, /ADMIN_VIEW_QUERY/);
+});
+
 test("ContentEditPage opens public live URLs without siteId or revision query params", () => {
   const source = readAdmin("pages/ContentEditPage.tsx");
-  assert.match(source, /buildPublicLiveUrl\(resolvePublicSiteOrigin\(session\), data\.route\.path\)/);
+  assert.match(source, /buildPublicLiveUrl\(resolvePublicSiteOrigin\(session\), data\.route\.path, \{ showPublishedBanner \}\)/);
+  assert.match(source, /訪問者と同じ表示/);
+  assert.match(source, /PUBLIC_VISITOR_TAB/);
+});
+
+test("buildPublicLiveUrl in baser-domain documents SITE_ID binding (no siteId in query)", () => {
+  const repoRoot = join(fileURLToPath(new URL("..", import.meta.url)));
+  const source = readFileSync(join(repoRoot, "packages/baser-domain/src/public-live-url.ts"), "utf8");
+  assert.match(source, /SITE_ID/);
+  assert.doesNotMatch(source, /searchParams\.set\("siteId"/);
 });
 
 test("admin slug helper stays aligned with baser-domain normalizeSlug", () => {
   const slugLib = readAdmin("lib/slug.ts");
   assert.match(slugLib, /Matches server `normalizeSlug`/);
   assert.match(slugLib, /\^\[a-z0-9\]\+\(\?:-\[a-z0-9\]\+\)\*\$/);
-});
-
-test("public-live-url documents SITE_ID binding (no siteId in query)", () => {
-  const source = readAdmin("lib/public-live-url.mjs");
-  assert.match(source, /SITE_ID/);
-  assert.doesNotMatch(source, /searchParams\.set\("siteId"/);
 });

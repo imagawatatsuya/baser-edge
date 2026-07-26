@@ -1,4 +1,6 @@
-export const ADMIN_VIEW_QUERY = "baserAdminView";
+import { ADMIN_VIEW_QUERY } from "@baser-edge/baser-domain";
+
+export { ADMIN_VIEW_QUERY };
 
 export type AdminViewKind = "draft" | "published";
 

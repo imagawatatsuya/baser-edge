@@ -18,6 +18,7 @@ import {
   openNamedBrowserTab,
   PUBLIC_LIVE_TAB,
   PUBLIC_PREVIEW_TAB,
+  PUBLIC_VISITOR_TAB,
 } from "../lib/public-view";
 import { trashContent } from "../lib/contentTrash";
 import { useContentTreeContext } from "../hooks/useContentTree";
@@ -97,10 +98,10 @@ export function ContentEditPage() {
     }
   }
 
-  function openLivePublic(data: ContentSnapshot) {
+  function openLivePublic(data: ContentSnapshot, showPublishedBanner: boolean) {
     if (!session || !data.publishedRevision) return;
-    const url = buildPublicLiveUrl(resolvePublicSiteOrigin(session), data.route.path);
-    openNamedBrowserTab(url, PUBLIC_LIVE_TAB);
+    const url = buildPublicLiveUrl(resolvePublicSiteOrigin(session), data.route.path, { showPublishedBanner });
+    openNamedBrowserTab(url, showPublishedBanner ? PUBLIC_LIVE_TAB : PUBLIC_VISITOR_TAB);
   }
 
   async function onPreviewDraft() {
@@ -235,7 +236,10 @@ export function ContentEditPage() {
       {editable ? (
         <p className="editor-secondary-actions">
           {published && !needsPublish ? (
-            <Button variant="link" disabled={busy} onClick={() => openLivePublic(snapshot)}>公開サイトを見る</Button>
+            <>
+              <Button variant="link" disabled={busy} onClick={() => openLivePublic(snapshot, true)}>公開を確認（バナー付き）</Button>
+              <Button variant="link" disabled={busy} onClick={() => openLivePublic(snapshot, false)}>訪問者と同じ表示</Button>
+            </>
           ) : null}
           {needsPublish ? (
             <Button variant="link" disabled={busy} onClick={() => void onPreviewDraft()}>下書きを確認</Button>

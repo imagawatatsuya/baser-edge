@@ -58,7 +58,9 @@ export function AdminLayout() {
 
           <NavLink to="/themes" className={({ isActive }) => isActive ? "active" : undefined}>テーマ</NavLink>
           <NavLink to="/plugins" className={({ isActive }) => isActive ? "active" : undefined}>プラグイン</NavLink>
-          <PublicSiteLink className="admin-nav-external">公開サイト（ホーム）</PublicSiteLink>
+          <PublicSiteLink className="admin-nav-external" showVisitorLink visitorClassName="admin-nav-external admin-nav-external-secondary">
+            公開サイト（ホーム）
+          </PublicSiteLink>
 
         </nav>
 
