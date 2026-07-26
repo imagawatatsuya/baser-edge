@@ -16,7 +16,8 @@ Living inventory of **existing** `/v1/*` routes against [validation-policy.md](.
 | File | Covers |
 |------|--------|
 | `tests/console-golden-path.test.mjs` | Auth, blog/article, revise lock, publish, public HTML, console capabilities |
-| `tests/api-worker.test.mjs` | Pages, tree, copy/trash, assets, previews, blogs list |
+| `tests/api-worker.test.mjs` | Pages, tree, copy/trash, assets, previews, blogs list, P1/P2 rejections |
+| `tests/api-validation.test.mjs` | Slug HTTP 422, blog pagination, approval inbox |
 | `tests/auth.test.mjs` | Passkeys, session, step-up, CSRF |
 | `tests/theme.test.mjs` | Theme releases, activation |
 | `tests/custom-content.test.mjs` | Fields, tables, entries, approve/publish |
@@ -67,10 +68,10 @@ Living inventory of **existing** `/v1/*` routes against [validation-policy.md](.
 
 | Route | Methods | Domain | API | −T | Status | Notes |
 |-------|---------|--------|-----|-----|--------|-------|
-| `/v1/pages` | POST | Y | Y | Partial | Partial | Slug via domain; **no HTTP INVALID_SLUG test** |
-| `/v1/folders` | POST | Y | Y | Partial | Partial | Same |
+| `/v1/pages` | POST | Y | Y | Y | OK | Slug via domain; `api-validation.test.mjs` INVALID_SLUG |
+| `/v1/folders` | POST | Y | Y | Y | OK | Same |
 | `/v1/aliases` | POST | Y | Y | Partial | Partial | |
-| `/v1/blogs` | POST | Y | Y | Partial | Partial | Optional `pageSize`/`feedSize` unchecked at API |
+| `/v1/blogs` | POST | Y | Y | Y | OK | `pageSize`/`feedSize` bounded 1–100 when present |
 | `/v1/sites/:siteId/content-tree` | GET | Y | — | Partial | Partial | |
 | `/v1/sites/:siteId/trash` | GET | Y | — | Partial | Partial | |
 | `/v1/content/:id` | GET | Y | — | Partial | Partial | |
@@ -95,7 +96,7 @@ Living inventory of **existing** `/v1/*` routes against [validation-policy.md](.
 | Route | Methods | Domain | API | −T | Status | Notes |
 |-------|---------|--------|-----|-----|--------|-------|
 | `/v1/blogs/:id/articles` | POST | Y | Y | Partial | Partial | Golden path create |
-| `/v1/blogs/:id/articles` | GET | Y | Partial | Gap | Gap | `limit`/`offset` via `Number()` without `numberField`/bounds |
+| `/v1/blogs/:id/articles` | GET | Y | Y | Y | OK | `optionalQueryInt` for limit (≤100) and offset |
 | `/v1/blogs/:id/taxonomies` | GET, POST | Y | Y | Partial | Partial | |
 | `/v1/taxonomies/:id/terms` | POST | Y | Y | Partial | Partial | |
 | `/v1/articles/:id/revisions/:rev/terms` | PUT | Y | Y | Gap | Partial | |
@@ -183,8 +184,8 @@ Work in this order unless a feature touches a specific route.
 
 | P | Item | Routes / area | Suggested work |
 |---|------|---------------|----------------|
-| P0 | Slug rejection at HTTP | `POST /v1/pages`, `/folders`, `/blogs`, `/articles`, `/custom-contents`, move/copy | Add tests: non-ASCII slug → 422 `INVALID_SLUG` |
-| P0 | Pagination bounds | `GET /v1/blogs/:id/articles` | `numberField` or bounded parser for limit/offset |
+| P0 | Slug rejection at HTTP | `POST /v1/pages`, `/folders`, `/blogs`, `/articles`, move/copy | Add tests: non-ASCII slug → 422 `INVALID_SLUG` | Done (`api-validation.test.mjs`) |
+| P0 | Pagination bounds | `GET /v1/blogs/:id/articles` | `numberField` or bounded parser for limit/offset | Done (`optionalQueryInt`) |
 | P1 | Tree conflicts | move, copy, trash, restore | Tests for wrong `expectedTreeVersion` → 409 | Done (`api-worker.test.mjs`) |
 | P1 | Grants scope | `POST /v1/grants` | Schema for `scope`; reject unknown keys | Done |
 | P1 | Mail deliver limit | `POST /v1/mail-notifications/deliver` | `numberField` + max cap | Done |
