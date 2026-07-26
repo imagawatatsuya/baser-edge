@@ -98,13 +98,8 @@ export function ContentEditPage() {
   }
 
   function openLivePublic(data: ContentSnapshot) {
-    if (!session?.siteId || !data.publishedRevision) return;
-    const url = buildPublicLiveUrl(
-      resolvePublicSiteOrigin(session),
-      data.route.path,
-      session.siteId,
-      data.publishedRevision.id,
-    );
+    if (!session || !data.publishedRevision) return;
+    const url = buildPublicLiveUrl(resolvePublicSiteOrigin(session), data.route.path);
     openNamedBrowserTab(url, PUBLIC_LIVE_TAB);
   }
 

@@ -393,7 +393,7 @@ function renderArticleDrafts(entries, session) {
     const card = document.createElement("article");
     card.className = "tree-row";
     const title = displayTitle(entry);
-    const publicUrl = `${session.publicUrl}${entry.snapshot.route.path}?siteId=${encodeURIComponent(session.siteId)}`;
+    const publicUrl = `${session.publicUrl}${entry.snapshot.route.path}?baserAdminView=published`;
     card.innerHTML = `<span class="type-icon">A</span><span class="tree-main"><strong>${escapeHtml(String(title))}</strong><small>${escapeHtml(entry.snapshot.route.path)}</small><span class="mail-card-actions">${published ? `<a class="preview-mini" target="_blank" rel="noopener" href="${escapeHtml(publicUrl)}">公開ページ</a><span class="type-pill">published</span>` : `<button class="preview-mini publish-article" type="button">承認して公開</button>`}</span></span>`;
     const publishButton = card.querySelector(".publish-article");
     if (publishButton) {
@@ -430,7 +430,7 @@ function renderBlogs(blogs, session) {
     const card = document.createElement("article");
     card.className = "tree-row";
     const title = entry.snapshot.workingRevision?.fields?.title ?? entry.snapshot.node.slug;
-    const publicUrl = `${session.publicUrl}${entry.snapshot.route.path}?siteId=${encodeURIComponent(session.siteId)}`;
+    const publicUrl = `${session.publicUrl}${entry.snapshot.route.path}?baserAdminView=published`;
     card.innerHTML = `<span class="type-icon">B</span><span class="tree-main"><strong>${escapeHtml(String(title))}</strong><small>${escapeHtml(entry.snapshot.route.path)} · 1ページ ${blog.pageSize}件 · RSS ${blog.feedSize}件</small></span><a class="preview-mini" target="_blank" rel="noopener" href="${escapeHtml(publicUrl)}">公開サイト</a><span class="type-pill">blog</span>`;
     list.append(card);
   }

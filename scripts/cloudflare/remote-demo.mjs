@@ -200,13 +200,13 @@ export async function smokeLoginAndPublish(hint, publicUrl) {
   });
 
   const pubBase = publicUrl.replace(/\/$/, "");
-  const publicRes = await fetch(`${pubBase}/${slug}?siteId=${encodeURIComponent(hint.siteId)}`);
+  const publicRes = await fetch(`${pubBase}/${slug}`);
   if (!publicRes.ok) throw new Error(`public GET /${slug} returned ${publicRes.status}`);
   const html = await publicRes.text();
   if (!html.includes("baserEdge on Cloudflare")) {
     throw new Error("public HTML missing expected heading text");
   }
-  return { slug, publicUrl: `${pubBase}/${slug}?siteId=${encodeURIComponent(hint.siteId)}` };
+  return { slug, publicUrl: `${pubBase}/${slug}` };
 }
 
 function demoDocument(title, body) {

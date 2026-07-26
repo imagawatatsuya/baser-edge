@@ -87,7 +87,7 @@ await api(`/v1/content/${contentItemId}/publish`, {
   body: { revisionId, approvalId: approval.id },
 });
 
-let publicUrl = `${PUBLIC_BASE}${article.route.path}?siteId=${encodeURIComponent(hint.siteId)}`;
+let publicUrl = `${PUBLIC_BASE}${article.route.path}`;
 let page = await fetch(publicUrl);
 let html = await page.text();
 if (!page.ok || !html.includes("初めての記事")) {

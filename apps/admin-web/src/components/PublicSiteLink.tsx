@@ -5,8 +5,8 @@ import { buildPublicLiveUrl } from "../lib/public-view";
 
 export function usePublicHomeUrl(): string | null {
   const { session } = useAuth();
-  if (!session?.siteId) return null;
-  return buildPublicLiveUrl(resolvePublicSiteOrigin(session), "/home", session.siteId);
+  if (!session) return null;
+  return buildPublicLiveUrl(resolvePublicSiteOrigin(session), "/home");
 }
 
 export function PublicSiteLink({

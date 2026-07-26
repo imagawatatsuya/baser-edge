@@ -57,7 +57,7 @@ test("Public Renderer shows published admin banner when baserAdminView=published
   });
 
   const worker = createPublicWorker(() => cms);
-  const plain = await worker.fetch(new Request(`https://renderer.test/live?siteId=${boot.siteId}`), {
+  const plain = await worker.fetch(new Request("https://renderer.test/live"), {
     SITE_ID: boot.siteId,
   });
   const plainHtml = await plain.text();
@@ -65,7 +65,7 @@ test("Public Renderer shows published admin banner when baserAdminView=published
   assert.doesNotMatch(plainHtml, /公開済みページ/);
 
   const admin = await worker.fetch(
-    new Request(`https://renderer.test/live?siteId=${boot.siteId}&baserAdminView=published`),
+    new Request("https://renderer.test/live?baserAdminView=published"),
     { SITE_ID: boot.siteId },
   );
   const adminHtml = await admin.text();

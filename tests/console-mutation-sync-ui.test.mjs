@@ -161,8 +161,19 @@ test("ContentPage and TreeModals gate create flows on validateSlugInput", () => 
   assert.match(treeModals, /validateSlugInput\(newSlug\)/);
 });
 
+test("ContentEditPage opens public live URLs without siteId or revision query params", () => {
+  const source = readAdmin("pages/ContentEditPage.tsx");
+  assert.match(source, /buildPublicLiveUrl\(resolvePublicSiteOrigin\(session\), data\.route\.path\)/);
+});
+
 test("admin slug helper stays aligned with baser-domain normalizeSlug", () => {
   const slugLib = readAdmin("lib/slug.ts");
   assert.match(slugLib, /Matches server `normalizeSlug`/);
   assert.match(slugLib, /\^\[a-z0-9\]\+\(\?:-\[a-z0-9\]\+\)\*\$/);
+});
+
+test("public-live-url documents SITE_ID binding (no siteId in query)", () => {
+  const source = readAdmin("lib/public-live-url.mjs");
+  assert.match(source, /SITE_ID/);
+  assert.doesNotMatch(source, /searchParams\.set\("siteId"/);
 });
