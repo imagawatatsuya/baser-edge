@@ -76,9 +76,9 @@ Living inventory of **existing** `/v1/*` routes against [validation-policy.md](.
 | `/v1/sites/:siteId/trash` | GET | Y | Y | Partial | Partial | `sitePathId` |
 | `/v1/content/:id` | GET | Y | — | Partial | Partial | |
 | `/v1/content/:id/revisions` | POST | Y | Y | Y | OK | Golden path: missing `expectedLockVersion` |
-| `/v1/content/:id/approvals` | POST | Y | Y | Partial | Partial | |
+| `/v1/content/:id/approvals` | POST | Y | Y | Y | OK | `revisionId` required; closed `riskLevel`; tests in `api-validation.test.mjs` |
 | `/v1/sites/:siteId/pending-approvals` | GET | Y | — | Partial | Partial | Console approvals inbox |
-| `/v1/approvals/:id/decide` | POST | Y | Y | Partial | Partial | |
+| `/v1/approvals/:id/decide` | POST | Y | Y | Y | OK | Closed `decision`; rejection tests in `api-validation.test.mjs` |
 | `/v1/content/:id/publish` | POST | Y | Y | Y | OK | Golden path |
 | `/v1/content/:id/agent-proposals` | POST | Y | Y | Y | OK | `blockOperationsField`; rejection tests in `api-worker.test.mjs` |
 | `/v1/content/:id/move-impact` | POST | Y | Y | Y | OK | `newSlug` via domain; INVALID_SLUG in `api-validation.test.mjs` |
@@ -99,7 +99,7 @@ Living inventory of **existing** `/v1/*` routes against [validation-policy.md](.
 | `/v1/blogs/:id/articles` | GET | Y | Y | Y | OK | `optionalQueryInt` for limit (≤100) and offset |
 | `/v1/blogs/:id/taxonomies` | GET, POST | Y | Y | Partial | Partial | |
 | `/v1/taxonomies/:id/terms` | POST | Y | Y | Partial | Partial | |
-| `/v1/articles/:id/revisions/:rev/terms` | PUT | Y | Y | Gap | Partial | |
+| `/v1/articles/:id/revisions/:rev/terms` | PUT | Y | Y | Y | OK | `termIds` string array; tests in `api-worker.test.mjs` |
 | `/v1/sites/:siteId/blogs` | GET | Y | — | Partial | Partial | |
 
 ---
@@ -196,6 +196,9 @@ Work in this order unless a feature touches a specific route.
 | P3 | Bootstrap hostname | `POST /v1/bootstrap` | `normalizeSiteHostname` in domain; HTTP rejection tests | Done |
 | P3 | Alias / custom-content slugs | `POST /v1/aliases`, `/custom-contents` | INVALID_SLUG HTTP tests | Done |
 | P3 | Site path IDs | `GET /v1/sites/:siteId/*` | `sitePathId` + malformed path test | Done (partial route coverage) |
+| P4 | Content approvals | `approvals`, `decide` | Closed enums + HTTP rejection tests | Done |
+| P4 | Article term classify | `PUT …/terms` | `termIds` array validation + tests | Done |
+| P4 | Console slug mirror | create modals | `validateSlugInput` wiring tests | Done |
 
 ---
 
@@ -203,7 +206,7 @@ Work in this order unless a feature touches a specific route.
 
 | Surface | Server mirror | −T | Status | Notes |
 |---------|---------------|-----|--------|-------|
-| Create page/blog/article modals | `lib/slug.ts` | Partial | Partial | Slug ASCII; title Unicode OK |
+| Create page/blog/article modals | `lib/slug.ts` | Y | OK | `validateSlugInput`; static wiring in `console-mutation-sync-ui.test.mjs` |
 | Content edit save | API revise | Y | OK | Golden path + lock version test |
 | Login / CSRF | auth API | Y | OK | `auth.test.mjs` + client retry |
 

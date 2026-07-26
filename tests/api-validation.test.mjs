@@ -286,3 +286,51 @@ test("GET /v1/sites/:siteId/approval-inbox returns content and custom entry queu
   assert.ok(Array.isArray(inbox.content));
   assert.ok(Array.isArray(inbox.customEntries));
 });
+
+test("POST /v1/content/:id/approvals rejects missing revisionId and invalid riskLevel", async () => {
+  const { boot, headers } = await bootSession("approval-req.test");
+  const pageResponse = await worker.fetch(new Request("https://api.test/v1/pages", {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ siteId: boot.siteId, slug: "approve-me", title: "Approve", document: emptyDocument }),
+  }), {});
+  const page = await pageResponse.json();
+  const missingRevision = await worker.fetch(new Request(`https://api.test/v1/content/${page.item.id}/approvals`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({}),
+  }), {});
+  assert.equal(missingRevision.status, 422);
+  const badRisk = await worker.fetch(new Request(`https://api.test/v1/content/${page.item.id}/approvals`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ revisionId: page.workingRevision.id, riskLevel: "extreme" }),
+  }), {});
+  assert.equal(badRisk.status, 422);
+  assert.match((await badRisk.json()).error?.message ?? "", /riskLevel/);
+});
+
+test("POST /v1/approvals/:id/decide rejects invalid decision values", async () => {
+  const { boot, headers } = await bootSession("approval-decide.test");
+  const pageResponse = await worker.fetch(new Request("https://api.test/v1/pages", {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ siteId: boot.siteId, slug: "decide-me", title: "Decide", document: emptyDocument }),
+  }), {});
+  const page = await pageResponse.json();
+  const approvalResponse = await worker.fetch(new Request(`https://api.test/v1/content/${page.item.id}/approvals`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ revisionId: page.workingRevision.id }),
+  }), {});
+  assert.equal(approvalResponse.status, 201);
+  const approval = await approvalResponse.json();
+  for (const body of [{}, { decision: "maybe" }, { decision: 1 }]) {
+    const rejected = await worker.fetch(new Request(`https://api.test/v1/approvals/${approval.id}/decide`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify(body),
+    }), {});
+    assert.equal(rejected.status, 422, JSON.stringify(body));
+  }
+});

@@ -151,3 +151,18 @@ test("ActivationsPage reloads active theme after activate", () => {
   assert.ok(source.indexOf("applyActiveTheme(activated)", activateFn) > activateFn);
   assert.match(source, /activeReleaseId/);
 });
+
+test("ContentPage and TreeModals gate create flows on validateSlugInput", () => {
+  const contentPage = readAdmin("pages/ContentPage.tsx");
+  assert.match(contentPage, /validateSlugInput\(slug\)/);
+  assert.match(contentPage, /SLUG_FIELD_HINT/);
+  const treeModals = readAdmin("components/tree/TreeModals.tsx");
+  assert.match(treeModals, /validateSlugInput\(slug\)/);
+  assert.match(treeModals, /validateSlugInput\(newSlug\)/);
+});
+
+test("admin slug helper stays aligned with baser-domain normalizeSlug", () => {
+  const slugLib = readAdmin("lib/slug.ts");
+  assert.match(slugLib, /Matches server `normalizeSlug`/);
+  assert.match(slugLib, /\^\[a-z0-9\]\+\(\?:-\[a-z0-9\]\+\)\*\$/);
+});

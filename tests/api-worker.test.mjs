@@ -619,3 +619,42 @@ test("API plugin-routes POST rejects non-object JSON body", async () => {
   }), {});
   assert.equal(missingWorkspace.status, 422);
 });
+
+test("API PUT article revision terms validates termIds array", async () => {
+  const { BlogService, MemoryBlogStore } = await import("@baser-edge/blog-kernel");
+  const localCms = new CmsService(new MemoryCmsStore());
+  const localBlog = new BlogService(new MemoryBlogStore(), localCms);
+  const localWorker = createApiWorker(() => localCms, { resolveBlog: () => localBlog });
+  const bootstrapResponse = await localWorker.fetch(new Request("https://api.test/v1/bootstrap", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ workspaceName: "Terms", siteName: "Terms", hostname: "terms-api.test", ownerName: "Owner" }),
+  }), {});
+  const boot = await bootstrapResponse.json();
+  const headers = { "content-type": "application/json", "x-baser-principal-id": boot.ownerPrincipalId, "x-baser-principal-type": "human" };
+  const emptyDocument = { formatVersion: 1, root: { id: "root", type: "page", componentVersion: 1, props: {}, slots: { body: [] } } };
+  const blogResponse = await localWorker.fetch(new Request("https://api.test/v1/blogs", {
+    method: "POST", headers,
+    body: JSON.stringify({ siteId: boot.siteId, slug: "news", title: "News", document: emptyDocument }),
+  }), {});
+  const created = await blogResponse.json();
+  const articleResponse = await localWorker.fetch(new Request(`https://api.test/v1/blogs/${created.collection.id}/articles`, {
+    method: "POST", headers,
+    body: JSON.stringify({ slug: "post", title: "Post", document: emptyDocument }),
+  }), {});
+  const article = await articleResponse.json();
+  const revisionId = article.workingRevision.id;
+  const articleId = article.item.id;
+  const missing = await localWorker.fetch(new Request(`https://api.test/v1/articles/${articleId}/revisions/${revisionId}/terms`, {
+    method: "PUT", headers, body: JSON.stringify({}),
+  }), {});
+  assert.equal(missing.status, 422);
+  const notArray = await localWorker.fetch(new Request(`https://api.test/v1/articles/${articleId}/revisions/${revisionId}/terms`, {
+    method: "PUT", headers, body: JSON.stringify({ termIds: "bad" }),
+  }), {});
+  assert.equal(notArray.status, 422);
+  const ok = await localWorker.fetch(new Request(`https://api.test/v1/articles/${articleId}/revisions/${revisionId}/terms`, {
+    method: "PUT", headers, body: JSON.stringify({ termIds: [] }),
+  }), {});
+  assert.equal(ok.status, 200);
+});

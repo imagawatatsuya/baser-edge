@@ -715,6 +715,9 @@ export function createApiWorker(resolveCms: (env: Env) => CmsService = defaultRe
         const approvalsMatch = url.pathname.match(/^\/v1\/content\/([^/]+)\/approvals$/);
         if (request.method === "POST" && approvalsMatch?.[1]) {
           const body = await readJson(request);
+          if ("riskLevel" in body && body.riskLevel !== undefined && !isRisk(body.riskLevel)) {
+            invalid("riskLevel must be a valid risk level");
+          }
           return json(await cms.requestApproval(context, {
             contentItemId: asContentItemId(approvalsMatch[1]),
             revisionId: asRevisionId(stringField(body, "revisionId")),
