@@ -4,11 +4,11 @@ import { apiFetch } from "../api/client";
 import { useAuth } from "../auth/AuthProvider";
 import {
   getContentTreeInflight,
+  invalidateContentTreeCache,
   peekContentTreeCache,
   setContentTreeCache,
   trackContentTreeInflight,
 } from "../lib/contentTreeCache";
-import { invalidateSiteContentViews } from "../lib/siteViewSync";
 
 export { invalidateContentTreeCache } from "../lib/contentTreeCache";
 
@@ -37,7 +37,7 @@ export function useContentTree() {
       setError("");
       return;
     }
-    if (force) invalidateSiteContentViews();
+    if (force) invalidateContentTreeCache();
     setIsReloading(true);
     try {
       const tree = await fetchContentTree(siteId, { fresh: force });

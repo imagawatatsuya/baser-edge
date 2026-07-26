@@ -20,6 +20,10 @@ export async function fetchWorkspaceMediaAssets(
   workspaceId: string,
   options?: { fresh?: boolean },
 ): Promise<AssetRow[]> {
+  if (options?.fresh) {
+    invalidateMediaAssetsCache();
+    inflight = null;
+  }
   if (!options?.fresh) {
     const hit = peekMediaAssetsCache(workspaceId);
     if (hit) return hit;
