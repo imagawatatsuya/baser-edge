@@ -30,5 +30,6 @@ Principle: **read-your-writes** — after a successful write (POST/PATCH/DELETE)
 
 ## References
 
-- Tree: `apps/admin-web/src/hooks/useContentTree.ts`, `lib/contentTreeCache.ts`
+- Tree: `apps/admin-web/src/hooks/useContentTree.ts`, `lib/contentTreeCache.ts`, `lib/siteViewSync.ts`
+- Audit: `docs/engineering/console-mutation-sync-audit.md`
 - Example fix: trash from editor → `await reloadContentTree()` before `navigate("/content")`

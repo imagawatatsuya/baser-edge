@@ -17,12 +17,14 @@ function readAdmin(relPath) {
 test("ContentEditPage reloads content tree after trash before navigate", () => {
   const source = readAdmin("pages/ContentEditPage.tsx");
   assert.match(source, /useContentTreeContext/);
-  assert.match(source, /await trashContent\(snapshot\)/);
-  assert.match(source, /await reloadContentTree\(\)/);
-  const trashAt = source.indexOf("await trashContent(snapshot)");
-  const reloadAt = source.indexOf("await reloadContentTree()");
-  const navigateAt = source.indexOf('navigate("/content")');
-  assert.ok(trashAt >= 0 && reloadAt > trashAt, "reload must follow trashContent");
+  const trashFn = source.indexOf("async function onTrash()");
+  const trashBlock = source.slice(trashFn, source.indexOf("async function onUnpublish()"));
+  assert.match(trashBlock, /await trashContent\(snapshot\)/);
+  assert.match(trashBlock, /await reloadContentTree\(\)/);
+  const trashAt = trashBlock.indexOf("await trashContent(snapshot)");
+  const reloadAt = trashBlock.indexOf("await reloadContentTree()");
+  const navigateAt = trashBlock.indexOf('navigate("/content")');
+  assert.ok(reloadAt > trashAt, "reload must follow trashContent");
   assert.ok(navigateAt > reloadAt, "navigate must follow tree reload");
 });
 
@@ -42,14 +44,25 @@ test("useContentTree exposes context for child routes", () => {
   assert.match(hook, /invalidateContentTreeCache/);
 });
 
-test("contentTrash invalidates content tree cache after trash and restore", () => {
+test("contentTrash invalidates site content views after trash and restore", () => {
   const source = readAdmin("lib/contentTrash.ts");
-  assert.match(source, /invalidateContentTreeCache/);
-  const trashInvalidate = source.indexOf("invalidateContentTreeCache()", source.indexOf("export async function trashContent"));
+  assert.match(source, /invalidateSiteContentViews/);
+  const trashInvalidate = source.indexOf("invalidateSiteContentViews()", source.indexOf("export async function trashContent"));
   const restoreFn = source.indexOf("export async function restoreContent");
-  const restoreInvalidate = source.indexOf("invalidateContentTreeCache()", restoreFn);
-  assert.ok(trashInvalidate > 0 && trashInvalidate < restoreFn, "trashContent must invalidate tree cache");
-  assert.ok(restoreInvalidate > restoreFn, "restoreContent must invalidate tree cache");
+  const restoreInvalidate = source.indexOf("invalidateSiteContentViews()", restoreFn);
+  assert.ok(trashInvalidate > 0 && trashInvalidate < restoreFn, "trashContent must invalidate site views");
+  assert.ok(restoreInvalidate > restoreFn, "restoreContent must invalidate site views");
+});
+
+test("ContentEditPage reloads content tree after save, publish, and unpublish", () => {
+  const source = readAdmin("pages/ContentEditPage.tsx");
+  assert.match(source, /await reloadContentTree\(\)/);
+  const saveFn = source.indexOf("async function onSave()");
+  const publishFn = source.indexOf("async function onPublish()");
+  const unpublishFn = source.indexOf("async function onUnpublish()");
+  assert.ok(source.indexOf("await reloadContentTree()", saveFn) > saveFn && source.indexOf("await reloadContentTree()", saveFn) < publishFn);
+  assert.ok(source.indexOf("await reloadContentTree()", publishFn) > publishFn && source.indexOf("await reloadContentTree()", publishFn) < unpublishFn);
+  assert.ok(source.indexOf("await reloadContentTree()", unpublishFn) > unpublishFn);
 });
 
 test("TrashPage reloads trash list after restore", () => {
