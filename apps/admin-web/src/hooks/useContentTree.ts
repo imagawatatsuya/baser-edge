@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from "react";
+import { createContext, createElement, useCallback, useContext, useEffect, useState, type ReactNode } from "react";
 import type { ContentTreeEntry } from "../api/types";
 import { apiFetch } from "../api/client";
 import { useAuth } from "../auth/AuthProvider";
@@ -56,4 +56,19 @@ export function useContentTree() {
   }, [reload]);
 
   return { entries, error, isReloading, reload };
+}
+
+export type ContentTreeState = ReturnType<typeof useContentTree>;
+
+const ContentTreeContext = createContext<ContentTreeState | null>(null);
+
+export function ContentTreeProvider({ value, children }: { value: ContentTreeState; children: ReactNode }) {
+  return createElement(ContentTreeContext.Provider, { value }, children);
+}
+
+/** Shared tree state from ContentLayout (for child routes such as the editor). */
+export function useContentTreeContext(): ContentTreeState {
+  const ctx = useContext(ContentTreeContext);
+  if (!ctx) throw new Error("useContentTreeContext must be used within ContentLayout");
+  return ctx;
 }

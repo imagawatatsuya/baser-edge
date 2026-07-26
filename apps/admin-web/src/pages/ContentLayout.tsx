@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { Outlet, useNavigate, useParams } from "react-router-dom";
 import { displayTitle } from "../lib/document";
-import { useContentTree } from "../hooks/useContentTree";
+import { useContentTree, ContentTreeProvider } from "../hooks/useContentTree";
 import { ContentPageToolbar } from "./ContentPage";
 import { PublicSiteLink } from "../components/PublicSiteLink";
 import type { ContentTreeEntry } from "../api/types";
@@ -38,7 +38,8 @@ function typeIcon(key: string) {
 type DropTarget = ContentTreeEntry | "root";
 
 export function ContentLayout() {
-  const { entries, error, isReloading, reload } = useContentTree();
+  const contentTree = useContentTree();
+  const { entries, error, isReloading, reload } = contentTree;
   const { contentId } = useParams();
   const navigate = useNavigate();
   const [createParentId, setCreateParentId] = useState<string | null>(null);
@@ -204,6 +205,7 @@ export function ContentLayout() {
   }
 
   return (
+    <ContentTreeProvider value={contentTree}>
     <div className="page content-layout">
       <div className="page-header">
         <div>
@@ -245,6 +247,7 @@ export function ContentLayout() {
         <MoveContentModal entry={moveEntry} tree={entries} onClose={() => setMoveEntry(null)} onMoved={() => { setMoveEntry(null); void reload(); }} />
       ) : null}
     </div>
+    </ContentTreeProvider>
   );
 }
 

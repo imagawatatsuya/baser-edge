@@ -20,10 +20,12 @@ import {
   PUBLIC_PREVIEW_TAB,
 } from "../lib/public-view";
 import { trashContent } from "../lib/contentTrash";
+import { useContentTreeContext } from "../hooks/useContentTree";
 
 export function ContentEditPage() {
   const { contentId = "" } = useParams();
   const navigate = useNavigate();
+  const { reload: reloadContentTree } = useContentTreeContext();
   const { session } = useAuth();
   const [snapshot, setSnapshot] = useState<ContentSnapshot | null>(null);
   const [title, setTitle] = useState("");
@@ -163,6 +165,7 @@ export function ContentEditPage() {
     setStatus("ゴミ箱へ移動しています…");
     try {
       await trashContent(snapshot);
+      await reloadContentTree();
       navigate("/content");
     } catch (error) {
       setStatus(error instanceof Error ? error.message : String(error));
