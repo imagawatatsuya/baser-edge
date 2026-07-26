@@ -23,12 +23,18 @@
      （Vite が `/api` をオンボーディング API にプロキシ）
    - **Scopes**（**必須**: 作成時に選んだ scope だけが authorize で要求できます）  
      ダッシュボードの表示名と **OAuth scope ID**（`GET /oauth/scopes` の `id`）は別です。**ハイフン区切り**（API トークン権限の `workers_scripts` などのアンダースコアではない）。  
-     お試し開設の既定は次の3つ（Worker の `BASER_CF_OAUTH_SCOPES` と一致）:
-     - **Account Settings Read** → `account-settings.read`
+     お試し開設の既定（Worker の `BASER_CF_OAUTH_SCOPES` と一致）:
+     - **User Details Read** → `user-details.read`（開設者メール・CMS ログイン用）
+     - **Memberships Read** → `memberships.read`（アカウント一覧・CMS ログイン用）
+     - **Account Settings Read** → `account-settings.read`（「Account」単体の権限ではない）
      - **Workers Scripts Edit** → `workers-scripts.write`
-     - **D1 Edit** → `d1.write`  
+     - **D1 Edit** → `d1.write`
      一覧確認: `node scripts/cloudflare/list-oauth-scopes.mjs`（要 `wrangler login`）。  
      既存クライアントなら **Edit** → **Scopes** で上記を追加して保存。
+     **Redirect URL** に、お試しホストの  
+     `https://<trial-host>/api/onboarding/oauth/callback` と  
+     `https://<trial-host>/api/cms-oauth/callback`  
+     の両方を登録してください（各利用者の `*.workers.dev` は登録不要です）。
 3. **Client ID** と **Client Secret** を控える
 4. オンボーディング API を起動する環境に設定:
 
@@ -38,7 +44,7 @@ BASER_CF_OAUTH_CLIENT_SECRET=...
 # 省略可（既定: http://localhost:5174/api/onboarding/oauth/callback）
 BASER_CF_OAUTH_REDIRECT_URI=http://localhost:5174/api/onboarding/oauth/callback
 # OAuth クライアントに登録した scope と同じ（スペース区切り）。要調整:
-BASER_CF_OAUTH_SCOPES="account-settings.read workers-scripts.write d1.write"
+BASER_CF_OAUTH_SCOPES="user-details.read memberships.read account-settings.read workers-scripts.write d1.write"
 ```
 
 5. `npm run dev:onboarding` を再起動。開始ページに **「Cloudflare でログインしてサイトを開設」** が出れば有効。

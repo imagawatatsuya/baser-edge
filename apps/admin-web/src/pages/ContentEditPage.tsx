@@ -11,7 +11,7 @@ import { Button } from "../components/ui/Button";
 import { Field } from "../components/ui/Field";
 import { StatusMessage } from "../components/ui/StatusMessage";
 import { resolvePublicSiteOrigin } from "../lib/localDevUrls";
-import { isEditorDirty, readTitleAndBlocks, writeTitleAndBlocks } from "../lib/blocks";
+import { isEditorDirty, readTitleAndBlocks, writeTitleAndBlocks, type BodyBlock } from "../lib/blocks";
 import { formatDateTime, parseDatetimeLocalValue, toDatetimeLocalValue } from "../lib/dates";
 import {
   buildPublicLiveUrl,
@@ -22,11 +22,41 @@ import {
 } from "../lib/public-view";
 import { trashContent } from "../lib/contentTrash";
 import { useContentTreeContext } from "../hooks/useContentTree";
+import {
+  fetchContentEditorPayload,
+  peekContentEditorCache,
+} from "../lib/contentSnapshotCache";
+
+function applyEditorPayload(
+  payload: { snapshot: ContentSnapshot; articleMeta: ArticleMeta | null },
+  setters: {
+    setSnapshot: (s: ContentSnapshot) => void;
+    setArticleMeta: (m: ArticleMeta | null) => void;
+    setPostedAtLocal: (v: string) => void;
+    setTitle: (t: string) => void;
+    setBlocks: (b: BodyBlock[]) => void;
+  },
+) {
+  const { snapshot, articleMeta } = payload;
+  setters.setSnapshot(snapshot);
+  if (articleMeta) {
+    setters.setArticleMeta(articleMeta);
+    setters.setPostedAtLocal(toDatetimeLocalValue(articleMeta.postedAt));
+  } else {
+    setters.setArticleMeta(null);
+    setters.setPostedAtLocal("");
+  }
+  if (snapshot.workingRevision) {
+    const parsed = readTitleAndBlocks(snapshot.workingRevision.document);
+    setters.setTitle(parsed.title || String(snapshot.workingRevision.fields.title ?? ""));
+    setters.setBlocks(parsed.blocks);
+  }
+}
 
 export function ContentEditPage() {
   const { contentId = "" } = useParams();
   const navigate = useNavigate();
-  const { reload: reloadContentTree } = useContentTreeContext();
+  const { reload: reloadContentTree, entries } = useContentTreeContext();
   const { session } = useAuth();
   const [snapshot, setSnapshot] = useState<ContentSnapshot | null>(null);
   const [title, setTitle] = useState("");
@@ -39,32 +69,38 @@ export function ContentEditPage() {
 
   const load = useCallback(async (options?: { silent?: boolean }): Promise<ContentSnapshot | null> => {
     if (!session || !contentId) return null;
-    if (!options?.silent) setStatus("読み込み中…");
-    try {
-      const data = await apiFetch<ContentSnapshot>(`/v1/content/${encodeURIComponent(contentId)}`);
-      setSnapshot(data);
-      if (data.item.contentTypeKey === "article") {
-        const meta = await apiFetch<ArticleMeta>(`/v1/content/${encodeURIComponent(contentId)}/article-meta`);
-        setArticleMeta(meta);
-        setPostedAtLocal(toDatetimeLocalValue(meta.postedAt));
-      } else {
-        setArticleMeta(null);
-        setPostedAtLocal("");
-      }
-      if (data.workingRevision) {
-        const parsed = readTitleAndBlocks(data.workingRevision.document);
-        setTitle(parsed.title || String(data.workingRevision.fields.title ?? ""));
-        setBlocks(parsed.blocks);
-      }
+    const setters = { setSnapshot, setArticleMeta, setPostedAtLocal, setTitle, setBlocks };
+    const cached = peekContentEditorCache(contentId);
+    if (cached && !options?.silent) {
+      applyEditorPayload(cached, setters);
       setStatus("");
-      return data;
+    } else if (!options?.silent && !cached) {
+      setStatus("読み込み中…");
+    }
+    try {
+      const treeEntry = entries.find((e) => e.snapshot.item.id === contentId);
+      const isArticle = treeEntry?.snapshot.item.contentTypeKey === "article";
+      const payload = await fetchContentEditorPayload(contentId, {
+        isArticle: isArticle === true ? true : isArticle === false ? false : undefined,
+      });
+      applyEditorPayload(payload, setters);
+      setStatus("");
+      return payload.snapshot;
     } catch (error) {
       setStatus(error instanceof Error ? error.message : String(error));
       return null;
     }
-  }, [session, contentId]);
+  }, [session, contentId, entries]);
 
   useEffect(() => { void load(); }, [load]);
+
+  useEffect(() => {
+    if (!contentId) return;
+    const cached = peekContentEditorCache(contentId);
+    if (cached) {
+      applyEditorPayload(cached, { setSnapshot, setArticleMeta, setPostedAtLocal, setTitle, setBlocks });
+    }
+  }, [contentId]);
 
   async function commitEditorState(changeSummary: string): Promise<ContentSnapshot | null> {
     if (!session || !snapshot?.workingRevision) return null;

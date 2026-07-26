@@ -7,7 +7,7 @@
  * @see https://developers.cloudflare.com/api/resources/iam/subresources/oauth_scopes/methods/list/
  */
 export const DEFAULT_BASER_CF_OAUTH_SCOPES =
-  "account-settings.read workers-scripts.write d1.write";
+  "user-details.read memberships.read account-settings.read workers-scripts.write d1.write";
 
 /** @param {string | undefined} override */
 export function resolveBaserCfOAuthScopes(override) {
@@ -17,6 +17,8 @@ export function resolveBaserCfOAuthScopes(override) {
 
 /** Known-invalid legacy IDs (underscore form from API-token naming). */
 const LEGACY_INVALID_SCOPE = /\b(?:account_settings|workers_scripts)\./;
+/** Not in GET /oauth/scopes; dashboard shows User Details Read / Memberships Read instead. */
+const LEGACY_FAKE_OAUTH_SCOPE = /\b(?:user\.read|account\.read)\b/;
 
 /**
  * @param {string} scopes Space-separated scope string sent to authorize.
@@ -28,8 +30,8 @@ export function validateOAuthScopeShape(scopes) {
   if (LEGACY_INVALID_SCOPE.test(s)) {
     return "OAuth scope はハイフン区切りです（例: account-settings.read workers-scripts.write）。API トークン名の workers_scripts は使えません";
   }
-  if (/\baccount\.read\b/.test(s)) {
-    return "account.read は OAuth カタログに無い場合があります。account-settings.read を使ってください";
+  if (LEGACY_FAKE_OAUTH_SCOPE.test(s)) {
+    return "user.read / account.read は OAuth scope として存在しません。user-details.read と memberships.read を使ってください（list-oauth-scopes.mjs で確認）";
   }
   return null;
 }

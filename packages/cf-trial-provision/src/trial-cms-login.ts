@@ -3,9 +3,15 @@ import type { TrialReleaseConfig } from "./run-trial-provision-release.js";
 export function assertTrialHostCmsOAuth(config: TrialReleaseConfig): void {
   const id = config.cmsOAuth?.clientId?.trim();
   const secret = config.cmsOAuth?.clientSecret?.trim();
+  const redirectUri = config.cmsOAuth?.redirectUri?.trim();
   if (!id || !secret) {
     throw new Error(
       "お試し開設ホストに CMS 用 OAuth が未設定です。ホスト運用者が BASER_CF_OAUTH_* を設定してください。",
+    );
+  }
+  if (!redirectUri) {
+    throw new Error(
+      "お試し開設ホストの CMS OAuth コールバック URL が未設定です（/api/cms-oauth/callback）。",
     );
   }
 }

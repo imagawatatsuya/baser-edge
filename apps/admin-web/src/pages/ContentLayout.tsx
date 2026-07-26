@@ -17,6 +17,7 @@ import { TreeRowMenu } from "../components/tree/TreeRowMenu";
 import { canDropOnFolder, reorderContentInTree } from "../lib/treeMove";
 import { compareTreeEntries } from "../lib/treeSort";
 import { formatDateTime } from "../lib/dates";
+import { prefetchContentEditor } from "../lib/contentSnapshotCache";
 
 const TYPE_LABEL: Record<string, string> = {
   folder: "フォルダ",
@@ -137,9 +138,13 @@ export function ContentLayout() {
     }
   }
 
+  function markDropTarget(id: string) {
+    setDropHighlight((prev) => (prev === id ? prev : id));
+  }
+
   function onDragOverTarget(id: string, e: React.DragEvent) {
     e.preventDefault();
-    setDropHighlight(id);
+    markDropTarget(id);
   }
 
   function renderNodes(parentId: string | "root", depth: number) {
@@ -159,10 +164,7 @@ export function ContentLayout() {
         <li key={id} className="tree-item" style={{ paddingLeft: depth * 12 }}>
           <div
             className={`tree-row ${active ? "active" : ""} ${highlight ? "tree-drop-target" : ""}`}
-            draggable
-            onDragStart={() => setDragEntry(entry)}
-            onDragEnd={() => { setDragEntry(null); setDropHighlight(null); }}
-            onDragOver={(e) => { e.preventDefault(); setDropHighlight(id); }}
+            onDragOver={(e) => { e.preventDefault(); markDropTarget(id); }}
             onDragLeave={() => setDropHighlight(null)}
             onDrop={(e) => {
               e.preventDefault();
@@ -171,10 +173,26 @@ export function ContentLayout() {
               else void handleRowDrop(entry);
             }}
           >
+            <span
+              className="tree-drag-handle"
+              draggable
+              title="ドラッグして並べ替え"
+              aria-label="ドラッグして並べ替え"
+              onDragStart={() => setDragEntry(entry)}
+              onDragEnd={() => { setDragEntry(null); setDropHighlight(null); }}
+            >
+              ⠿
+            </span>
             <button
               type="button"
               className={`tree-link ${active ? "active" : ""}`}
-              onClick={() => canEdit && navigate(`/content/${id}`)}
+              onClick={() => {
+                if (!canEdit) return;
+                navigate(`/content/${id}`);
+              }}
+              onPointerEnter={() => {
+                if (canEdit) prefetchContentEditor(id, entry.snapshot.item.contentTypeKey === "article");
+              }}
               disabled={!canEdit}
             >
               <span className="tree-icon" aria-hidden>{typeIcon(entry.snapshot.item.contentTypeKey)}</span>

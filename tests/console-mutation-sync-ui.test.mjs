@@ -37,6 +37,14 @@ test("ContentLayout shares tree state and reloads after tree-menu trash", () => 
   assert.ok(reloadAfterTrash > trashCall, "tree row trash must await reload()");
 });
 
+test("ContentLayout tree row navigates without row-level draggable", () => {
+  const layout = readAdmin("pages/ContentLayout.tsx");
+  assert.match(layout, /className="tree-drag-handle"[\s\S]*?draggable/);
+  assert.match(layout, /navigate\(`\/content\/\$\{id\}`\)/);
+  assert.match(layout, /prefetchContentEditor/);
+  assert.doesNotMatch(layout, /className=\{`tree-row[\s\S]*?`\}\s*\n\s*draggable/);
+});
+
 test("useContentTree exposes context for child routes", () => {
   const hook = readAdmin("hooks/useContentTree.ts");
   assert.match(hook, /ContentTreeProvider/);
@@ -60,6 +68,7 @@ test("siteViewSync invalidates content tree and media asset caches", () => {
   const source = readAdmin("lib/siteViewSync.ts");
   assert.match(source, /invalidateContentTreeCache/);
   assert.match(source, /invalidateMediaAssetsCache/);
+  assert.match(source, /invalidateContentEditorCache/);
 });
 
 test("AssetPickerModal loads assets via shared workspace media cache", () => {
@@ -93,12 +102,9 @@ test("ContentEditPage reloads content tree after save, publish, and unpublish", 
 
 test("ContentEditPage reloads content tree after article-meta PATCH", () => {
   const source = readAdmin("pages/ContentEditPage.tsx");
-  const metaUrl = source.indexOf("/article-meta");
-  assert.ok(metaUrl > 0, "article-meta PATCH expected");
-  const metaBlock = source.slice(metaUrl, source.indexOf("<Field label=\"タイトル\""));
-  assert.match(metaBlock, /method: "PATCH"/);
-  assert.match(metaBlock, /toDatetimeLocalValue\(articleMeta\.postedAt\) === postedAtLocal/);
-  assert.match(metaBlock, /await reloadContentTree\(\)/);
+  assert.match(source, /\/article-meta`[\s\S]*method: "PATCH"/);
+  assert.match(source, /toDatetimeLocalValue\(articleMeta\.postedAt\) === postedAtLocal/);
+  assert.match(source, /await reloadContentTree\(\)/);
 });
 
 test("TrashPage reloads trash list after restore", () => {

@@ -179,20 +179,11 @@ export class AuthService {
       userAgent: input.userAgent ?? null,
       ipHint: input.ipHint ?? null,
     });
-    const expiresAt = this.#clock.now() + this.#stepUpTtlMs;
-    for (const operation of Object.values(StepUpOperations)) {
-      await this.#store.upsertStepUp({
-        id: asSessionStepUpId(newId("sessionStepUp")),
-        sessionId: issue.session.id,
-        operation,
-        expiresAt,
-        createdAt: this.#clock.now(),
-      });
-    }
+    await this.#grantOwnerStepUps(issue.session.id);
     return issue;
   }
 
-  /** Verified Cloudflare identity (OAuth or Access JWT). Step-up required for high-risk CMS operations. */
+  /** Verified Cloudflare identity (OAuth or Access JWT). Grants owner step-up (no passkey on trial sites). */
   async issueCloudflareIdentitySession(input: {
     workspaceId: WorkspaceId;
     principalId: PrincipalId;
@@ -200,12 +191,14 @@ export class AuthService {
     ipHint?: string | null;
   }): Promise<SessionIssueResult> {
     await this.#requireHumanPrincipal(input.principalId, input.workspaceId);
-    return this.#issueSession({
+    const issue = await this.#issueSession({
       workspaceId: input.workspaceId,
       principalId: input.principalId,
       userAgent: input.userAgent ?? null,
       ipHint: input.ipHint ?? null,
     });
+    await this.#grantOwnerStepUps(issue.session.id);
+    return issue;
   }
 
   async finishLogin(input: {
@@ -392,6 +385,20 @@ export class AuthService {
 
   clearSessionCookieHeaders(): string[] {
     return [clearCookie(SESSION_COOKIE), clearCookie("baser_csrf")];
+  }
+
+  async #grantOwnerStepUps(sessionId: AuthSession["id"]): Promise<void> {
+    const expiresAt = this.#clock.now() + this.#stepUpTtlMs;
+    const createdAt = this.#clock.now();
+    for (const operation of Object.values(StepUpOperations)) {
+      await this.#store.upsertStepUp({
+        id: asSessionStepUpId(newId("sessionStepUp")),
+        sessionId,
+        operation,
+        expiresAt,
+        createdAt,
+      });
+    }
   }
 
   async #issueSession(input: {

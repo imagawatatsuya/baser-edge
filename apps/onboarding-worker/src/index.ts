@@ -1,4 +1,5 @@
 import helpJson from "../../../scripts/onboarding/help.json";
+import { decodeCfOAuthRelayState, isAllowedTrialCmsOAuthRelayOrigin } from "@baser-edge/auth-kernel";
 import { resolveBaserCfOAuthScopes, validateOAuthScopeShape } from "./cf-oauth-scopes";
 import {
   createTrialReleaseFetch,
@@ -428,6 +429,7 @@ async function consumeTrialProvisionMessage(
                 cmsOAuth: {
                   clientId: env.BASER_CF_OAUTH_CLIENT_ID.trim(),
                   clientSecret: env.BASER_CF_OAUTH_CLIENT_SECRET.trim(),
+                  redirectUri: `${body.requestOrigin.replace(/\/$/, "")}/api/cms-oauth/callback`,
                 },
               }
             : {}),
@@ -662,6 +664,27 @@ async function handleApi(req: Request, env: Env, url: URL): Promise<Response> {
     return redirect(`${AUTH_URL}?${params.toString()}`);
   }
 
+  if (url.pathname === "/api/cms-oauth/callback" && req.method === "GET") {
+    const err = url.searchParams.get("error");
+    const state = url.searchParams.get("state") ?? "";
+    const relay = decodeCfOAuthRelayState(state);
+    if (!relay || !isAllowedTrialCmsOAuthRelayOrigin(relay.siteOrigin)) {
+      const ui = requestOrigin(req);
+      const msg = "管理画面ログインの OAuth コールバックが不正です。お試し開設をやり直すか、運営に連絡してください。";
+      return redirect(`${ui}/start/?oauth_error=${encodeURIComponent(msg)}`);
+    }
+    const target = new URL(`${relay.siteOrigin.replace(/\/$/, "")}/v1/auth/cloudflare/callback`);
+    for (const [key, value] of url.searchParams) {
+      target.searchParams.set(key, value);
+    }
+    if (err && !target.searchParams.has("error")) {
+      target.searchParams.set("error", err);
+      const desc = url.searchParams.get("error_description");
+      if (desc) target.searchParams.set("error_description", desc);
+    }
+    return redirect(target.toString());
+  }
+
   if (url.pathname === "/api/onboarding/oauth/callback" && req.method === "GET") {
     const ui = requestOrigin(req);
     try {
@@ -800,7 +823,10 @@ export default {
     if (url.pathname === "/" || url.pathname === "") {
       return Response.redirect(`${url.origin}/start/`, 302);
     }
-    if (url.pathname.startsWith("/api/onboarding")) {
+    if (
+      url.pathname.startsWith("/api/onboarding")
+      || url.pathname.startsWith("/api/cms-oauth")
+    ) {
       return handleApi(req, env, url);
     }
     return env.ASSETS.fetch(req);

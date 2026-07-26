@@ -361,6 +361,10 @@ export async function runTrialProvisionReleaseStep(
       if (config.cmsOAuth?.clientId && config.cmsOAuth.clientSecret) {
         apiSecrets.BASER_CF_OAUTH_CLIENT_ID = config.cmsOAuth.clientId;
         apiSecrets.BASER_CF_OAUTH_CLIENT_SECRET = config.cmsOAuth.clientSecret;
+        const redirectUri = config.cmsOAuth.redirectUri?.trim();
+        if (redirectUri) {
+          apiSecrets.BASER_CF_OAUTH_REDIRECT_URI = redirectUri;
+        }
       }
       await putWorkerSecrets(token, accountId, manifest.apiWorkerName, apiSecrets, budget);
       await putWorkerSecrets(token, accountId, manifest.publicWorkerName, {

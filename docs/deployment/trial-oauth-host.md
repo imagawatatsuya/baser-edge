@@ -34,7 +34,9 @@ Worker Secrets（`wrangler secret put`）:
 
 - `BASER_CF_OAUTH_CLIENT_ID` / `BASER_CF_OAUTH_CLIENT_SECRET`
 - `BASER_OPS_BROKER_SECRET`（Operations Workerと同じ値）
-- OAuth Redirect に `https://<trial-host>/api/onboarding/oauth/callback` を追加
+- OAuth Redirect に次を追加:
+  - `https://<trial-host>/api/onboarding/oauth/callback`（開設・削除）
+  - `https://<trial-host>/api/cms-oauth/callback`（開設済みサイトの管理画面ログイン）
 
 ### 3. デプロイ
 

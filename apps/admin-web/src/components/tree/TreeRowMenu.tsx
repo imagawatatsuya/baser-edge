@@ -83,7 +83,7 @@ export function TreeRowMenu({
       {open
         ? createPortal(
             <>
-              <div className="tree-menu-backdrop" aria-hidden onClick={close} />
+              <div className="tree-menu-backdrop" aria-hidden />
               <div
                 ref={panelRef}
                 className="tree-menu-panel tree-menu-panel--fixed"

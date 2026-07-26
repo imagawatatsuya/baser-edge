@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { clearSession, fetchCloudflareEntry, fetchInstantEntry, getSession, loginInstant, loginWithPasskey, startCloudflareLogin, syncCsrfFromCookies, fetchLoginHint } from "../api/client";
+import { clearSession, completeCloudflareOAuthLogin, fetchCloudflareEntry, fetchInstantEntry, getSession, loginInstant, loginWithPasskey, startCloudflareLogin, syncCsrfFromCookies, fetchLoginHint } from "../api/client";
 import { cacheDevPublicUrl } from "../lib/localDevUrls";
 import { useAuth } from "../auth/AuthProvider";
 
@@ -12,6 +12,21 @@ export function LoginPage() {
   const [loading, setLoading] = useState(false);
   const [instant, setInstant] = useState<{ siteName: string } | null>(null);
   const [cloudflare, setCloudflare] = useState<{ mode: "oauth" | "access" } | null>(null);
+
+  useEffect(() => {
+    if (searchParams.get("oauth") !== "complete") return;
+    setLoading(true);
+    setStatus("ログインを完了しています…");
+    void completeCloudflareOAuthLogin(searchParams)
+      .then((session) => {
+        setSession(session);
+        navigate("/content", { replace: true });
+      })
+      .catch((error) => {
+        setStatus(error instanceof Error ? error.message : String(error));
+        setLoading(false);
+      });
+  }, [searchParams, setSession, navigate]);
 
   useEffect(() => {
     syncCsrfFromCookies();

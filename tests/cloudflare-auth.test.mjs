@@ -147,7 +147,7 @@ test("access login issues session when JWT verifies and email matches owner", as
     ACCESS_ENV,
   );
   assert.equal(res.status, 302);
-  assert.match(res.headers.get("location") ?? "", /\/console\/content/);
+  assert.match(res.headers.get("location") ?? "", /\/console\/login\?oauth=complete/);
   assert.ok(res.headers.get("set-cookie")?.includes("baser_session"));
 });
 
@@ -170,4 +170,13 @@ test("cloudflare entry oauth mode when OAuth configured and owner bound", async 
   const body = await res.json();
   assert.equal(body.available, true);
   assert.equal(body.mode, "oauth");
+});
+
+test("findCloudflareLoginTargetByEmail matches bootstrap owner when account id differs", async () => {
+  const cms = new CmsService(new MemoryCmsStore());
+  await bootstrapOwner(cms);
+  const wrongAccount = "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb";
+  assert.equal(await cms.findCloudflareLoginTarget(wrongAccount, normalizeCloudflareOwnerEmail(EMAIL)), null);
+  const byEmail = await cms.findCloudflareLoginTargetByEmail(normalizeCloudflareOwnerEmail(EMAIL));
+  assert.ok(byEmail);
 });

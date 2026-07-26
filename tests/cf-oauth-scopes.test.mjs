@@ -10,9 +10,16 @@ describe("cf-oauth-scopes", () => {
   it("uses hyphenated Cloudflare OAuth scope IDs", () => {
     assert.equal(
       DEFAULT_BASER_CF_OAUTH_SCOPES,
-      "account-settings.read workers-scripts.write d1.write",
+      "user-details.read memberships.read account-settings.read workers-scripts.write d1.write",
     );
     assert.equal(validateOAuthScopeShape(DEFAULT_BASER_CF_OAUTH_SCOPES), null);
+  });
+
+  it("rejects fake user.read / account.read scope IDs", () => {
+    assert.match(
+      validateOAuthScopeShape("user.read account.read workers-scripts.write d1.write") ?? "",
+      /user-details\.read/,
+    );
   });
 
   it("rejects legacy underscore scope IDs", () => {

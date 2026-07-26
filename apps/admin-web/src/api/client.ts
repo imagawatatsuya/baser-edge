@@ -145,6 +145,36 @@ export function startCloudflareLogin(mode: "oauth" | "access" = "oauth"): void {
   window.location.assign(path);
 }
 
+/** After OAuth callback sets cookies, hydrate localStorage before entering /console/content. */
+export async function completeCloudflareOAuthLogin(searchParams: URLSearchParams): Promise<SessionState> {
+  if (searchParams.get("oauth") !== "complete") {
+    throw new Error("OAuth 完了パラメータがありません");
+  }
+  const workspaceId = searchParams.get("workspaceId")?.trim();
+  const siteId = searchParams.get("siteId")?.trim();
+  const ownerPrincipalId = searchParams.get("ownerPrincipalId")?.trim();
+  if (!workspaceId || !siteId || !ownerPrincipalId) {
+    throw new Error("ログイン情報が不完全です。もう一度 Cloudflare でログインしてください。");
+  }
+  syncCsrfFromCookies();
+  if (!readCsrf()) {
+    throw new Error("ログイン Cookie を取得できませんでした。もう一度お試しください。");
+  }
+  const session: SessionState = {
+    apiUrl: window.location.origin,
+    publicUrl: searchParams.get("publicUrl")?.trim() || "",
+    workspaceId,
+    siteId,
+    ownerPrincipalId,
+    siteName: searchParams.get("siteName")?.trim() || "マイサイト",
+  };
+  saveSession(session);
+  const ok = await verifySession();
+  if (!ok) throw new Error("セッションを確認できませんでした。もう一度ログインしてください。");
+  if (session.publicUrl) cacheDevPublicUrl(session.publicUrl);
+  return session;
+}
+
 export async function fetchInstantEntry(): Promise<{ available: boolean; siteName?: string; siteId?: string; publicUrl?: string }> {
   return apiFetch("/v1/auth/instant-entry");
 }

@@ -244,7 +244,11 @@ describe("cf-trial-provision log parse", () => {
       accountId: "a".repeat(32),
       releaseBaseUrl: "https://release.test/trial-release",
       httpFetch: releaseFetch,
-      cmsOAuth: { clientId: "trial-oauth-client", clientSecret: "trial-oauth-secret" },
+      cmsOAuth: {
+        clientId: "trial-oauth-client",
+        clientSecret: "trial-oauth-secret",
+        redirectUri: "https://trial-host.test/api/cms-oauth/callback",
+      },
     };
     try {
       let state;
@@ -311,6 +315,7 @@ describe("cf-trial-provision log parse", () => {
           "BASER_BOOTSTRAP_SECRET",
           "BASER_CF_OAUTH_CLIENT_ID",
           "BASER_CF_OAUTH_CLIENT_SECRET",
+          "BASER_CF_OAUTH_REDIRECT_URI",
           "MAIL_FORM_SECRET",
           "MAIL_PRIVACY_SALT",
           "PREVIEW_SECRET",
@@ -787,7 +792,11 @@ describe("trial CMS login readiness", () => {
     assert.doesNotThrow(() => assertTrialHostCmsOAuth({
       accountId: "a",
       releaseBaseUrl: "https://x",
-      cmsOAuth: { clientId: "id", clientSecret: "secret" },
+      cmsOAuth: {
+        clientId: "id",
+        clientSecret: "secret",
+        redirectUri: "https://trial.test/api/cms-oauth/callback",
+      },
     }));
   });
 

@@ -257,6 +257,19 @@ a { color: var(--accent); }
 
 .tree-row { display: flex; align-items: center; gap: 0.15rem; min-width: 0; }
 .tree-row.active .tree-link { font-weight: 600; }
+.tree-drag-handle {
+  flex-shrink: 0;
+  cursor: grab;
+  padding: 0.35rem 0.2rem;
+  border-radius: 4px;
+  color: var(--muted);
+  font-size: 0.85rem;
+  line-height: 1;
+  user-select: none;
+  touch-action: none;
+}
+.tree-drag-handle:active { cursor: grabbing; }
+.tree-drag-handle:hover { background: var(--bg); color: var(--text, inherit); }
 .tree-menu-trigger {
   flex-shrink: 0;
   border: none;
@@ -278,6 +291,7 @@ a { color: var(--accent); }
   inset: 0;
   z-index: 200;
   background: transparent;
+  pointer-events: none;
 }
 .tree-menu-panel {
   background: var(--surface);
@@ -518,8 +532,6 @@ a { color: var(--accent); }
 .content-meta-dl > div { display: flex; flex-direction: column; gap: 0.15rem; }
 .content-meta-dl dt { color: var(--muted); font-size: 0.75rem; font-weight: 500; }
 .content-meta-dl dd { margin: 0; }
-.tree-row[draggable="true"] { cursor: grab; }
-.tree-row[draggable="true"]:active { cursor: grabbing; }
 
 .skip-link {
   position: absolute;

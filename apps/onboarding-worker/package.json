@@ -11,6 +11,7 @@
     "typescript": "^5.8.3"
   },
   "dependencies": {
+    "@baser-edge/auth-kernel": "*",
     "@baser-edge/cf-trial-provision": "*",
     "@baser-edge/cf-stack-destroy": "*"
   }

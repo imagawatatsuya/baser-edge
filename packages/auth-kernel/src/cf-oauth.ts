@@ -1,12 +1,59 @@
-import { base64UrlEncode } from "@baser-edge/core-types";
+import { base64UrlEncode, base64UrlDecode } from "@baser-edge/core-types";
 
 export const CF_OAUTH_AUTH_URL = "https://dash.cloudflare.com/oauth2/auth";
 export const CF_OAUTH_TOKEN_URL = "https://dash.cloudflare.com/oauth2/token";
 export const CF_API_BASE = "https://api.cloudflare.com/client/v4";
 
-/** Minimal scopes for CMS login (identity + account membership). */
-export const CF_CMS_LOGIN_OAUTH_SCOPES = "user.read account.read";
+/** Minimal scopes for CMS login (GET /user + GET /accounts). @see scripts/cloudflare/list-oauth-scopes.mjs */
+export const CF_CMS_LOGIN_OAUTH_SCOPES = "user-details.read memberships.read";
 
+const CF_OAUTH_RELAY_STATE_PREFIX = "be1.";
+
+export function isExternalOAuthRedirectUri(redirectUri: string, siteOrigin: string): boolean {
+  try {
+    return new URL(redirectUri).origin !== new URL(siteOrigin).origin;
+  } catch {
+    return false;
+  }
+}
+
+/** OAuth `state` when authorize/callback use a shared relay host (trial onboarding). */
+export function encodeCfOAuthRelayState(siteOrigin: string, challengeKey: string): string {
+  const origin = siteOrigin.replace(/\/$/, "");
+  const payload = base64UrlEncode(new TextEncoder().encode(`${origin}|${challengeKey}`));
+  return `${CF_OAUTH_RELAY_STATE_PREFIX}${payload}`;
+}
+
+export function decodeCfOAuthRelayState(state: string): { siteOrigin: string; challengeKey: string } | null {
+  if (!state.startsWith(CF_OAUTH_RELAY_STATE_PREFIX)) return null;
+  try {
+    const decoded = new TextDecoder().decode(base64UrlDecode(state.slice(CF_OAUTH_RELAY_STATE_PREFIX.length)));
+    const pipe = decoded.indexOf("|");
+    if (pipe <= 0) return null;
+    const siteOrigin = decoded.slice(0, pipe);
+    const challengeKey = decoded.slice(pipe + 1);
+    if (!siteOrigin.startsWith("https://") || !challengeKey) return null;
+    return { siteOrigin, challengeKey };
+  } catch {
+    return null;
+  }
+}
+
+export function resolveCfOAuthChallengeState(state: string): { challengeKey: string; expectedSiteOrigin?: string } {
+  const relay = decodeCfOAuthRelayState(state);
+  if (relay) return { challengeKey: relay.challengeKey, expectedSiteOrigin: relay.siteOrigin };
+  return { challengeKey: state };
+}
+
+/** HTTPS workers.dev sites provisioned via trial host. */
+export function isAllowedTrialCmsOAuthRelayOrigin(origin: string): boolean {
+  try {
+    const u = new URL(origin);
+    return u.protocol === "https:" && u.hostname.endsWith(".workers.dev");
+  } catch {
+    return false;
+  }
+}
 function randomHex(bytes: number): string {
   const buffer = new Uint8Array(bytes);
   crypto.getRandomValues(buffer);

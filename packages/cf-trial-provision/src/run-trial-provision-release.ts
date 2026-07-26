@@ -29,7 +29,7 @@ export type TrialReleaseConfig = {
   releaseBaseUrl: string;
   /** Use ASSETS binding for same-origin /trial-release (avoids worker self-fetch 404). */
   httpFetch?: typeof fetch;
-  cmsOAuth?: { clientId: string; clientSecret: string };
+  cmsOAuth?: { clientId: string; clientSecret: string; redirectUri: string };
 };
 
 function releaseUrl(base: string, path: string): string {

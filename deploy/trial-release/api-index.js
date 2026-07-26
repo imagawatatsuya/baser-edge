@@ -25683,7 +25683,43 @@ function base64UrlToBytes(value) {
 const CF_OAUTH_AUTH_URL = "https://dash.cloudflare.com/oauth2/auth";
 const CF_OAUTH_TOKEN_URL = "https://dash.cloudflare.com/oauth2/token";
 const CF_API_BASE = "https://api.cloudflare.com/client/v4";
-const CF_CMS_LOGIN_OAUTH_SCOPES = "user.read account.read";
+const CF_CMS_LOGIN_OAUTH_SCOPES = "user-details.read memberships.read";
+const CF_OAUTH_RELAY_STATE_PREFIX = "be1.";
+function isExternalOAuthRedirectUri(redirectUri, siteOrigin) {
+  try {
+    return new URL(redirectUri).origin !== new URL(siteOrigin).origin;
+  } catch {
+    return false;
+  }
+}
+function encodeCfOAuthRelayState(siteOrigin, challengeKey) {
+  const origin = siteOrigin.replace(/\/$/, "");
+  const payload = base64UrlEncode(new TextEncoder().encode(`${origin}|${challengeKey}`));
+  return `${CF_OAUTH_RELAY_STATE_PREFIX}${payload}`;
+}
+function decodeCfOAuthRelayState(state) {
+  if (!state.startsWith(CF_OAUTH_RELAY_STATE_PREFIX))
+    return null;
+  try {
+    const decoded = new TextDecoder().decode(base64UrlDecode(state.slice(CF_OAUTH_RELAY_STATE_PREFIX.length)));
+    const pipe = decoded.indexOf("|");
+    if (pipe <= 0)
+      return null;
+    const siteOrigin = decoded.slice(0, pipe);
+    const challengeKey = decoded.slice(pipe + 1);
+    if (!siteOrigin.startsWith("https://") || !challengeKey)
+      return null;
+    return { siteOrigin, challengeKey };
+  } catch {
+    return null;
+  }
+}
+function resolveCfOAuthChallengeState(state) {
+  const relay = decodeCfOAuthRelayState(state);
+  if (relay)
+    return { challengeKey: relay.challengeKey, expectedSiteOrigin: relay.siteOrigin };
+  return { challengeKey: state };
+}
 function randomHex(bytes) {
   const buffer = new Uint8Array(bytes);
   crypto.getRandomValues(buffer);
@@ -26020,12 +26056,13 @@ async function handleCloudflareAuthRoute(request, url, env, cms, auth, challenge
       return redirectToLogin(url, "Cloudflare ログインが未設定です（OAuth シークレットまたは CF_ACCESS_* を設定してください）。");
     }
     const pkce = await createCfOAuthPkce();
-    await challenges.create(pkce.state, pkce.codeVerifier, now + 10 * 6e4, now);
     const redirectUri = cloudflareOAuthRedirectUri(env, url);
+    const oauthState = isExternalOAuthRedirectUri(redirectUri, url.origin) ? encodeCfOAuthRelayState(url.origin, pkce.state) : pkce.state;
+    await challenges.create(pkce.state, pkce.codeVerifier, now + 10 * 6e4, now);
     const location = buildCfOAuthAuthorizationUrl({
       clientId: env.BASER_CF_OAUTH_CLIENT_ID.trim(),
       redirectUri,
-      state: pkce.state,
+      state: oauthState,
       codeChallenge: pkce.codeChallenge
     });
     return Response.redirect(location, 302);
@@ -26039,11 +26076,15 @@ async function handleCloudflareAuthRoute(request, url, env, cms, auth, challenge
       return redirectToLogin(url, `Cloudflare OAuth error: ${url.searchParams.get("error_description") ?? err}`);
     }
     const code = url.searchParams.get("code");
-    const state = url.searchParams.get("state");
-    if (!code || !state) {
+    const rawState = url.searchParams.get("state");
+    if (!code || !rawState) {
       return redirectToLogin(url, "Cloudflare OAuth callback is incomplete");
     }
-    const codeVerifier = await challenges.take(state, now);
+    const { challengeKey, expectedSiteOrigin } = resolveCfOAuthChallengeState(rawState);
+    if (expectedSiteOrigin && expectedSiteOrigin !== url.origin) {
+      return redirectToLogin(url, "OAuth callback site mismatch");
+    }
+    const codeVerifier = await challenges.take(challengeKey, now);
     if (!codeVerifier) {
       return redirectToLogin(url, "OAuth session expired. Try again.");
     }
@@ -26080,6 +26121,14 @@ async function resolveCloudflareLoginTarget(cms, accessToken, fetchImpl) {
     const target = await cms.findCloudflareLoginTarget(accountId, email);
     if (target)
       return target;
+  }
+  try {
+    const byEmail = await cms.findCloudflareLoginTargetByEmail(email);
+    if (byEmail)
+      return byEmail;
+  } catch (error) {
+    if (!(error instanceof DomainError && error.code === "CLOUDFLARE_OWNER_AMBIGUOUS"))
+      throw error;
   }
   throw new DomainError("CLOUDFLARE_LOGIN_NOT_AUTHORIZED", "This Cloudflare account is not authorized for CMS login", 403);
 }
