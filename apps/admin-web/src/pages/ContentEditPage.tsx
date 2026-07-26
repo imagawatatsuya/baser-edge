@@ -283,7 +283,8 @@ export function ContentEditPage() {
                 value={postedAtLocal}
                 onChange={(e) => setPostedAtLocal(e.target.value)}
                 onBlur={() => {
-                  if (!postedAtLocal) return;
+                  if (!postedAtLocal || !articleMeta) return;
+                  if (toDatetimeLocalValue(articleMeta.postedAt) === postedAtLocal) return;
                   void apiFetch<ArticleMeta>(`/v1/content/${encodeURIComponent(contentId)}/article-meta`, {
                     method: "PATCH",
                     json: { postedAt: parseDatetimeLocalValue(postedAtLocal) },

@@ -8,24 +8,37 @@ type ThemeRow = { id: string; key: string; name: string };
 type ThemeRelease = { id: string; version: string };
 type ActiveTheme = { theme: ThemeRow; release: ThemeRelease };
 
+type ActiveThemeSummary = { themeName: string; version: string };
+
 export function ActivationsPage() {
   const { session } = useAuth();
   const [themes, setThemes] = useState<ThemeRow[]>([]);
   const [releases, setReleases] = useState<ThemeRelease[]>([]);
   const [themeId, setThemeId] = useState("");
   const [activeReleaseId, setActiveReleaseId] = useState<string | null>(null);
+  const [activeSummary, setActiveSummary] = useState<ActiveThemeSummary | null>(null);
   const [status, setStatus] = useState("");
+
+  const applyActiveTheme = useCallback((active: ActiveTheme | null) => {
+    if (!active) {
+      setActiveReleaseId(null);
+      setActiveSummary(null);
+      return;
+    }
+    setActiveReleaseId(active.release.id);
+    setActiveSummary({ themeName: active.theme.name, version: active.release.version });
+  }, []);
 
   const loadActiveTheme = useCallback(async () => {
     if (!session) return;
     try {
       const active = await apiFetch<ActiveTheme>(`/v1/sites/${session.siteId}/theme`);
-      setActiveReleaseId(active.release.id);
+      applyActiveTheme(active);
       setThemeId((current) => current || active.theme.id);
     } catch {
-      setActiveReleaseId(null);
+      applyActiveTheme(null);
     }
-  }, [session]);
+  }, [session, applyActiveTheme]);
 
   useEffect(() => {
     if (!session) return;
@@ -58,16 +71,13 @@ export function ActivationsPage() {
         method: "POST",
         json: { themeReleaseId: releaseId },
       });
-      setActiveReleaseId(activated.release.id);
+      applyActiveTheme(activated);
       setThemeId(activated.theme.id);
-      await loadActiveTheme();
       setStatus("テーマを有効化しました。");
     } catch (e) {
       setStatus(e instanceof Error ? e.message : String(e));
     }
   }
-
-  const activeRelease = releases.find((r) => r.id === activeReleaseId);
 
   return (
     <div className="page">
@@ -77,9 +87,9 @@ export function ActivationsPage() {
           <p>Theme Release の有効化（step-up 必須）。</p>
         </div>
       </div>
-      {activeReleaseId ? (
+      {activeSummary ? (
         <p className="status">
-          サイトで有効: {activeRelease ? `v${activeRelease.version}` : "読み込み中…"}
+          サイトで有効: {activeSummary.themeName} v{activeSummary.version}
         </p>
       ) : (
         <p className="status">サイトで有効なテーマはまだありません。</p>

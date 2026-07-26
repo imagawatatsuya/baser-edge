@@ -85,6 +85,7 @@ test("ContentEditPage reloads content tree after article-meta PATCH", () => {
   assert.ok(metaUrl > 0, "article-meta PATCH expected");
   const metaBlock = source.slice(metaUrl, source.indexOf("<Field label=\"タイトル\""));
   assert.match(metaBlock, /method: "PATCH"/);
+  assert.match(metaBlock, /toDatetimeLocalValue\(articleMeta\.postedAt\) === postedAtLocal/);
   assert.match(metaBlock, /await reloadContentTree\(\)/);
 });
 
@@ -133,7 +134,8 @@ test("ActivationsPage reloads active theme after activate", () => {
   const source = readAdmin("pages/ActivationsPage.tsx");
   assert.match(source, /loadActiveTheme/);
   assert.match(source, /\/v1\/sites\/\$\{session\.siteId\}\/theme/);
+  assert.match(source, /activeSummary/);
   const activateFn = source.indexOf("async function activate(");
-  assert.ok(source.indexOf("await loadActiveTheme()", activateFn) > activateFn);
+  assert.ok(source.indexOf("applyActiveTheme(activated)", activateFn) > activateFn);
   assert.match(source, /activeReleaseId/);
 });
