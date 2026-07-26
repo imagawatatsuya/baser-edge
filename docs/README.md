@@ -1,36 +1,58 @@
 # baserEdge ドキュメント
 
-製品ドキュメントの入口です。迷ったらこのページの「正本」だけを読んでください。
+このページは、読む人と目的に応じて文書を探すための索引です。初めて利用する方は、設計記録や過去の実装計画ではなく、最初に[利用ガイド](user-guide.md)を読んでください。
 
-## 正本（公開向け・読む順）
+## 一般ユーザー向け
 
 | 文書 | 内容 |
-|------|------|
-| [README.md](../README.md) | リポジトリ概要（Preview 段階） |
-| [product-requirements-v0.4.md](requirements/product-requirements-v0.4.md) | 製品要件（現行） |
-| [relationship-to-basercms.md](compatibility/relationship-to-basercms.md) | baserCMS との関係（対外） |
-| [ADR-0021](adr/0021-baseredge-product-identity-no-host-migration.md) | 製品境界・デプロイ必達 |
-| [ADR-0022](adr/0022-cloud-operations-worker-security.md) | 公式 Operations Worker（teardown / 将来 update）・クラウド破産防止 |
-| [ADR-0023](adr/0023-trial-provision-without-github-actions.md) | お試し開設を利用者 CF のみで完結（Actions 廃止方針） |
-| [cloudflare-one-click-trial.md](deployment/cloudflare-one-click-trial.md) | お試し（ブラウザ + OAuth 開設） |
-| [trial-provision-cloudflare-only.md](deployment/trial-provision-cloudflare-only.md) | CF-only 開設の実装フェーズ（計画） |
-| [trial-oauth-host.md](deployment/trial-oauth-host.md) | お試し開設ホスト Worker（メンテナ） |
-| [baseredge-cloudflare.md](deployment/baseredge-cloudflare.md) | 開発者向け prove / deploy |
-| [cloudflare-r2-and-media.md](deployment/cloudflare-r2-and-media.md) | R2 有効化・請求・支払い手段・メディア配信とデプロイ形態 |
-| [general-user-trial-experiment.md](deployment/general-user-trial-experiment.md) | 一般ユーザー立場のお試し実証（準備・成功基準） |
-| [cloudflare-teardown.md](deployment/cloudflare-teardown.md) | お試しスタックの削除（destroy・R2 10008/10006） |
-| [cloudflare-prove-troubleshooting.md](deployment/cloudflare-prove-troubleshooting.md) | prove デプロイのよくあるエラーとお試し制限 |
-| [AGENTS.md](../AGENTS.md) | コントリビュータ向け不変条件 |
+|---|---|
+| [README](../README.md) | 製品概要、ブラウザでのお試し、主な機能と制約 |
+| [利用ガイド](user-guide.md) | 開設、管理画面、公開サイト、画像、削除、トラブル対応 |
+| [baserCMSとの関係](compatibility/relationship-to-basercms.md) | 共通する考え方と、互換・移行の対象外範囲 |
+| [R2とメディア](deployment/cloudflare-r2-and-media.md) | 公開画像を使う場合のR2有効化と注意 |
 
-## 履歴・アーカイブ（当時のスナップショット）
+現在の一般ユーザー向けお試しは、Cloudflare OAuthと段階的な開設処理を使います。GitHub DeployボタンやAPIトークン入力は、通常の利用経路ではありません。
 
-- [archive/](archive/README.md) — 旧 ADR・要件 v0.1・古いアーキテクチャ
-- [product-requirements-v0.2.md](requirements/product-requirements-v0.2.md) / [v0.3](requirements/product-requirements-v0.3.md) — **v0.4 より前**（移行 First 等は廃止済み）
-- [research/source-findings-v0.3.md](research/source-findings-v0.3.md) など — 調査メモ。**「正本」ではない**
-- 版付き `architecture/*-v0.x.md` / `mvp-implementation-plan-v0.x.md` — 実装の経緯。現行は v0.9 計画とコード
+## 開発者・運用担当者向け
 
-各ファイル先頭の **Superseded / 履歴** 注記を優先してください。
+| 文書 | 内容 |
+|---|---|
+| [開発者向けガイド](developer-guide.md) | ローカル実行、テスト、主要コマンド、構成 |
+| [実装状況](../IMPLEMENTATION_STATUS.md) | 現在実装済みの範囲と未完了項目 |
+| [Cloudflareデプロイ](deployment/baseredge-cloudflare.md) | 開発用proveと本番構成 |
+| [お試し開設ホスト](deployment/trial-oauth-host.md) | OAuth、Queue、固定リリースによる現行開設方式 |
+| [Cloudflareのみで完結する開設](deployment/trial-provision-cloudflare-only.md) | 現行アーキテクチャと運用確認 |
+| [削除・片付け](deployment/cloudflare-teardown.md) | OAuth削除と開発者向け手動削除 |
+| [トラブル対応](deployment/cloudflare-prove-troubleshooting.md) | D1、Worker Assets、R2、デプロイエラー |
+| [入力検証ポリシー](engineering/validation-policy.md) | Domain、API、管理UIの検証基準 |
+| [API検証状況](engineering/api-validation-audit.md) | API入力面の監査表 |
+| [AGENTS.md](../AGENTS.md) | 実装時の不変条件と作業ルール |
 
-## ADR
+## 製品仕様・設計
 
-[adr/](adr/) は意思決定の記録です。`Superseded` とあるものは [ADR-0021](adr/0021-baseredge-product-identity-no-host-migration.md) が優先されます。
+| 文書 | 内容 |
+|---|---|
+| [製品要件 v0.4](requirements/product-requirements-v0.4.md) | 現行の製品定義と必達要件 |
+| [ADR-0020](adr/0020-admin-console-as-product-surface.md) | `/console/`を人間向け管理UIとする決定 |
+| [ADR-0021](adr/0021-baseredge-product-identity-no-host-migration.md) | 製品境界と移行非目標 |
+| [ADR-0022](adr/0022-cloud-operations-worker-security.md) | 削除・更新を担うOperations Workerの安全境界 |
+| [ADR-0023](adr/0023-trial-provision-without-github-actions.md) | お試し開設をCloudflare内で完結させる決定 |
+| [アーキテクチャ](architecture/) | Content、Blog、Custom Content、Mail Form、Theme、Plugin等 |
+| [MVP実装計画 v0.9](implementation/mvp-implementation-plan-v0.9.md) | 現行フェーズの実装計画 |
+
+製品の正本は[製品要件 v0.4](requirements/product-requirements-v0.4.md)と有効なADRです。READMEは利用者向けの入口であり、詳細な設計契約はこれらの文書に置きます。
+
+## メンテナ向け・内部資料
+
+開発リポジトリの`docs/internal/`は、リリース運用やホスト責任を整理するメンテナ向け資料です。公開スナップショットからは除外され、一般ユーザー向けの製品仕様ではありません。
+
+調査メモ、診断結果、提案段階の文書は`research/`や個別のdeployment文書にあります。現行の利用方法を判断するときは、一般ユーザー向け文書と現行実装を優先してください。
+
+## 履歴・旧版
+
+- [archive/](archive/README.md) — 旧ADR、旧要件、古いアーキテクチャ
+- [製品要件 v0.2](requirements/product-requirements-v0.2.md) / [v0.3](requirements/product-requirements-v0.3.md) — v0.4より前の製品定義
+- `architecture/*-v0.x.md` — 各時点の設計
+- `implementation/mvp-implementation-plan-v0.x.md` — 各時点の実装計画
+
+旧文書は開発経緯を確認するために残しています。各ファイルの`Superseded`や履歴注記を確認し、現在の利用手順として使わないでください。

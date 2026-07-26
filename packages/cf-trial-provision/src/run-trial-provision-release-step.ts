@@ -1,6 +1,7 @@
 import { createApiBudget } from "@baser-edge/cf-stack-destroy";
 import { ensureD1Database, type ProgressEvent } from "./cloudflare-builds.js";
 import {
+  MIGRATION_RUNNER_ROUTE_PROBE_ATTEMPTS,
   cleanupTrialMigrationRunner,
   prepareTrialMigrationRunner,
   runTrialMigrationChunk,
@@ -30,7 +31,8 @@ export const TRIAL_PROVISION_ROUTE_PROBE_ATTEMPTS = 12;
 export const TRIAL_PROVISION_SECRET_PROBE_ATTEMPTS = 12;
 export const TRIAL_PROVISION_STEP_EXTERNAL_SUBREQUEST_CEILING =
   Math.max(
-    TRIAL_PROVISION_STEP_API_BUDGET + TRIAL_PROVISION_ROUTE_PROBE_ATTEMPTS,
+    TRIAL_PROVISION_STEP_API_BUDGET
+      + Math.max(TRIAL_PROVISION_ROUTE_PROBE_ATTEMPTS, MIGRATION_RUNNER_ROUTE_PROBE_ATTEMPTS),
     TRIAL_PROVISION_SECRET_PROBE_ATTEMPTS,
   );
 
@@ -336,8 +338,11 @@ export async function runTrialProvisionReleaseStep(
         },
       }, budget);
       await publishWorkerToWorkersDev(token, accountId, manifest.apiWorkerName, budget, {
-        httpProbeUrl: `${apiUrl.replace(/\/$/, "")}/health`,
-        httpProbeOptions: { maxAttempts: TRIAL_PROVISION_ROUTE_PROBE_ATTEMPTS },
+        httpProbeUrl: `${apiUrl.replace(/\/$/, "")}/console/`,
+        httpProbeOptions: {
+          maxAttempts: TRIAL_PROVISION_ROUTE_PROBE_ATTEMPTS,
+          expectedContentTypePrefix: "text/html",
+        },
       });
       return {
         done: false,
@@ -447,8 +452,11 @@ export async function runTrialProvisionReleaseStep(
         },
       }, budget);
       await publishWorkerToWorkersDev(token, accountId, manifest.apiWorkerName, budget, {
-        httpProbeUrl: `${apiUrl.replace(/\/$/, "")}/health`,
-        httpProbeOptions: { maxAttempts: TRIAL_PROVISION_ROUTE_PROBE_ATTEMPTS },
+        httpProbeUrl: `${apiUrl.replace(/\/$/, "")}/console/`,
+        httpProbeOptions: {
+          maxAttempts: TRIAL_PROVISION_ROUTE_PROBE_ATTEMPTS,
+          expectedContentTypePrefix: "text/html",
+        },
       });
       const consoleUrl = `${apiUrl.replace(/\/$/, "")}/console/`;
       return {

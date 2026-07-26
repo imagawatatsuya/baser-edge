@@ -36,6 +36,10 @@ import {
   MemoryCmsStore,
   actor,
 } from "@baser-edge/content-kernel";
+import {
+  createBlock,
+  createEmptyDocument,
+} from "@baser-edge/structured-document";
 import { AgentOperations } from "@baser-edge/agent-tools";
 import {
   D1AssetMetadataStore,
@@ -77,7 +81,14 @@ import {
   CSRF_HEADER,
 } from "@baser-edge/auth-kernel";
 import { D1AuthStore } from "@baser-edge/cloudflare-adapters";
-import { createPrincipalLookup, handleAuthRoute, isProductionEnv, resolveActorContext } from "./auth-routes.js";
+import {
+  createPrincipalLookup,
+  handleAuthRoute,
+  instantLoginEnabled,
+  isProductionEnv,
+  parseInstantOwnerHint,
+  resolveActorContext,
+} from "./auth-routes.js";
 import { resolveConsoleCapabilities } from "./platform-capabilities.js";
 
 export interface Env {
@@ -135,10 +146,10 @@ let activeCorsEnv: Env | undefined;
 
 /** Map public /console/* URL to wrangler assets path (dist root is not under /console). */
 export function mapConsoleUrlToAssetPath(pathname: string): string | null {
-  if (pathname === "/console") return "/index.html";
+  if (pathname === "/console") return "/";
   if (!pathname.startsWith("/console/")) return null;
   const rest = pathname.slice("/console".length);
-  if (!rest || rest === "/") return "/index.html";
+  if (!rest || rest === "/") return "/";
   return rest;
 }
 
@@ -149,6 +160,51 @@ async function tryServeConsole(request: Request, env: Env): Promise<Response | n
   if (!assetPath) return null;
   const assetUrl = new URL(assetPath, url.origin);
   return env.STATIC_ASSETS.fetch(new Request(assetUrl, request));
+}
+
+export async function createInitialHomepage(
+  cms: CmsService,
+  input: { siteId: string; ownerPrincipalId: string; siteName: string },
+): Promise<void> {
+  const siteId = asSiteId(input.siteId);
+  const owner = actor(asPrincipalId(input.ownerPrincipalId), "human");
+  const tree = await cms.listContentTree(owner, siteId);
+  if (tree.some((entry) => entry.snapshot.route.path === "/home")) return;
+
+  const document = createEmptyDocument();
+  const body = document.root.slots.body ??= [];
+  body.push(
+    createBlock("heading", { level: 1, text: input.siteName }),
+    createBlock("richText", { paragraphs: ["baserEdgeへようこそ。管理画面からこのページを編集できます。"] }),
+  );
+  const page = await cms.createPage(owner, {
+    siteId,
+    parentId: null,
+    slug: "home",
+    title: "ホーム",
+    document,
+  });
+  const approval = await cms.requestApproval(owner, {
+    contentItemId: page.item.id,
+    revisionId: page.workingRevision!.id,
+  });
+  await cms.decideApproval(owner, { approvalId: approval.id, decision: "approved", comment: "初期サイトの作成" });
+  await cms.publish(owner, {
+    contentItemId: page.item.id,
+    revisionId: page.workingRevision!.id,
+    approvalId: approval.id,
+  });
+}
+
+async function ensureTrialHomepage(cms: CmsService, env: Env): Promise<void> {
+  if (!instantLoginEnabled(env)) return;
+  const hint = parseInstantOwnerHint(env.BASER_INSTANT_OWNER_HINT);
+  if (!hint) return;
+  await createInitialHomepage(cms, {
+    siteId: hint.siteId,
+    ownerPrincipalId: hint.ownerPrincipalId,
+    siteName: hint.siteName ?? "マイサイト",
+  });
 }
 
 export function createApiWorker(resolveCms: (env: Env) => CmsService = defaultResolver, options: ApiWorkerOptions = {}) {
@@ -162,9 +218,12 @@ export function createApiWorker(resolveCms: (env: Env) => CmsService = defaultRe
       if (request.method === "GET" && url.pathname === "/") {
         return Response.redirect(`${url.origin}/console/`, 302);
       }
+      const cms = resolveCms(env);
+      if (request.method === "GET" && (url.pathname === "/console" || url.pathname === "/console/")) {
+        await ensureTrialHomepage(cms, env);
+      }
       const consoleResponse = await tryServeConsole(request, env);
       if (consoleResponse) return consoleResponse;
-      const cms = resolveCms(env);
       const auth = options.resolveAuth?.(env, cms) ?? createAuthService(env, cms);
       cms.attachSecurityHooks({ assertStepUp: (actor, input) => auth.assertStepUp(actor, input) });
       const assets = options.resolveAssets?.(env, cms) ?? createAssetService(env, cms);
@@ -206,13 +265,21 @@ export function createApiWorker(resolveCms: (env: Env) => CmsService = defaultRe
           assertBootstrapAllowed(request, env);
           const body = await readJson(request);
           try {
-            return json(await cms.bootstrap({
+            const boot = await cms.bootstrap({
               workspaceName: stringField(body, "workspaceName"),
               siteName: stringField(body, "siteName"),
               hostname: stringField(body, "hostname"),
               ownerName: stringField(body, "ownerName"),
               ...(typeof body.locale === "string" ? { locale: body.locale } : {}),
-            }), 201);
+            });
+            if (env.BASER_BOOTSTRAP_SECRET) {
+              await createInitialHomepage(cms, {
+                siteId: boot.siteId,
+                ownerPrincipalId: boot.ownerPrincipalId,
+                siteName: stringField(body, "siteName"),
+              });
+            }
+            return json(boot, 201);
           } catch (error) {
             if (error instanceof DomainError) throw error;
             const cause = error instanceof Error ? error.message : String(error);

@@ -39,6 +39,10 @@ test("bootstrap requires the provision secret when configured", async () => {
     body,
   }), env);
   assert.equal(accepted.status, 201);
+  const boot = await accepted.json();
+  const home = await localCms.findPublicByPath(boot.siteId, "/home");
+  assert.equal(home?.route.path, "/home");
+  assert.ok(home?.publishedRevision);
 });
 
 test("bootstrap readiness verifies the deployed provision secret without creating data", async () => {

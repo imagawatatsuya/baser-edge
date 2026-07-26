@@ -86,6 +86,22 @@ body {
   font-size: 0.9rem;
 }
 
+.success-card {
+  margin-top: 1rem;
+  padding: 1rem;
+  border: 1px solid #9fc7b4;
+  border-radius: 8px;
+  background: #edf8f2;
+}
+
+.success-card h2 {
+  color: #214f3a;
+}
+
+.success-card a {
+  overflow-wrap: anywhere;
+}
+
 .progress-steps {
   margin: 1.25rem 0 0;
   padding-left: 1.25rem;

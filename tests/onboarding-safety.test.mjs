@@ -148,4 +148,7 @@ test("hosted trial provisioning chains encrypted Queue checkpoints instead of on
     assert.match(web, new RegExp(`id: "${id}", label: "${label}"`));
   }
   assert.match(pkg.scripts["deploy:trial-host"], /ensure:trial-provision-queue/);
+  assert.doesNotMatch(web, /window\.location\.href\s*=\s*body\.consoleUrl/);
+  assert.match(web, /管理画面URL/);
+  assert.match(web, /公開サイトURL/);
 });

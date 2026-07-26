@@ -238,129 +238,6 @@ function sleep$1(ms) {
   return new Promise((r) => setTimeout(r, ms));
 }
 const CF_API$2 = "https://api.cloudflare.com/client/v4";
-const LEGACY_RUNNER_SCRIPT = "baser-edge-trial-migrate";
-const MIGRATION_STATEMENTS_PER_INVOCATION = 30;
-async function d1RequestHttp(token, accountId, databaseId, sql, budget) {
-  var _a, _b;
-  budget.spend(1);
-  const res = await fetch(`${CF_API$2}/accounts/${accountId}/d1/database/${databaseId}/query`, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${token}`,
-      "content-type": "application/json"
-    },
-    body: JSON.stringify({ sql })
-  });
-  const body = await res.json().catch(() => ({}));
-  const failed = (_a = body.result) == null ? void 0 : _a.find((result) => result.success === false);
-  if (!res.ok || body.success === false || failed) {
-    const errors = (body.errors ?? []).map((error) => ({
-      code: error.code ?? 0,
-      message: error.message ?? "Unknown D1 error"
-    }));
-    throw new CfApiCallError(((_b = errors[0]) == null ? void 0 : _b.message) ?? (failed == null ? void 0 : failed.error) ?? res.statusText ?? "D1 query failed", res.status, errors);
-  }
-  return body.result ?? [];
-}
-async function d1QueryHttp(token, accountId, databaseId, sql, budget) {
-  var _a;
-  const result = await d1RequestHttp(token, accountId, databaseId, sql, budget);
-  return ((_a = result[0]) == null ? void 0 : _a.results) ?? [];
-}
-async function d1ExecuteStatementHttp(token, accountId, databaseId, sql, budget) {
-  try {
-    await d1RequestHttp(token, accountId, databaseId, sql, budget);
-  } catch (error) {
-    if (error instanceof CfApiCallError && /already exists/i.test(error.message))
-      return;
-    throw error;
-  }
-}
-function expectedMigrationSchemaObjects(migrations) {
-  const objects = /* @__PURE__ */ new Map();
-  for (const migration of migrations) {
-    for (const statement of migration.statements) {
-      const match = statement.match(/^\s*CREATE\s+(?:UNIQUE\s+)?(VIRTUAL\s+TABLE|TABLE|INDEX|TRIGGER)\s+(?:IF\s+NOT\s+EXISTS\s+)?["`[]?([A-Za-z_][A-Za-z0-9_]*)/i);
-      if (!(match == null ? void 0 : match[1]) || !match[2])
-        continue;
-      const kind = match[1].toUpperCase();
-      const type = kind.includes("TABLE") ? "table" : kind === "INDEX" ? "index" : "trigger";
-      objects.set(`${type}:${match[2]}`, { type, name: match[2] });
-    }
-  }
-  return [...objects.values()];
-}
-async function baserEdgeSchemaReady(token, accountId, databaseId, migrations, budget) {
-  const expected = expectedMigrationSchemaObjects(migrations);
-  if (expected.length === 0)
-    return true;
-  const names = expected.map(({ name }) => `'${name.replace(/'/g, "''")}'`).join(",");
-  const rows = await d1QueryHttp(token, accountId, databaseId, `SELECT type,name FROM sqlite_master WHERE name IN (${names})`, budget);
-  const actual = new Set(rows.map((row) => `${String(row.type ?? "")}:${String(row.name ?? "")}`));
-  return expected.every(({ type, name }) => actual.has(`${type}:${name}`));
-}
-function normalizeSql(sql) {
-  const t = sql.replace(/\r\n/g, "\n").trim();
-  if (!t)
-    return t;
-  return t.endsWith(";") ? t : `${t};`;
-}
-function migrationStatements(migrations, mode) {
-  const ledgerSql = normalizeSql(`CREATE TABLE IF NOT EXISTS d1_migrations(
-  id INTEGER PRIMARY KEY AUTOINCREMENT,
-  name TEXT UNIQUE,
-  applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL
-)`);
-  const statements = [ledgerSql];
-  for (const migration of migrations) {
-    if (mode === "full") {
-      for (const statement of migration.statements) {
-        const normalized = normalizeSql(statement);
-        if (normalized)
-          statements.push(normalized);
-      }
-    }
-    const escaped = migration.name.replace(/'/g, "''");
-    statements.push(normalizeSql(`INSERT OR IGNORE INTO d1_migrations (name) VALUES ('${escaped}')`));
-  }
-  return statements;
-}
-function trialMigrationStatementCount(migrations, mode) {
-  return migrationStatements(migrations, mode).length;
-}
-async function prepareTrialMigrationRunner(token, accountId, databaseId, migrations, budget) {
-  const mode = await baserEdgeSchemaReady(token, accountId, databaseId, migrations, budget) ? "ledger" : "full";
-  return { mode };
-}
-async function runTrialMigrationChunk(token, accountId, databaseId, runner, migrations, cursor, budget) {
-  const statements = migrationStatements(migrations, runner.mode);
-  const chunk = statements.slice(cursor, cursor + MIGRATION_STATEMENTS_PER_INVOCATION);
-  if (chunk.length === 0)
-    return { nextCursor: cursor, done: true };
-  for (const statement of chunk) {
-    await d1ExecuteStatementHttp(token, accountId, databaseId, statement, budget);
-  }
-  const nextCursor = cursor + chunk.length;
-  return { nextCursor, done: nextCursor >= statements.length };
-}
-async function cleanupTrialMigrationRunner(token, accountId, budget) {
-  try {
-    budget.spend(1);
-    await fetch(`${CF_API$2}/accounts/${accountId}/workers/scripts/${encodeURIComponent(LEGACY_RUNNER_SCRIPT)}`, {
-      method: "DELETE",
-      headers: { Authorization: `Bearer ${token}` }
-    });
-  } catch {
-  }
-}
-async function applyTrialMigrations(token, accountId, databaseId, migrations, budget) {
-  const schemaReady = await baserEdgeSchemaReady(token, accountId, databaseId, migrations, budget);
-  const statements = migrationStatements(migrations, schemaReady ? "ledger" : "full");
-  for (const statement of statements) {
-    await d1ExecuteStatementHttp(token, accountId, databaseId, statement, budget);
-  }
-}
-const CF_API$1 = "https://api.cloudflare.com/client/v4";
 const COMPAT_DATE = "2026-07-24";
 const SCRIPT_API_DATE = "2025-08-01";
 const WORKERS_DEV_ROUTE_MAX_ATTEMPTS = 40;
@@ -418,7 +295,7 @@ const scriptSubdomainHeaders = () => ({
 async function cfJson(token, path, init, budget) {
   var _a;
   budget.spend(1);
-  const res = await fetch(`${CF_API$1}${path}`, {
+  const res = await fetch(`${CF_API$2}${path}`, {
     ...init,
     headers: {
       Authorization: `Bearer ${token}`,
@@ -462,7 +339,7 @@ async function uploadWorkerAssets(token, accountId, scriptName, manifest, fileLo
       }), hash);
     }
     budget.spend(1);
-    const res = await fetch(`${CF_API$1}/accounts/${accountId}/workers/assets/upload?base64=true`, { method: "POST", headers: { Authorization: `Bearer ${uploadJwt}` }, body: form });
+    const res = await fetch(`${CF_API$2}/accounts/${accountId}/workers/assets/upload?base64=true`, { method: "POST", headers: { Authorization: `Bearer ${uploadJwt}` }, body: form });
     const body = await res.json();
     if (!res.ok || body.success === false) {
       throw new CfApiCallError(((_b = (_a = body.errors) == null ? void 0 : _a[0]) == null ? void 0 : _b.message) ?? "Asset upload failed", res.status);
@@ -500,13 +377,18 @@ async function putWorkerScript(token, accountId, scriptName, moduleName, moduleS
   }
   if (bindings.keepAssets) {
     metadata.keep_assets = true;
+    metadata.bindings = [
+      ...metadata.bindings,
+      { type: "assets", name: bindings.assetsBindingName ?? "STATIC_ASSETS" }
+    ];
   }
   if (bindings.assetsJwt) {
     metadata.assets = {
       jwt: bindings.assetsJwt,
       config: {
         not_found_handling: "single-page-application",
-        html_handling: "auto-trailing-slash"
+        html_handling: "auto-trailing-slash",
+        run_worker_first: true
       }
     };
     metadata.bindings = [
@@ -521,7 +403,7 @@ async function putWorkerScript(token, accountId, scriptName, moduleName, moduleS
   form.append("metadata", new Blob([JSON.stringify(metadata)], { type: "application/json" }));
   form.append(moduleName, new Blob([moduleSource], { type: "application/javascript+module" }), moduleName);
   budget.spend(1);
-  const res = await fetch(`${CF_API$1}/accounts/${accountId}/workers/scripts/${encodeURIComponent(scriptName)}`, {
+  const res = await fetch(`${CF_API$2}/accounts/${accountId}/workers/scripts/${encodeURIComponent(scriptName)}`, {
     method: "PUT",
     headers: {
       Authorization: `Bearer ${token}`,
@@ -543,7 +425,7 @@ async function putWorkerSecrets(token, accountId, scriptName, secrets, budget) {
     throw new Error("A single Cloudflare bulk secret update supports at most 100 secrets");
   }
   budget.spend(1);
-  const res = await fetch(`${CF_API$1}/accounts/${accountId}/workers/scripts/${encodeURIComponent(scriptName)}/secrets-bulk`, {
+  const res = await fetch(`${CF_API$2}/accounts/${accountId}/workers/scripts/${encodeURIComponent(scriptName)}/secrets-bulk`, {
     method: "PATCH",
     headers: {
       Authorization: `Bearer ${token}`,
@@ -593,20 +475,28 @@ async function waitForWorkersDevSubdomainApi(token, accountId, scriptName, budge
   throw new CfApiCallError("workers.dev のルートを API で有効にできませんでした", 500);
 }
 async function waitForWorkersDevRoute(probeUrl, options) {
+  var _a, _b;
   const maxAttempts = (options == null ? void 0 : options.maxAttempts) ?? WORKERS_DEV_ROUTE_MAX_ATTEMPTS;
   const delayMs = (options == null ? void 0 : options.delayMs) ?? WORKERS_DEV_ROUTE_RETRY_DELAY_MS;
-  const url = probeUrl.replace(/\/$/, "");
+  const expectedContentTypePrefix = (_a = options == null ? void 0 : options.expectedContentTypePrefix) == null ? void 0 : _a.toLowerCase();
+  const url = probeUrl;
+  let lastStatus = 0;
+  let lastContentType = "";
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
     if (attempt > 0)
       await sleep(delayMs);
     try {
       const res = await fetch(url, { method: "GET", redirect: "manual" });
-      if (res.status !== 404)
+      lastStatus = res.status;
+      lastContentType = ((_b = res.headers.get("content-type")) == null ? void 0 : _b.toLowerCase()) ?? "";
+      if (res.ok && (!expectedContentTypePrefix || lastContentType.startsWith(expectedContentTypePrefix))) {
         return;
+      }
     } catch {
     }
   }
-  throw new CfApiCallError(`workers.dev が応答しません (404): ${url}`, 404);
+  const detail = expectedContentTypePrefix ? `status=${lastStatus || "network-error"}, content-type=${lastContentType || "missing"}` : `status=${lastStatus || "network-error"}`;
+  throw new CfApiCallError(`workers.dev の配信確認に失敗しました (${detail}): ${url}`, lastStatus || 502);
 }
 async function ensureScriptWorkersDevEnabled(token, accountId, scriptName, budget) {
   const path = `/accounts/${accountId}/workers/scripts/${encodeURIComponent(scriptName)}/subdomain`;
@@ -641,6 +531,240 @@ async function publishWorkerToWorkersDev(token, accountId, scriptName, budget, o
 }
 function sleep(ms) {
   return new Promise((r) => setTimeout(r, ms));
+}
+const CF_API$1 = "https://api.cloudflare.com/client/v4";
+const RUNNER_SCRIPT = "baser-edge-trial-migrate";
+const RUNNER_MODULE = "index.js";
+const MIGRATION_STATEMENTS_PER_INVOCATION = 30;
+const MIGRATION_RUNNER_ROUTE_PROBE_ATTEMPTS = 12;
+function trialMigrationRunnerSource() {
+  return String.raw`
+const MAX_STATEMENTS = ${MIGRATION_STATEMENTS_PER_INVOCATION};
+
+async function secretsEqual(provided, expected) {
+  const encoder = new TextEncoder();
+  const [providedHash, expectedHash] = await Promise.all([
+    crypto.subtle.digest("SHA-256", encoder.encode(provided)),
+    crypto.subtle.digest("SHA-256", encoder.encode(expected)),
+  ]);
+  return crypto.subtle.timingSafeEqual(providedHash, expectedHash);
+}
+
+function json(body, status = 200) {
+  return Response.json(body, { status });
+}
+
+export default {
+  async fetch(request, env) {
+    if (request.method === "GET") {
+      return json({ ok: true, service: "baser-edge-trial-migrate" });
+    }
+    if (request.method !== "POST") {
+      return json({ ok: false, code: "METHOD_NOT_ALLOWED" }, 405);
+    }
+
+    const authorization = request.headers.get("Authorization") || "";
+    const provided = authorization.startsWith("Bearer ") ? authorization.slice(7) : "";
+    const expected = typeof env.MIGRATE_RUNNER_SECRET === "string"
+      ? env.MIGRATE_RUNNER_SECRET
+      : "";
+    if (!provided || !expected || !(await secretsEqual(provided, expected))) {
+      return json({ ok: false, code: "UNAUTHORIZED" }, 401);
+    }
+
+    let body;
+    try {
+      body = await request.json();
+    } catch {
+      return json({ ok: false, code: "INVALID_JSON" }, 400);
+    }
+    const statements = body && body.statements;
+    if (!Array.isArray(statements) || statements.length === 0) {
+      return json({ ok: false, code: "STATEMENTS_REQUIRED" }, 422);
+    }
+    if (statements.length > MAX_STATEMENTS) {
+      return json({ ok: false, code: "TOO_MANY_STATEMENTS" }, 422);
+    }
+    if (statements.some((statement) => typeof statement !== "string" || !statement.trim())) {
+      return json({ ok: false, code: "INVALID_STATEMENT" }, 422);
+    }
+
+    let applied = 0;
+    let skipped = 0;
+    for (let index = 0; index < statements.length; index += 1) {
+      const sql = statements[index].trim();
+      try {
+        await env.DB.prepare(sql).run();
+        applied += 1;
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        if (/already exists/i.test(message)) {
+          skipped += 1;
+          continue;
+        }
+        return json({
+          ok: false,
+          code: "MIGRATION_STATEMENT_FAILED",
+          error: message,
+          statementIndex: index,
+        }, 500);
+      }
+    }
+    return json({ ok: true, applied, skipped });
+  },
+};
+`.trim();
+}
+async function d1RequestHttp(token, accountId, databaseId, sql, budget) {
+  var _a, _b;
+  budget.spend(1);
+  const res = await fetch(`${CF_API$1}/accounts/${accountId}/d1/database/${databaseId}/query`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${token}`,
+      "content-type": "application/json"
+    },
+    body: JSON.stringify({ sql })
+  });
+  const body = await res.json().catch(() => ({}));
+  const failed = (_a = body.result) == null ? void 0 : _a.find((result) => result.success === false);
+  if (!res.ok || body.success === false || failed) {
+    const errors = (body.errors ?? []).map((error) => ({
+      code: error.code ?? 0,
+      message: error.message ?? "Unknown D1 error"
+    }));
+    throw new CfApiCallError(((_b = errors[0]) == null ? void 0 : _b.message) ?? (failed == null ? void 0 : failed.error) ?? res.statusText ?? "D1 query failed", res.status, errors);
+  }
+  return body.result ?? [];
+}
+async function d1QueryHttp(token, accountId, databaseId, sql, budget) {
+  var _a;
+  const result = await d1RequestHttp(token, accountId, databaseId, sql, budget);
+  return ((_a = result[0]) == null ? void 0 : _a.results) ?? [];
+}
+function expectedMigrationSchemaObjects(migrations) {
+  const objects = /* @__PURE__ */ new Map();
+  for (const migration of migrations) {
+    for (const statement of migration.statements) {
+      const match = statement.match(/^\s*CREATE\s+(?:UNIQUE\s+)?(VIRTUAL\s+TABLE|TABLE|INDEX|TRIGGER)\s+(?:IF\s+NOT\s+EXISTS\s+)?["`[]?([A-Za-z_][A-Za-z0-9_]*)/i);
+      if (!(match == null ? void 0 : match[1]) || !match[2])
+        continue;
+      const kind = match[1].toUpperCase();
+      const type = kind.includes("TABLE") ? "table" : kind === "INDEX" ? "index" : "trigger";
+      objects.set(`${type}:${match[2]}`, { type, name: match[2] });
+    }
+  }
+  return [...objects.values()];
+}
+async function baserEdgeSchemaReady(token, accountId, databaseId, migrations, budget) {
+  const expected = expectedMigrationSchemaObjects(migrations);
+  if (expected.length === 0)
+    return true;
+  const names = expected.map(({ name }) => `'${name.replace(/'/g, "''")}'`).join(",");
+  const rows = await d1QueryHttp(token, accountId, databaseId, `SELECT type,name FROM sqlite_master WHERE name IN (${names})`, budget);
+  const actual = new Set(rows.map((row) => `${String(row.type ?? "")}:${String(row.name ?? "")}`));
+  return expected.every(({ type, name }) => actual.has(`${type}:${name}`));
+}
+function normalizeSql(sql) {
+  const t = sql.replace(/\r\n/g, "\n").trim();
+  if (!t)
+    return t;
+  return t.endsWith(";") ? t : `${t};`;
+}
+function migrationStatements(migrations, mode) {
+  const ledgerSql = normalizeSql(`CREATE TABLE IF NOT EXISTS d1_migrations(
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  name TEXT UNIQUE,
+  applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL
+)`);
+  const statements = [ledgerSql];
+  for (const migration of migrations) {
+    if (mode === "full") {
+      for (const statement of migration.statements) {
+        const normalized = normalizeSql(statement);
+        if (normalized)
+          statements.push(normalized);
+      }
+    }
+    const escaped = migration.name.replace(/'/g, "''");
+    statements.push(normalizeSql(`INSERT OR IGNORE INTO d1_migrations (name) VALUES ('${escaped}')`));
+  }
+  return statements;
+}
+function trialMigrationStatementCount(migrations, mode) {
+  return migrationStatements(migrations, mode).length;
+}
+async function prepareTrialMigrationRunner(token, accountId, databaseId, migrations, budget) {
+  const mode = await baserEdgeSchemaReady(token, accountId, databaseId, migrations, budget) ? "ledger" : "full";
+  const secretBytes = new Uint8Array(32);
+  crypto.getRandomValues(secretBytes);
+  const secret = [...secretBytes].map((byte) => byte.toString(16).padStart(2, "0")).join("");
+  await putWorkerScript(token, accountId, RUNNER_SCRIPT, RUNNER_MODULE, trialMigrationRunnerSource(), {
+    d1DatabaseId: databaseId,
+    workersDev: true,
+    vars: {}
+  }, budget);
+  await putWorkerSecrets(token, accountId, RUNNER_SCRIPT, { MIGRATE_RUNNER_SECRET: secret }, budget);
+  const subdomain = await fetchWorkersSubdomain(token, accountId, budget);
+  if (!subdomain) {
+    throw new Error("この Cloudflare アカウントで workers.dev サブドメインが未設定です。Workers の初回セットアップを完了してください。");
+  }
+  const url = workerSubdomainUrl(RUNNER_SCRIPT, subdomain).replace(/\/$/, "");
+  await publishWorkerToWorkersDev(token, accountId, RUNNER_SCRIPT, budget, {
+    httpProbeUrl: url,
+    httpProbeOptions: { maxAttempts: MIGRATION_RUNNER_ROUTE_PROBE_ATTEMPTS }
+  });
+  return { mode, url, secret };
+}
+async function invokeMigrationRunner(runner, statements, budget) {
+  budget.spend(1);
+  const res = await fetch(runner.url, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${runner.secret}`,
+      "content-type": "application/json"
+    },
+    body: JSON.stringify({ statements })
+  });
+  const body = await res.json().catch(() => ({}));
+  if (!res.ok || !body.ok) {
+    const index2 = Number.isInteger(body.statementIndex) ? ` at chunk index ${body.statementIndex}` : "";
+    const detail = body.error ?? body.code ?? res.statusText ?? "Unknown migration runner error";
+    throw new Error(`マイグレーション Worker が失敗しました (${res.status})${index2}: ${detail}`);
+  }
+}
+async function runTrialMigrationChunk(_token, _accountId, _databaseId, runner, migrations, cursor, budget) {
+  const statements = migrationStatements(migrations, runner.mode);
+  const chunk = statements.slice(cursor, cursor + MIGRATION_STATEMENTS_PER_INVOCATION);
+  if (chunk.length === 0)
+    return { nextCursor: cursor, done: true };
+  await invokeMigrationRunner(runner, chunk, budget);
+  const nextCursor = cursor + chunk.length;
+  return { nextCursor, done: nextCursor >= statements.length };
+}
+async function cleanupTrialMigrationRunner(token, accountId, budget) {
+  try {
+    budget.spend(1);
+    await fetch(`${CF_API$1}/accounts/${accountId}/workers/scripts/${encodeURIComponent(RUNNER_SCRIPT)}`, {
+      method: "DELETE",
+      headers: { Authorization: `Bearer ${token}` }
+    });
+  } catch {
+  }
+}
+async function applyTrialMigrations(token, accountId, databaseId, migrations, budget) {
+  const runner = await prepareTrialMigrationRunner(token, accountId, databaseId, migrations, budget);
+  let cursor = 0;
+  try {
+    while (true) {
+      const chunk = await runTrialMigrationChunk(token, accountId, databaseId, runner, migrations, cursor, budget);
+      cursor = chunk.nextCursor;
+      if (chunk.done)
+        break;
+    }
+  } finally {
+    await cleanupTrialMigrationRunner(token, accountId, budget);
+  }
 }
 function releaseUrl$1(base, path) {
   const b = base.replace(/\/$/, "");
@@ -1008,8 +1132,11 @@ async function runTrialProvisionReleaseStep(token, config, input) {
         }
       }, budget);
       await publishWorkerToWorkersDev(token, accountId, manifest.apiWorkerName, budget, {
-        httpProbeUrl: `${apiUrl.replace(/\/$/, "")}/health`,
-        httpProbeOptions: { maxAttempts: TRIAL_PROVISION_ROUTE_PROBE_ATTEMPTS }
+        httpProbeUrl: `${apiUrl.replace(/\/$/, "")}/console/`,
+        httpProbeOptions: {
+          maxAttempts: TRIAL_PROVISION_ROUTE_PROBE_ATTEMPTS,
+          expectedContentTypePrefix: "text/html"
+        }
       });
       return {
         done: false,
@@ -1109,8 +1236,11 @@ async function runTrialProvisionReleaseStep(token, config, input) {
         }
       }, budget);
       await publishWorkerToWorkersDev(token, accountId, manifest.apiWorkerName, budget, {
-        httpProbeUrl: `${apiUrl.replace(/\/$/, "")}/health`,
-        httpProbeOptions: { maxAttempts: TRIAL_PROVISION_ROUTE_PROBE_ATTEMPTS }
+        httpProbeUrl: `${apiUrl.replace(/\/$/, "")}/console/`,
+        httpProbeOptions: {
+          maxAttempts: TRIAL_PROVISION_ROUTE_PROBE_ATTEMPTS,
+          expectedContentTypePrefix: "text/html"
+        }
       });
       const consoleUrl = `${apiUrl.replace(/\/$/, "")}/console/`;
       return {

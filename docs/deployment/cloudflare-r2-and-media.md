@@ -21,17 +21,12 @@ baserEdge の **画像・ファイル**は、設計上 **R2（オブジェクト
 
 ## Cloudflare の請求と支払い方法
 
-製品購入・従量課金サービス（**R2 を含む**）には、ダッシュボードの **Billing** で **プライマリの支払い方法**が必要です。
+R2の有効化時に、CloudflareダッシュボードのBillingで請求プロファイルや支払い方法の設定を求められる場合があります。
 
 公式: [Create billing profile](https://developers.cloudflare.com/billing/get-started/create-billing-profile/) · [Billing policy（承認済み手段）](https://developers.cloudflare.com/billing/billing-policy/)
 
-| 種別 | 例 |
-|------|-----|
-| カード | Visa、Mastercard、American Express、Discover、UnionPay |
-| ウォレット / その他 | PayPal、Apple Pay、Google Pay、Stripe Link |
-| その他 | ダッシュボードで案内される手段（例: 一部フローでの USDC 等 — [Stablecoin payments](https://developers.cloudflare.com/billing/payment-methods/stablecoin-payments/)） |
-
-- カード追加時に **一時的なオーソリ（保留）** がかかることがあります（発行体により表示が異なる）。**無料枠内の利用だけなら月額の固定料金プランに入る必要はない**一方、**R2 の利用は従量課金**です（下記無料枠）。
+- 利用可能な支払い方法、無料枠、単価は地域やCloudflareの現行ポリシーに従います。ダッシュボードと公式ドキュメントを正本としてください。
+- カード追加時に一時的なオーソリが表示される場合があります。
 - R2 利用不能・支払い失敗時は、ポリシー上 **R2 バケットへのアクセスが止まる**ことがあります（[Billing policy — R2](https://developers.cloudflare.com/billing/billing-policy/)）。
 
 ---
@@ -42,16 +37,7 @@ baserEdge の **画像・ファイル**は、設計上 **R2（オブジェクト
 2. 表示に従い **R2 サブスクリプションのチェックアウト**を完了する（[Get started](https://developers.cloudflare.com/r2/get-started/)）
 3. 支払い方法が未設定なら **Billing → Payment methods** で追加する
 
-**無料枠（毎月・公式 [R2 Pricing](https://developers.cloudflare.com/r2/pricing/)）の目安:**
-
-| 項目 | 無料枠 |
-|------|--------|
-| ストレージ | 10 GB-month / 月 |
-| Class A 操作 | 100 万リクエスト / 月 |
-| Class B 操作 | 1,000 万リクエスト / 月 |
-| インターネットへの egress | 無料（ポリシーは公式を参照） |
-
-小規模な CMS メディア検証は、多くの場合 **無料枠内**に収まります。超過分のみ課金されます。
+無料枠、ストレージ、Class A / Class B操作、egressの現在の条件は[公式R2 Pricing](https://developers.cloudflare.com/r2/pricing/)で確認してください。ドキュメント内に固定値を転載すると変更時に古くなるため、ここでは数値を正本にしません。
 
 ---
 
@@ -59,8 +45,9 @@ baserEdge の **画像・ファイル**は、設計上 **R2（オブジェクト
 
 | 形態 | いつ | R2 バケット | Worker `R2` | 公開 `/assets/…` | 主なコマンド / 条件 |
 |------|------|-------------|-------------|------------------|---------------------|
-| **お試し（メディアなし）** | R2 未契約、または明示 | 作らない | なし | **不可**（404 等） | `BASER_CF_TRIAL=1` 付き prove |
-| **お試し + メディア** | R2 API が使える | 作る | あり（trial wrangler） | **可** | 既定 prove（`resolve-prove-media` が自動判定） |
+| **ブラウザ向けOAuthお試し** | 一般ユーザー向け標準 | 作らない | なし | **不可** | 固定リリースはR2なし |
+| **開発者prove（メディアなし）** | R2未契約、または明示 | 作らない | なし | **不可** | `BASER_CF_TRIAL=1`付きprove |
+| **開発者prove + メディア** | R2 APIが使える | 作る | あり | **可** | `resolve-prove-media`が自動判定 |
 | **既存スタックのメディア追加** | R2 を後から有効化したあと | 作る | 追加 | **可**（**再アップロード**要） | `enable-media:cloudflare` または **Deploy / prove の再実行**（自動アップグレード） |
 | **フルスタック** | `wrangler.jsonc` 本番寄り | 作る | あり | **可** | `BASER_CF_FULL_STACK=1` + prove |
 
@@ -87,7 +74,7 @@ $env:BASER_CF_PROVE = "1"
 npm run enable-media:cloudflare
 ```
 
-**ブラウザの Deploy ボタン利用者:** Cloudflare で R2 を有効化したあと、**同じ Deploy を再実行**すれば `runProve` が R2 バケットとバインディングを自動追加します（CLI の `enable-media` と同等の provision 段階）。
+**ブラウザ向けOAuthお試し:** R2を有効にして開始ページから再開設しても、現在の固定リリースにはR2 bindingが追加されません。公開画像の確認には、開発者が`enable-media:cloudflare`またはR2を含むproveを実行する必要があります。
 
 ### なぜ「アップロード成功」なのに表示されないことがあるか
 
@@ -105,12 +92,13 @@ npm run enable-media:cloudflare
 
 ## 利用者向けチェックリスト（導入検討・デプロイ後）
 
-1. [ ] Cloudflare アカウント作成
-2. [ ] Billing に支払い方法（上表のいずれか）を登録
-3. [ ] R2 Overview で **サブスクリプション / チェックアウト**完了
-4. [ ] `npm run prove:cloudflare` 実行時、ログに **メディア配信込み**または意図的な **お試し（R2 なし）** が分かる
-5. [ ] 画像が必要なら `GET https://<public-worker>/assets/<assetId>` が **200**（お試しのみデプロイした場合は `enable-media:cloudflare` → 再アップロード）
-6. [ ] 管理コンソールでアップロード後、公開 URL を開いて確認
+1. [ ] Cloudflareアカウント作成
+2. [ ] R2 Overviewで利用条件とBillingを確認
+3. [ ] R2の有効化を完了
+4. [ ] 開発者が`enable-media:cloudflare`またはR2込みproveを実行
+5. [ ] API Workerと公開Workerの両方に`R2` bindingがある
+6. [ ] 管理画面で画像を再アップロード
+7. [ ] `GET https://<public-worker>/assets/<assetId>`が200
 
 ---
 

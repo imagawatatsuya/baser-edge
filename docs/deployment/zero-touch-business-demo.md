@@ -1,91 +1,65 @@
-# 顧客の Cloudflare アカウントで・ゼロタッチ実証
+# 顧客のCloudflareアカウントで行うゼロタッチ実証
 
-## 正しい前提（製品ストーリー）
+## 製品ストーリー
 
-**利用者（零細事業者）は自分の Cloudflare アカウントを取得する。**  
-インフラは **そのアカウント上の自分用リソース**（Workers / D1、メディア時は R2）に載る。運営の共有サーバーに預けるモデルではない。R2・請求のルール: [cloudflare-r2-and-media.md](cloudflare-r2-and-media.md)。
+利用者は自分のCloudflareアカウントを用意し、ブラウザのOAuth導線から自分用のbaserEdgeを開設します。CMSデータと実行リソースは利用者アカウント内のWorkers、D1、任意のR2に置かれます。
 
-| 利用者がやること | 利用者がやらないこと |
-|------------------|----------------------|
-| Cloudflare でアカウント作成（無料枠可） | `npm install`、リポジトリ clone、Wrangler の手順書 |
-| 製品の導線で **アカウント連携・デプロイ開始**（将来: ダッシュボード1クリック） | D1 の手動作成、`wrangler.jsonc` の編集（R2 は本番フルスタック時のみ） |
-| デプロイ完了後、表示された **管理画面 URL** を開き **「管理をはじめる」** | Passkey 登録（実証段階）、サーバー用語の理解 |
+| 利用者が行うこと | 利用者が行わないこと |
+|---|---|
+| Cloudflareアカウントを用意する | リポジトリのclone |
+| OAuth画面で対象アカウントと権限を確認する | npm、Wrangler、PowerShellの実行 |
+| 表示された管理画面URLを開く | D1やWorkerの手動作成 |
+| **管理をはじめる**を押す | APIトークンの作成・貼り付け |
 
-製品の優位性: **「Cloudflare アカウントさえあれば、サイト開設未経験でもログイン後の管理画面まで一気通貫」**（DEPLOY-001〜003）。
-
-## 体験の流れ（目標）
+## 現在の体験
 
 ```text
-Cloudflare アカウント作成
-    → baserEdge「サイトをはじめる」（連携・デプロイ）
-    → あなたの *.workers.dev（または自ドメイン）の /console/
-    → 「管理をはじめる」1回
-    → コンテンツツリー（管理画面）
+お試し開始ページ
+  → Cloudflare OAuth
+  → 工程別の開設進捗
+  → 管理画面URLと公開サイトURL
+  → 「管理をはじめる」
+  → サイトツリー
+  → 初期ホームを編集・公開
 ```
 
-実証段階のログインは `BASER_INSTANT_LOGIN`（preview）。本番は同じアカウント上で Passkey に切り替え。
+一般ユーザー向けの開始URLと操作は[利用ガイド](../user-guide.md)を参照してください。
 
-## いまのリポジトリでできること（開発者向けスタンドイン）
+## 実証で確認する価値
 
-**最終形の「製品 UI 1クリック」は未実装。** 同じ処理の中身は `prove:cloudflare` に集約済み。
+- CMSを初めて使う人がCLIなしで管理画面へ到達できる
+- 利用者自身のCloudflareアカウントへ分離して配置される
+- 固定ページ、ブログ、フォーム等を同じサイトツリーで理解できる
+- 保存と公開が分かれ、承認を通して公開できる
+- 開設結果として管理画面URLと公開サイトURLを確認できる
+- 不要になった`trial`環境をOAuthで削除できる
 
-利用者本人の PC で **一時的に**スタンドインする場合（＝開発者が自分の CF アカウントに載せる実証）:
+## プレビューと本番の違い
+
+| 項目 | お試し | 本番運用 |
+|---|---|---|
+| ログイン | **管理をはじめる**簡易ログイン | Passkey / WebAuthn |
+| URL | `workers.dev` | 独自ドメインを推奨 |
+| メディア | R2なしが既定 | 公開画像を使う場合はR2 |
+| 監視・バックアップ | 実証範囲 | 運用者が設計 |
+| Plugin | 基盤・API中心 | 配布・署名・同意UIは今後 |
+
+## 開発者向けの代替確認
+
+ブラウザ向けOAuth導線を使わず、開発者が自分のCloudflareアカウントで同じ主要経路を確認する場合:
 
 ```bash
 npm install
-npx wrangler login          # 自分の Cloudflare アカウント
-npm run plan:cloudflare     # 触るリソースの確認（API 呼び出しなし）
-BASER_CF_PROVE=1 npm run prove:cloudflare   # 既定: お試し（R2 なし）。R2 込みは BASER_CF_FULL_STACK=1
+npx wrangler login
+npm run plan:cloudflare
+BASER_CF_PROVE=1 npm run prove:cloudflare
 ```
 
-完了メッセージの **管理コンソール URL** をブラウザで開き、「管理をはじめる」。
+この経路は一般利用者向け手順ではありません。ローカルだけで確認する場合は`npm run prove:local`を使用します。
 
-### 不特定多数のお試し（ブラウザだけ）
+## 関連文書
 
-[cloudflare-one-click-trial.md](cloudflare-one-click-trial.md) が正本です。
-
-- **public** リポジトリ
-- GitHub Pages で `/start/`（workflow: `github-pages-start.yml`）
-- 利用者は **Deploy to Cloudflare** → 自分の CF アカウントに開設
-
-リポジトリ管理者が OAuth / Worker / Secrets を持つ必要はありません。
-
-### API トークンで詰まったとき（ローカル UI の検証のみ）
-
-`npm run dev:onboarding` の開始ページに手順を表示しています。要点だけ:
-
-1. [API トークン](https://dash.cloudflare.com/profile/api-tokens) → **Create Token**
-2. テンプレートではなく **Create Custom Token**
-3. Token name: 任意（例: `baserEdge お試し`）
-4. **Permissions** を3行追加:
-
-   | 1列目 | 2列目 | 3列目 |
-   |-------|-------|-------|
-   | Account | Workers Scripts | Edit |
-   | Account | D1 | Edit |
-   | Account | Account Settings | Read |
-
-5. Account Resources: **Include** → 自分のアカウント
-6. **Create Token** → 表示された文字列をコピー → 開始ページの入力欄に貼り付け →「サイトを開設」
-
-- リソースは **ログインしたアカウント内** の `baser-edge-*`（または `BASER_CF_STACK=lab` で分離）
-- 片付け: `BASER_CF_STACK=lab BASER_CF_DESTROY=1 npm run destroy:cloudflare`
-
-利用者に `npm` を渡さないための行き先は **Cloudflare 側のワンクリック**（[cloudflare-one-click-trial.md](cloudflare-one-click-trial.md)）。ホスト責任の整理は [docs/internal/trial-hosting-architecture.md](../internal/trial-hosting-architecture.md)（内部メモ）。
-
-## ローカルは別物
-
-`npm run prove:local` / `localhost` は **開発者の動作確認用**。  
-「自分の Cloudflare アカウントで初めてサイトを持つ」体験の代替にはならない。
-
-## GitHub Actions `hosted-demo` について
-
-リポジトリ Secret に **利用者自身の** `CLOUDFLARE_API_TOKEN` を入れて実行すると、**そのトークンのアカウント**にデモスタックを載せられる（**既定は R2 なしのお試し**）。  
-運営用の共有デモ URL ではなく、「npm を触りたくないが自分の CF アカウントで試したい」場合の代替手段。
-
-## 本番との違い（同一アカウント内）
-
-| | 実証 (preview) | 本番 (production) |
-|--|----------------|-------------------|
-| ログイン | instant「管理をはじめる」 | Passkey |
-| デプロイ | 製品フロー1回 | 同左 + ドメイン・シークレット自動 |
+- [一般ユーザー実証チェックリスト](general-user-trial-experiment.md)
+- [ブラウザだけで試す](cloudflare-one-click-trial.md)
+- [R2とメディア](cloudflare-r2-and-media.md)
+- [Cloudflare環境の削除](cloudflare-teardown.md)

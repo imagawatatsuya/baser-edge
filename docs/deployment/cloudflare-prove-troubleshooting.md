@@ -74,9 +74,11 @@ npm run prove:cloudflare
 
 ### `incomplete input`（リモートのみ・ローカル D1 は成功）
 
-**原因:** `wrangler d1 migrations apply --remote` が **1 ファイル分の SQL をまとめてバッチ送信**する。トリガー多めの `0001_initial.sql` などで、リモート D1 API が `SQLITE_ERROR incomplete input` を返すことがある（Wrangler / D1 の既知クラス）。
+**原因:** リモート D1 の control-plane query 経路が、`CREATE TRIGGER ... BEGIN ...; ... END` 内部のセミコロンを文の区切りとして扱い、完全なトリガーを送っても `SQLITE_ERROR incomplete input` を返すことがある。ファイル単位の `d1 migrations apply` だけでなく、同じ query 経路へトリガーを1文ずつ送る実装でも発生する。
 
-**対処（リポジトリ実装）:** マイグレーションを **1 文ずつ** `wrangler d1 execute --remote --file` で流し、最後に `d1_migrations` 台帳へ記録する（`scripts/cloudflare/apply-d1-migrations.mjs`）。prove / deploy はこの経路を使う。
+**対処（OAuth trial-host）:** 利用者アカウントへ認証付きの一時 Migration Worker を配置し、D1 binding の `prepare(sql).run()` で完全なSQLite文を実行する。30文ずつのQueueチェックポイントに分け、全スキーマと `d1_migrations` 台帳を確認した後に一時Workerを削除する（`packages/cf-trial-provision/src/apply-migrations-runner.ts`）。
+
+開発者CLIの `prove:cloudflare` / `deploy:cloudflare` は別経路である。ここで同じエラーが出た場合、OAuth trial-hostの修正だけでは直らないため、新しい使い捨て `BASER_CF_STACK` を使うか、D1 binding経路へ切り替える。
 
 ### 再実行で `table workspaces already exists`
 
@@ -132,9 +134,9 @@ npx wrangler d1 delete baser-edge --config wrangler.trial.jsonc
 
 ---
 
-## お試し導線（GitHub Pages + Deploy ボタン）との関係
+## ブラウザ向けお試し導線との関係
 
-ブラウザ向けお試しは [cloudflare-one-click-trial.md](cloudflare-one-click-trial.md) が正本。Pages の `/start/` は **リポジトリで Pages（GitHub Actions）を有効化**しないと公開されない。Deploy ボタン経路でも、上記の **D1 マイグレーション・`/console` アセット・R2 なし時のメディア**は同種の論点が出る。**片付け**は [cloudflare-teardown.md](cloudflare-teardown.md)（開発者 CLI・R2 10008/10006）。
+ブラウザ向けお試しは[cloudflare-one-click-trial.md](cloudflare-one-click-trial.md)が正本。現在の標準経路はOAuth trial-hostで、GitHub PagesとDeployボタンは必須ではない。**D1 Migration、`/console/`のHTMLとAssets、R2なし時のメディア制限**を確認する。片付けは開始ページのOAuth削除、または開発者向け[cloudflare-teardown.md](cloudflare-teardown.md)を使用する。
 
 ---
 
@@ -155,7 +157,7 @@ npx wrangler d1 delete baser-edge --config wrangler.trial.jsonc
 
 1. **メディア公開には R2 バインディング** → ルール全体は [cloudflare-r2-and-media.md](cloudflare-r2-and-media.md)。`BASER_CF_TRIAL=1` のみ R2 なしが既定。
 2. **Wrangler 設定は trial / default を混ぜない**（`database_id`・migrate・delete）。
-3. **リモート D1 マイグレーションはバッチより 1 文ずつ**が安全。
+3. **トリガーを含むリモート D1 マイグレーションは control-plane query ではなく D1 binding 経由**で実行する。
 4. **Windows は env 構文と `d1 execute --file`** に注意。
 5. **`/console` は URL と dist レイアウトのマッピング**が必須。
 

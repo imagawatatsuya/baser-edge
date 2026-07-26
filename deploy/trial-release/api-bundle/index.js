@@ -479,6 +479,15 @@ function createEmptyDocument() {
     }
   };
 }
+function createBlock(type, props = {}, slots = {}) {
+  return {
+    id: newId("content").replace("cnt_", "blk_"),
+    type,
+    componentVersion: 1,
+    props: structuredClone(props),
+    slots: structuredClone(slots)
+  };
+}
 function requireString(props, keyName) {
   return typeof props[keyName] === "string" ? [] : [`${keyName} must be a string`];
 }
@@ -1329,16 +1338,16 @@ class MemoryCmsStore {
     this.outbox.set(id, { id, eventType, aggregateType: "content-item", aggregateId, payload, state: "pending", attempts: 0, availableAt: now, createdAt: now });
     return id;
   }
-  recordSuccess(actor, workspaceId, siteId, action, resourceType, resourceId, revisionId, now, details) {
+  recordSuccess(actor2, workspaceId, siteId, action, resourceType, resourceId, revisionId, now, details) {
     const event = {
       id: newId("audit"),
       workspaceId,
       siteId,
       occurredAt: now,
-      actorPrincipalId: actor.actorId,
-      actorType: actor.actorType,
-      onBehalfOfPrincipalId: actor.onBehalfOf ?? null,
-      delegationId: actor.delegationId ?? null,
+      actorPrincipalId: actor2.actorId,
+      actorType: actor2.actorType,
+      onBehalfOfPrincipalId: actor2.onBehalfOf ?? null,
+      delegationId: actor2.delegationId ?? null,
       action,
       resourceType,
       resourceId,
@@ -1346,7 +1355,7 @@ class MemoryCmsStore {
       capability: action,
       result: "success",
       reason: null,
-      requestId: actor.requestId,
+      requestId: actor2.requestId,
       details
     };
     this.audits.set(event.id, event);
@@ -1485,15 +1494,15 @@ class CmsService {
   get registry() {
     return this.#registry;
   }
-  async authorizeOperation(actor, capability, resource, action, resourceType, resourceId) {
-    return this.#authorize(actor, capability, resource, action, resourceType, resourceId);
+  async authorizeOperation(actor2, capability, resource, action, resourceType, resourceId) {
+    return this.#authorize(actor2, capability, resource, action, resourceType, resourceId);
   }
-  async recordSuccessfulOperation(actor, input) {
-    return this.#successAudit(actor, input.workspaceId, input.siteId ?? null, input.action, input.resourceType, input.resourceId, input.revisionId ?? null, input.capability, input.details ?? {});
+  async recordSuccessfulOperation(actor2, input) {
+    return this.#successAudit(actor2, input.workspaceId, input.siteId ?? null, input.action, input.resourceType, input.resourceId, input.revisionId ?? null, input.capability, input.details ?? {});
   }
-  async getRevisionForPreview(actor, contentItemId, revisionId) {
+  async getRevisionForPreview(actor2, contentItemId, revisionId) {
     const snapshot = await this.#requireSnapshot(contentItemId);
-    await this.#authorize(actor, Capabilities.ContentRead, this.#resource(snapshot, "low"), "preview.revision-read", "content-item", contentItemId);
+    await this.#authorize(actor2, Capabilities.ContentRead, this.#resource(snapshot, "low"), "preview.revision-read", "content-item", contentItemId);
     const revision = await this.#requireRevision(revisionId);
     assertDomain(revision.contentItemId === contentItemId, "REVISION_CONTENT_MISMATCH", "Revision belongs to another content item", 422);
     return revision;
@@ -1534,8 +1543,8 @@ class CmsService {
     });
     return { workspaceId, siteId, ownerPrincipalId: ownerId };
   }
-  async createPrincipal(actor, input) {
-    await this.#authorize(actor, Capabilities.PrincipalManage, { workspaceId: input.workspaceId, risk: "high" }, "principal.create", "workspace", input.workspaceId);
+  async createPrincipal(actor2, input) {
+    await this.#authorize(actor2, Capabilities.PrincipalManage, { workspaceId: input.workspaceId, risk: "high" }, "principal.create", "workspace", input.workspaceId);
     const principal = {
       id: asPrincipalId(newId("principal")),
       workspaceId: input.workspaceId,
@@ -1545,12 +1554,12 @@ class CmsService {
       createdAt: this.#clock.now()
     };
     await this.#store.createPrincipal(principal);
-    await this.#successAudit(actor, input.workspaceId, null, "principal.create", "principal", principal.id, null, Capabilities.PrincipalManage, {});
+    await this.#successAudit(actor2, input.workspaceId, null, "principal.create", "principal", principal.id, null, Capabilities.PrincipalManage, {});
     return principal;
   }
-  async grantCapability(actor, input) {
+  async grantCapability(actor2, input) {
     const principal = await this.#requirePrincipal(input.principalId);
-    await this.#authorize(actor, Capabilities.GrantManage, { workspaceId: principal.workspaceId, risk: "high" }, "grant.create", "principal", principal.id);
+    await this.#authorize(actor2, Capabilities.GrantManage, { workspaceId: principal.workspaceId, risk: "high" }, "grant.create", "principal", principal.id);
     const grant = {
       id: newId("grant"),
       principalId: principal.id,
@@ -1560,13 +1569,13 @@ class CmsService {
     if (input.validUntil !== void 0)
       grant.validUntil = input.validUntil;
     await this.#store.createCapabilityGrant(grant);
-    await this.#successAudit(actor, principal.workspaceId, null, "grant.create", "principal", principal.id, null, Capabilities.GrantManage, { grantedCapability: input.capability });
+    await this.#successAudit(actor2, principal.workspaceId, null, "grant.create", "principal", principal.id, null, Capabilities.GrantManage, { grantedCapability: input.capability });
     return grant;
   }
-  async createDelegation(actor, input) {
+  async createDelegation(actor2, input) {
     const human = await this.#requirePrincipal(input.humanPrincipalId);
     const agent = await this.#requirePrincipal(input.agentPrincipalId);
-    assertDomain(actor.actorId === human.id, "DELEGATION_OWNER_REQUIRED", "Only the delegating human can create this delegation", 403);
+    assertDomain(actor2.actorId === human.id, "DELEGATION_OWNER_REQUIRED", "Only the delegating human can create this delegation", 403);
     assertDomain(agent.type === "agent", "AGENT_REQUIRED", "Delegation target must be an agent", 422);
     const delegation = {
       id: newId("delegation"),
@@ -1578,57 +1587,57 @@ class CmsService {
       expiresAt: input.expiresAt
     };
     await this.#store.createDelegationGrant(delegation);
-    await this.#successAudit(actor, human.workspaceId, null, "delegation.create", "agent", agent.id, null, "delegation.create", { capabilities: input.capabilities });
+    await this.#successAudit(actor2, human.workspaceId, null, "delegation.create", "agent", agent.id, null, "delegation.create", { capabilities: input.capabilities });
     return delegation;
   }
-  async createPage(actor, input) {
-    const prepared = await this.#prepareCreate(actor, input.siteId, input.parentId, input.slug, "page", input.document, input.title);
-    return this.#store.createPage({ ...prepared, actor, title: input.title, document: input.document, now: this.#clock.now() });
+  async createPage(actor2, input) {
+    const prepared = await this.#prepareCreate(actor2, input.siteId, input.parentId, input.slug, "page", input.document, input.title);
+    return this.#store.createPage({ ...prepared, actor: actor2, title: input.title, document: input.document, now: this.#clock.now() });
   }
-  async createFolder(actor, input) {
+  async createFolder(actor2, input) {
     const document = createEmptyDocument();
-    const prepared = await this.#prepareCreate(actor, input.siteId, input.parentId, input.slug, "folder", document, input.title);
-    return this.#store.createFolder({ ...prepared, actor, title: input.title, document, now: this.#clock.now() });
+    const prepared = await this.#prepareCreate(actor2, input.siteId, input.parentId, input.slug, "folder", document, input.title);
+    return this.#store.createFolder({ ...prepared, actor: actor2, title: input.title, document, now: this.#clock.now() });
   }
-  async createCustomContent(actor, input) {
-    const prepared = await this.#prepareCreate(actor, input.siteId, input.parentId, input.slug, "custom-content", input.document, input.title, Capabilities.CustomContentCreate);
-    return this.#store.createCustomContent({ ...prepared, actor, title: input.title, document: input.document, now: this.#clock.now() });
+  async createCustomContent(actor2, input) {
+    const prepared = await this.#prepareCreate(actor2, input.siteId, input.parentId, input.slug, "custom-content", input.document, input.title, Capabilities.CustomContentCreate);
+    return this.#store.createCustomContent({ ...prepared, actor: actor2, title: input.title, document: input.document, now: this.#clock.now() });
   }
-  async createMailForm(actor, input) {
-    const prepared = await this.#prepareCreate(actor, input.siteId, input.parentId, input.slug, "mail-form", input.document, input.title, Capabilities.MailFormCreate);
-    return this.#store.createMailForm({ ...prepared, actor, title: input.title, document: input.document, now: this.#clock.now() });
+  async createMailForm(actor2, input) {
+    const prepared = await this.#prepareCreate(actor2, input.siteId, input.parentId, input.slug, "mail-form", input.document, input.title, Capabilities.MailFormCreate);
+    return this.#store.createMailForm({ ...prepared, actor: actor2, title: input.title, document: input.document, now: this.#clock.now() });
   }
-  async createBlog(actor, input) {
-    const prepared = await this.#prepareCreate(actor, input.siteId, input.parentId, input.slug, "blog", input.document, input.title, Capabilities.BlogCreate);
-    return this.#store.createBlog({ ...prepared, actor, title: input.title, document: input.document, now: this.#clock.now() });
+  async createBlog(actor2, input) {
+    const prepared = await this.#prepareCreate(actor2, input.siteId, input.parentId, input.slug, "blog", input.document, input.title, Capabilities.BlogCreate);
+    return this.#store.createBlog({ ...prepared, actor: actor2, title: input.title, document: input.document, now: this.#clock.now() });
   }
-  async createArticle(actor, input) {
+  async createArticle(actor2, input) {
     const blog = await this.#requireSnapshot(input.blogContentItemId);
     assertDomain(blog.item.contentTypeKey === "blog", "BLOG_REQUIRED", "Article parent must be a blog", 422);
-    const prepared = await this.#prepareCreate(actor, blog.item.siteId, blog.node.id, input.slug, "article", input.document, input.title, Capabilities.ArticleCreate);
-    return this.#store.createArticle({ ...prepared, actor, title: input.title, document: input.document, now: this.#clock.now() });
+    const prepared = await this.#prepareCreate(actor2, blog.item.siteId, blog.node.id, input.slug, "article", input.document, input.title, Capabilities.ArticleCreate);
+    return this.#store.createArticle({ ...prepared, actor: actor2, title: input.title, document: input.document, now: this.#clock.now() });
   }
-  async createAlias(actor, input) {
+  async createAlias(actor2, input) {
     const target = await this.#requireSnapshot(input.targetContentItemId);
     assertDomain(target.item.siteId === input.siteId, "CROSS_SITE_ALIAS", "Alias target belongs to another site", 422);
     assertDomain(target.item.state === "active", "ALIAS_TARGET_INACTIVE", "Alias target is not active", 409);
     assertDomain(target.item.contentTypeKey !== "folder" && target.item.contentTypeKey !== "alias", "INVALID_ALIAS_TARGET", "Aliases can target publishable content only", 422);
     const document = createEmptyDocument();
-    const prepared = await this.#prepareCreate(actor, input.siteId, input.parentId, input.slug, "alias", document, input.title, Capabilities.AliasCreate);
-    return this.#store.createAlias({ ...prepared, actor, title: input.title, document, targetContentItemId: input.targetContentItemId, now: this.#clock.now() });
+    const prepared = await this.#prepareCreate(actor2, input.siteId, input.parentId, input.slug, "alias", document, input.title, Capabilities.AliasCreate);
+    return this.#store.createAlias({ ...prepared, actor: actor2, title: input.title, document, targetContentItemId: input.targetContentItemId, now: this.#clock.now() });
   }
-  async getContent(actor, contentItemId) {
+  async getContent(actor2, contentItemId) {
     const snapshot = await this.#requireSnapshot(contentItemId);
-    await this.#authorize(actor, Capabilities.ContentRead, this.#resource(snapshot, "low"), "content.read", "content-item", contentItemId);
+    await this.#authorize(actor2, Capabilities.ContentRead, this.#resource(snapshot, "low"), "content.read", "content-item", contentItemId);
     return snapshot;
   }
-  async commitRevision(actor, input) {
+  async commitRevision(actor2, input) {
     const snapshot = await this.#requireSnapshot(input.contentItemId);
-    await this.#authorize(actor, Capabilities.ContentRevise, this.#resource(snapshot, "low"), "content.revise", "content-item", input.contentItemId);
+    await this.#authorize(actor2, Capabilities.ContentRevise, this.#resource(snapshot, "low"), "content.revise", "content-item", input.contentItemId);
     this.#validateDocument(input.document);
     const contentHash = await this.#contentHash(input.fields, input.document);
     return this.#store.commitRevision({
-      actor,
+      actor: actor2,
       contentItemId: input.contentItemId,
       baseRevisionId: input.baseRevisionId,
       expectedLockVersion: input.expectedLockVersion,
@@ -1640,9 +1649,9 @@ class CmsService {
       now: this.#clock.now()
     });
   }
-  async analyzeRelocation(actor, input) {
+  async analyzeRelocation(actor2, input) {
     const snapshot = await this.#requireSnapshot(input.contentItemId);
-    await this.#authorize(actor, Capabilities.ContentMove, this.#resource(snapshot, "high"), "content.move-impact", "content-item", input.contentItemId);
+    await this.#authorize(actor2, Capabilities.ContentMove, this.#resource(snapshot, "high"), "content.move-impact", "content-item", input.contentItemId);
     const parent = input.targetParentId ? await this.#requireParentNode(input.targetParentId, snapshot.item.siteId, snapshot.item.contentTypeKey) : null;
     const newRootPath = childPath(parent?.cachedPath ?? null, normalizeSlug(input.newSlug));
     const tree = await this.#store.listContentTree(snapshot.item.siteId);
@@ -1654,14 +1663,14 @@ class CmsService {
     const riskLevel = affected.length > 100 ? "critical" : affected.length > 1 ? "high" : "medium";
     return { contentItemId: snapshot.item.id, oldRootPath: snapshot.node.cachedPath, newRootPath, affected, redirectCount: affected.length, riskLevel };
   }
-  async relocateContent(actor, input) {
+  async relocateContent(actor2, input) {
     const snapshot = await this.#requireSnapshot(input.contentItemId);
-    await this.#authorize(actor, Capabilities.ContentMove, this.#resource(snapshot, "high"), "content.move", "content-item", input.contentItemId);
+    await this.#authorize(actor2, Capabilities.ContentMove, this.#resource(snapshot, "high"), "content.move", "content-item", input.contentItemId);
     if (snapshot.item.contentTypeKey === "article" && input.targetParentId !== snapshot.node.parentId) {
       throw new DomainError("ARTICLE_CROSS_BLOG_MOVE_NOT_IMPLEMENTED", "Moving an article to another blog requires the Blog module migration path", 409);
     }
     return this.#store.relocateContent({
-      actor,
+      actor: actor2,
       contentItemId: input.contentItemId,
       targetParentId: input.targetParentId,
       newSlug: normalizeSlug(input.newSlug),
@@ -1669,14 +1678,14 @@ class CmsService {
       now: this.#clock.now()
     });
   }
-  async reorderContent(actor, input) {
+  async reorderContent(actor2, input) {
     const snapshot = await this.#requireSnapshot(input.contentItemId);
-    await this.#authorize(actor, Capabilities.ContentMove, this.#resource(snapshot, "medium"), "content.reorder", "content-item", input.contentItemId);
+    await this.#authorize(actor2, Capabilities.ContentMove, this.#resource(snapshot, "medium"), "content.reorder", "content-item", input.contentItemId);
     if (snapshot.item.contentTypeKey === "article" && input.targetParentId !== snapshot.node.parentId) {
       throw new DomainError("ARTICLE_CROSS_BLOG_MOVE_NOT_IMPLEMENTED", "Moving an article to another blog requires the Blog module migration path", 409);
     }
     return this.#store.reorderContent({
-      actor,
+      actor: actor2,
       contentItemId: input.contentItemId,
       targetParentId: input.targetParentId,
       insertAfterContentItemId: input.insertAfterContentItemId,
@@ -1684,9 +1693,9 @@ class CmsService {
       now: this.#clock.now()
     });
   }
-  async copyContent(actor, input) {
+  async copyContent(actor2, input) {
     const snapshot = await this.#requireSnapshot(input.contentItemId);
-    await this.#authorize(actor, Capabilities.ContentCopy, this.#resource(snapshot, "medium"), "content.copy", "content-item", input.contentItemId);
+    await this.#authorize(actor2, Capabilities.ContentCopy, this.#resource(snapshot, "medium"), "content.copy", "content-item", input.contentItemId);
     const tree = await this.#store.listContentTree(snapshot.item.siteId);
     const subtree = tree.filter((entry) => entry.snapshot.node.cachedPath === snapshot.node.cachedPath || entry.snapshot.node.cachedPath.startsWith(`${snapshot.node.cachedPath}/`));
     if (subtree.some((entry) => entry.snapshot.item.contentTypeKey === "blog" || entry.snapshot.item.contentTypeKey === "article")) {
@@ -1701,7 +1710,7 @@ class CmsService {
     if (input.targetParentId)
       await this.#requireParentNode(input.targetParentId, snapshot.item.siteId, snapshot.item.contentTypeKey);
     return this.#store.copyContent({
-      actor,
+      actor: actor2,
       contentItemId: input.contentItemId,
       targetParentId: input.targetParentId,
       newSlug: normalizeSlug(input.newSlug),
@@ -1710,21 +1719,21 @@ class CmsService {
       now: this.#clock.now()
     });
   }
-  async trashContent(actor, input) {
+  async trashContent(actor2, input) {
     const snapshot = await this.#requireSnapshot(input.contentItemId);
-    await this.#authorize(actor, Capabilities.ContentTrash, this.#resource(snapshot, "high"), "content.trash", "content-item", input.contentItemId);
-    return this.#store.trashContent({ actor, contentItemId: input.contentItemId, expectedTreeVersion: input.expectedTreeVersion, now: this.#clock.now() });
+    await this.#authorize(actor2, Capabilities.ContentTrash, this.#resource(snapshot, "high"), "content.trash", "content-item", input.contentItemId);
+    return this.#store.trashContent({ actor: actor2, contentItemId: input.contentItemId, expectedTreeVersion: input.expectedTreeVersion, now: this.#clock.now() });
   }
-  async restoreContent(actor, input) {
+  async restoreContent(actor2, input) {
     const snapshot = await this.#requireSnapshot(input.contentItemId);
-    await this.#authorize(actor, Capabilities.ContentRestore, this.#resource(snapshot, "high"), "content.restore", "content-item", input.contentItemId);
+    await this.#authorize(actor2, Capabilities.ContentRestore, this.#resource(snapshot, "high"), "content.restore", "content-item", input.contentItemId);
     if (snapshot.item.contentTypeKey === "article" && input.targetParentId !== void 0) {
       throw new DomainError("ARTICLE_REPARENT_ON_RESTORE_NOT_IMPLEMENTED", "Restore articles to their original blog before moving them", 409);
     }
     if (input.targetParentId)
       await this.#requireParentNode(input.targetParentId, snapshot.item.siteId, snapshot.item.contentTypeKey);
     return this.#store.restoreContent({
-      actor,
+      actor: actor2,
       contentItemId: input.contentItemId,
       targetParentId: input.targetParentId ?? null,
       newSlug: input.newSlug ? normalizeSlug(input.newSlug) : null,
@@ -1732,23 +1741,23 @@ class CmsService {
       now: this.#clock.now()
     });
   }
-  async listContentTree(actor, siteId) {
+  async listContentTree(actor2, siteId) {
     const site = await this.#requireSite(siteId);
-    await this.#authorize(actor, Capabilities.ContentRead, { workspaceId: site.workspaceId, siteId, risk: "low" }, "content-tree.read", "site", siteId);
+    await this.#authorize(actor2, Capabilities.ContentRead, { workspaceId: site.workspaceId, siteId, risk: "low" }, "content-tree.read", "site", siteId);
     return this.#store.listContentTree(siteId);
   }
-  async listTrash(actor, siteId) {
+  async listTrash(actor2, siteId) {
     const site = await this.#requireSite(siteId);
-    await this.#authorize(actor, Capabilities.ContentRead, { workspaceId: site.workspaceId, siteId, risk: "low" }, "trash.read", "site", siteId);
+    await this.#authorize(actor2, Capabilities.ContentRead, { workspaceId: site.workspaceId, siteId, risk: "low" }, "trash.read", "site", siteId);
     return this.#store.listTrash(siteId);
   }
-  async listPendingApprovals(actor, siteId) {
+  async listPendingApprovals(actor2, siteId) {
     const site = await this.#requireSite(siteId);
-    await this.#authorize(actor, Capabilities.ContentApprove, { workspaceId: site.workspaceId, siteId, risk: "medium" }, "approvals.list", "site", siteId);
+    await this.#authorize(actor2, Capabilities.ContentApprove, { workspaceId: site.workspaceId, siteId, risk: "medium" }, "approvals.list", "site", siteId);
     return this.#store.listPendingApprovalsBySite(siteId);
   }
-  async listContentApprovalInbox(actor, siteId) {
-    const pending = await this.listPendingApprovals(actor, siteId);
+  async listContentApprovalInbox(actor2, siteId) {
+    const pending = await this.listPendingApprovals(actor2, siteId);
     const items = [];
     for (const approval of pending) {
       const snapshot = await this.#requireSnapshot(approval.contentItemId);
@@ -1764,14 +1773,14 @@ class CmsService {
     }
     return items;
   }
-  async requestApproval(actor, input) {
+  async requestApproval(actor2, input) {
     const snapshot = await this.#requireSnapshot(input.contentItemId);
-    await this.#authorize(actor, Capabilities.ContentRequestPublish, this.#resource(snapshot, input.riskLevel ?? "medium"), "content.request-publish", "content-item", input.contentItemId);
+    await this.#authorize(actor2, Capabilities.ContentRequestPublish, this.#resource(snapshot, input.riskLevel ?? "medium"), "content.request-publish", "content-item", input.contentItemId);
     const revision = await this.#requireRevision(input.revisionId);
     assertDomain(revision.contentItemId === input.contentItemId, "REVISION_CONTENT_MISMATCH", "Revision belongs to another content item", 422);
     assertDomain(snapshot.item.workingRevisionId === revision.id, "STALE_APPROVAL_REQUEST", "Only the current working revision can be requested", 409);
     return this.#store.createApproval({
-      actor,
+      actor: actor2,
       contentItemId: input.contentItemId,
       revisionId: revision.id,
       revisionHash: revision.contentHash,
@@ -1779,23 +1788,23 @@ class CmsService {
       now: this.#clock.now()
     });
   }
-  async decideApproval(actor, input) {
+  async decideApproval(actor2, input) {
     const approval = await this.#requireApproval(input.approvalId);
     const snapshot = await this.#requireSnapshot(approval.contentItemId);
-    await this.#authorize(actor, Capabilities.ContentApprove, this.#resource(snapshot, approval.riskLevel), `content.${input.decision}`, "approval", approval.id);
+    await this.#authorize(actor2, Capabilities.ContentApprove, this.#resource(snapshot, approval.riskLevel), `content.${input.decision}`, "approval", approval.id);
     return this.#store.decideApproval({
-      actor,
+      actor: actor2,
       approvalId: approval.id,
       decision: input.decision,
       comment: input.comment ?? "",
       now: this.#clock.now()
     });
   }
-  async publish(actor, input) {
+  async publish(actor2, input) {
     const snapshot = await this.#requireSnapshot(input.contentItemId);
-    await this.#authorize(actor, Capabilities.ContentPublish, this.#resource(snapshot, "high"), "content.publish", "content-item", input.contentItemId);
+    await this.#authorize(actor2, Capabilities.ContentPublish, this.#resource(snapshot, "high"), "content.publish", "content-item", input.contentItemId);
     const event = {
-      actor,
+      actor: actor2,
       workspaceId: snapshot.item.workspaceId,
       siteId: snapshot.item.siteId,
       contentItemId: input.contentItemId,
@@ -1806,7 +1815,7 @@ class CmsService {
     };
     await this.#lifecycleHooks?.beforePublish?.(event);
     const published = await this.#store.publish({
-      actor,
+      actor: actor2,
       contentItemId: input.contentItemId,
       revisionId: input.revisionId,
       approvalId: input.approvalId,
@@ -1815,12 +1824,12 @@ class CmsService {
     await this.#lifecycleHooks?.afterPublish?.(event);
     return published;
   }
-  async unpublish(actor, input) {
+  async unpublish(actor2, input) {
     const snapshot = await this.#requireSnapshot(input.contentItemId);
-    await this.#authorize(actor, Capabilities.ContentUnpublish, this.#resource(snapshot, "high"), "content.unpublish", "content-item", input.contentItemId);
+    await this.#authorize(actor2, Capabilities.ContentUnpublish, this.#resource(snapshot, "high"), "content.unpublish", "content-item", input.contentItemId);
     assertDomain(snapshot.item.publishedRevisionId !== null, "CONTENT_NOT_PUBLISHED", "Content is not published", 409);
     return this.#store.unpublish({
-      actor,
+      actor: actor2,
       contentItemId: input.contentItemId,
       now: this.#clock.now()
     });
@@ -1831,18 +1840,18 @@ class CmsService {
   async findPublicByPath(siteId, path) {
     return this.#store.findPublicByPath(siteId, path);
   }
-  async listAudit(actor, workspaceId) {
-    await this.#authorize(actor, Capabilities.ContentRead, { workspaceId, risk: "low" }, "audit.read", "workspace", workspaceId);
+  async listAudit(actor2, workspaceId) {
+    await this.#authorize(actor2, Capabilities.ContentRead, { workspaceId, risk: "low" }, "audit.read", "workspace", workspaceId);
     return this.#store.listAudit(workspaceId);
   }
-  async #prepareCreate(actor, siteId, parentId, slugInput, contentType, document, title, capability = Capabilities.ContentCreate) {
+  async #prepareCreate(actor2, siteId, parentId, slugInput, contentType, document, title, capability = Capabilities.ContentCreate) {
     const site = await this.#requireSite(siteId);
     const parent = parentId ? await this.#requireParentNode(parentId, siteId, contentType) : null;
     if (!parent && contentType === "article")
       throw new DomainError("ARTICLE_PARENT_REQUIRED", "Articles must belong to a blog", 422);
     const slug = normalizeSlug(slugInput);
     const path = childPath(parent?.cachedPath ?? null, slug);
-    await this.#authorize(actor, capability, { workspaceId: site.workspaceId, siteId: site.id, contentType, path, risk: "low" }, `${contentType}.create`, "site", site.id);
+    await this.#authorize(actor2, capability, { workspaceId: site.workspaceId, siteId: site.id, contentType, path, risk: "low" }, `${contentType}.create`, "site", site.id);
     this.#validateDocument(document);
     const contentHash = await this.#contentHash({ title }, document);
     return { workspaceId: site.workspaceId, siteId: site.id, parentId, slug, path, contentHash };
@@ -1904,13 +1913,13 @@ class CmsService {
       risk
     };
   }
-  async #authorize(actor, capability, resource, action, resourceType, resourceId) {
-    const principal = await this.#requirePrincipal(actor.actorId);
+  async #authorize(actor2, capability, resource, action, resourceType, resourceId) {
+    const principal = await this.#requirePrincipal(actor2.actorId);
     assertDomain(principal.workspaceId === resource.workspaceId, "WORKSPACE_MISMATCH", "Principal belongs to another workspace", 403);
-    const grants = await this.#store.listCapabilityGrants(actor.actorId);
-    const delegation = actor.delegationId ? await this.#store.getDelegationGrant(actor.delegationId) : null;
+    const grants = await this.#store.listCapabilityGrants(actor2.actorId);
+    const delegation = actor2.delegationId ? await this.#store.getDelegationGrant(actor2.delegationId) : null;
     const input = {
-      actor,
+      actor: actor2,
       capability,
       resource,
       grants,
@@ -1925,10 +1934,10 @@ class CmsService {
         workspaceId: resource.workspaceId,
         siteId,
         occurredAt: this.#clock.now(),
-        actorPrincipalId: actor.actorId,
-        actorType: actor.actorType,
-        onBehalfOfPrincipalId: actor.onBehalfOf ?? null,
-        delegationId: actor.delegationId ?? null,
+        actorPrincipalId: actor2.actorId,
+        actorType: actor2.actorType,
+        onBehalfOfPrincipalId: actor2.onBehalfOf ?? null,
+        delegationId: actor2.delegationId ?? null,
         action,
         resourceType,
         resourceId,
@@ -1936,25 +1945,25 @@ class CmsService {
         capability,
         result: "denied",
         reason: decision.reason,
-        requestId: actor.requestId,
+        requestId: actor2.requestId,
         details: {}
       });
       throw new DomainError("FORBIDDEN", `Operation denied: ${decision.reason}`, 403, { capability, reason: decision.reason });
     }
     if (this.#securityHooks?.assertStepUp) {
-      await this.#securityHooks.assertStepUp(actor, { action, capability, risk: resource.risk });
+      await this.#securityHooks.assertStepUp(actor2, { action, capability, risk: resource.risk });
     }
   }
-  async #successAudit(actor, workspaceId, siteId, action, resourceType, resourceId, revisionId, capability, details) {
+  async #successAudit(actor2, workspaceId, siteId, action, resourceType, resourceId, revisionId, capability, details) {
     await this.#store.appendAudit({
       id: newId("audit"),
       workspaceId,
       siteId,
       occurredAt: this.#clock.now(),
-      actorPrincipalId: actor.actorId,
-      actorType: actor.actorType,
-      onBehalfOfPrincipalId: actor.onBehalfOf ?? null,
-      delegationId: actor.delegationId ?? null,
+      actorPrincipalId: actor2.actorId,
+      actorType: actor2.actorType,
+      onBehalfOfPrincipalId: actor2.onBehalfOf ?? null,
+      delegationId: actor2.delegationId ?? null,
       action,
       resourceType,
       resourceId,
@@ -1962,10 +1971,26 @@ class CmsService {
       capability,
       result: "success",
       reason: null,
-      requestId: actor.requestId,
+      requestId: actor2.requestId,
       details
     });
   }
+}
+function actor(principalId, actorType, options = {}) {
+  const context = {
+    actorId: principalId,
+    actorType,
+    requestId: options.requestId ?? crypto.randomUUID()
+  };
+  if (options.onBehalfOf !== void 0)
+    context.onBehalfOf = options.onBehalfOf;
+  if (options.delegationId !== void 0)
+    context.delegationId = options.delegationId;
+  if (options.authSessionId !== void 0)
+    context.authSessionId = options.authSessionId;
+  if (options.authenticationMethod !== void 0)
+    context.authenticationMethod = options.authenticationMethod;
+  return context;
 }
 class AgentOperations {
   #cms;
@@ -3292,8 +3317,8 @@ class D1CmsStore {
     return this.#db.prepare("INSERT INTO audit_events(id,workspace_id,site_id,occurred_at,actor_principal_id,actor_type,on_behalf_of_principal_id,delegation_id,action,resource_type,resource_id,revision_id,capability,result,reason,request_id,details_json) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)").bind(event.id, event.workspaceId, event.siteId, event.occurredAt, event.actorPrincipalId, event.actorType, event.onBehalfOfPrincipalId, event.delegationId, event.action, event.resourceType, event.resourceId, event.revisionId, event.capability, event.result, event.reason, event.requestId, JSON.stringify(event.details));
   }
 }
-function createAudit(actor, workspaceId, siteId, action, resourceType, resourceId, revisionId, now, capability, details) {
-  return { id: newId("audit"), workspaceId, siteId, occurredAt: now, actorPrincipalId: actor.actorId, actorType: actor.actorType, onBehalfOfPrincipalId: actor.onBehalfOf ?? null, delegationId: actor.delegationId ?? null, action, resourceType, resourceId, revisionId, capability, result: "success", reason: null, requestId: actor.requestId, details };
+function createAudit(actor2, workspaceId, siteId, action, resourceType, resourceId, revisionId, now, capability, details) {
+  return { id: newId("audit"), workspaceId, siteId, occurredAt: now, actorPrincipalId: actor2.actorId, actorType: actor2.actorType, onBehalfOfPrincipalId: actor2.onBehalfOf ?? null, delegationId: actor2.delegationId ?? null, action, resourceType, resourceId, revisionId, capability, result: "success", reason: null, requestId: actor2.requestId, details };
 }
 function json$2(value) {
   return JSON.parse(value);
@@ -3576,13 +3601,13 @@ class AssetService {
     this.#defaultMaximumBytes = input.defaultMaximumBytes ?? 25 * 1024 * 1024;
     this.#usageInspector = input.usageInspector;
   }
-  async createUploadSession(actor, input) {
+  async createUploadSession(actor2, input) {
     const filename = sanitizeFilename(input.filename);
     const mediaType = normalizeMediaType(input.mediaType);
     assertDomain(this.#allowedMediaTypes.has(mediaType), "MEDIA_TYPE_NOT_ALLOWED", `Media type ${mediaType} is not allowed`, 422);
     const maximumBytes = input.maximumBytes ?? this.#defaultMaximumBytes;
     assertDomain(Number.isInteger(maximumBytes) && maximumBytes > 0 && maximumBytes <= 5 * 1024 * 1024 * 1024, "INVALID_MAXIMUM_BYTES", "Invalid upload size limit", 422);
-    await this.#security.authorize(actor, Capabilities.AssetUpload, { workspaceId: input.workspaceId, risk: "medium" }, "asset.upload-session.create", "workspace", input.workspaceId);
+    await this.#security.authorize(actor2, Capabilities.AssetUpload, { workspaceId: input.workspaceId, risk: "medium" }, "asset.upload-session.create", "workspace", input.workspaceId);
     const now = this.#clock.now();
     const assetId = asAssetId(newId("asset"));
     const sessionId = asUploadSessionId(newId("upload"));
@@ -3599,7 +3624,7 @@ class AssetService {
       width: null,
       height: null,
       state: "pending",
-      ownerPrincipalId: actor.actorId,
+      ownerPrincipalId: actor2.actorId,
       createdAt: now,
       updatedAt: now,
       deletedAt: null
@@ -3612,7 +3637,7 @@ class AssetService {
       mediaType,
       maximumBytes,
       state: "pending",
-      createdBy: actor.actorId,
+      createdBy: actor2.actorId,
       createdAt: now,
       expiresAt,
       completedAt: null,
@@ -3630,7 +3655,7 @@ class AssetService {
     }, this.#secret);
     const base = input.uploadBaseUrl.replace(/\/$/, "");
     const uploadUrl = `${base}/v1/assets/uploads/${encodeURIComponent(sessionId)}?token=${encodeURIComponent(token)}`;
-    await this.#security.success(actor, {
+    await this.#security.success(actor2, {
       workspaceId: input.workspaceId,
       action: "asset.upload-session.create",
       resourceType: "asset",
@@ -3672,13 +3697,13 @@ class AssetService {
       throw error;
     }
   }
-  async getAsset(actor, assetId) {
+  async getAsset(actor2, assetId) {
     const asset = await this.#requireAsset(assetId);
-    await this.#security.authorize(actor, Capabilities.AssetRead, { workspaceId: asset.workspaceId, risk: "low" }, "asset.read", "asset", asset.id);
+    await this.#security.authorize(actor2, Capabilities.AssetRead, { workspaceId: asset.workspaceId, risk: "low" }, "asset.read", "asset", asset.id);
     return asset;
   }
-  async listAssets(actor, workspaceId) {
-    await this.#security.authorize(actor, Capabilities.AssetRead, { workspaceId, risk: "low" }, "asset.list", "workspace", workspaceId);
+  async listAssets(actor2, workspaceId) {
+    await this.#security.authorize(actor2, Capabilities.AssetRead, { workspaceId, risk: "low" }, "asset.list", "workspace", workspaceId);
     return this.#metadata.listAssets(workspaceId);
   }
   async getPublicAsset(assetId) {
@@ -3688,13 +3713,13 @@ class AssetService {
     const object = await this.#objects.get(asset.objectKey);
     return object ? { asset, object } : null;
   }
-  async deleteAsset(actor, assetId) {
+  async deleteAsset(actor2, assetId) {
     const asset = await this.#requireAsset(assetId);
-    await this.#security.authorize(actor, Capabilities.AssetDelete, { workspaceId: asset.workspaceId, risk: "high" }, "asset.delete", "asset", asset.id);
+    await this.#security.authorize(actor2, Capabilities.AssetDelete, { workspaceId: asset.workspaceId, risk: "high" }, "asset.delete", "asset", asset.id);
     const references = this.#usageInspector ? await this.#usageInspector.listPublishedReferences(asset.id) : [];
     assertDomain(references.length === 0, "ASSET_IN_USE", "Asset is used by published content", 409, { references });
     const deleted = await this.#metadata.softDeleteAsset({ assetId, now: this.#clock.now() });
-    await this.#security.success(actor, {
+    await this.#security.success(actor2, {
       workspaceId: asset.workspaceId,
       action: "asset.delete",
       resourceType: "asset",
@@ -3829,16 +3854,16 @@ class PreviewService {
     this.#secret = input.signingSecret;
     this.#clock = input.clock ?? systemClock;
   }
-  async create(actor, input) {
-    const snapshot = await this.#cms.getContent(actor, input.contentItemId);
-    await this.#security.authorize(actor, Capabilities.PreviewCreate, {
+  async create(actor2, input) {
+    const snapshot = await this.#cms.getContent(actor2, input.contentItemId);
+    await this.#security.authorize(actor2, Capabilities.PreviewCreate, {
       workspaceId: snapshot.item.workspaceId,
       siteId: snapshot.item.siteId,
       contentType: snapshot.item.contentTypeKey,
       path: snapshot.route.path,
       risk: "low"
     }, "preview.create", "content-item", snapshot.item.id);
-    const revision = await this.#cms.getRevisionForPreview(actor, input.contentItemId, input.revisionId);
+    const revision = await this.#cms.getRevisionForPreview(actor2, input.contentItemId, input.revisionId);
     const now = this.#clock.now();
     const expiresAt = now + Math.max(60, Math.min(input.expiresInSeconds ?? 1800, 24 * 60 * 60)) * 1e3;
     const session = {
@@ -3850,7 +3875,7 @@ class PreviewService {
       revisionHash: revision.contentHash,
       themeRelease: input.themeRelease ?? "default@1",
       tokenVersion: 1,
-      createdBy: actor.actorId,
+      createdBy: actor2.actorId,
       createdAt: now,
       expiresAt,
       revokedAt: null,
@@ -3869,7 +3894,7 @@ class PreviewService {
       tokenVersion: session.tokenVersion
     }, this.#secret);
     const previewUrl = `${input.previewBaseUrl.replace(/\/$/, "")}/_preview/${encodeURIComponent(token)}`;
-    await this.#security.success(actor, {
+    await this.#security.success(actor2, {
       workspaceId: session.workspaceId,
       siteId: session.siteId,
       action: "preview.create",
@@ -3899,16 +3924,16 @@ class PreviewService {
     await this.#store.touch(session.id, now);
     return { session, snapshot, revision };
   }
-  async revoke(actor, previewId) {
+  async revoke(actor2, previewId) {
     const session = await this.#store.get(previewId);
     assertDomain(session, "PREVIEW_NOT_FOUND", "Preview session not found", 404);
-    await this.#security.authorize(actor, Capabilities.PreviewRevoke, {
+    await this.#security.authorize(actor2, Capabilities.PreviewRevoke, {
       workspaceId: session.workspaceId,
       siteId: session.siteId,
       risk: "medium"
     }, "preview.revoke", "preview-session", session.id);
     const revoked = await this.#store.revoke(session.id, this.#clock.now());
-    await this.#security.success(actor, {
+    await this.#security.success(actor2, {
       workspaceId: session.workspaceId,
       siteId: session.siteId,
       action: "preview.revoke",
@@ -4034,8 +4059,8 @@ class BlogService {
   get store() {
     return this.#store;
   }
-  async createBlog(actor, input) {
-    const snapshot = await this.#cms.createBlog(actor, input);
+  async createBlog(actor2, input) {
+    const snapshot = await this.#cms.createBlog(actor2, input);
     const now = this.#clock.now();
     const collection = {
       id: asCollectionId(newId("collection")),
@@ -4052,7 +4077,7 @@ class BlogService {
     await this.#store.createCollection(collection);
     const category = await this.#createTaxonomyRecord(collection, { key: "category", title: "カテゴリ", kind: "category", hierarchical: true }, now);
     const tag = await this.#createTaxonomyRecord(collection, { key: "tag", title: "タグ", kind: "tag", hierarchical: false }, now);
-    await this.#cms.recordSuccessfulOperation(actor, {
+    await this.#cms.recordSuccessfulOperation(actor2, {
       workspaceId: collection.workspaceId,
       siteId: collection.siteId,
       action: "blog.configure",
@@ -4064,11 +4089,11 @@ class BlogService {
     });
     return { collection, snapshot, taxonomies: [category, tag] };
   }
-  async createArticle(actor, input) {
+  async createArticle(actor2, input) {
     const collection = await this.#requireCollection(input.collectionId);
-    const blog = await this.#cms.getContent(actor, collection.contentItemId);
+    const blog = await this.#cms.getContent(actor2, collection.contentItemId);
     assertDomain(blog.item.contentTypeKey === "blog", "BLOG_CONTENT_MISMATCH", "Collection content is not a blog", 500);
-    const snapshot = await this.#cms.createArticle(actor, {
+    const snapshot = await this.#cms.createArticle(actor2, {
       blogContentItemId: blog.item.id,
       slug: input.slug,
       title: input.title,
@@ -4079,12 +4104,12 @@ class BlogService {
       collectionId: collection.id,
       contentItemId: snapshot.item.id,
       postedAt: input.postedAt ?? now,
-      authorPrincipalId: actor.onBehalfOf ?? actor.actorId,
+      authorPrincipalId: actor2.onBehalfOf ?? actor2.actorId,
       createdAt: now
     });
     if (input.termIds)
-      await this.classifyRevision(actor, snapshot.item.id, snapshot.workingRevision.id, input.termIds);
-    await this.#cms.recordSuccessfulOperation(actor, {
+      await this.classifyRevision(actor2, snapshot.item.id, snapshot.workingRevision.id, input.termIds);
+    await this.#cms.recordSuccessfulOperation(actor2, {
       workspaceId: collection.workspaceId,
       siteId: collection.siteId,
       action: "article.register",
@@ -4096,23 +4121,23 @@ class BlogService {
     });
     return snapshot;
   }
-  async getArticleMetadata(actor, contentItemId) {
-    const snapshot = await this.#cms.getContent(actor, contentItemId);
+  async getArticleMetadata(actor2, contentItemId) {
+    const snapshot = await this.#cms.getContent(actor2, contentItemId);
     assertDomain(snapshot.item.contentTypeKey === "article", "ARTICLE_CONTENT_MISMATCH", "Content is not an article", 422);
     const article = await this.#requireArticle(contentItemId);
     return { article, snapshot };
   }
-  async updateArticlePostedAt(actor, input) {
-    const snapshot = await this.#cms.getContent(actor, input.contentItemId);
+  async updateArticlePostedAt(actor2, input) {
+    const snapshot = await this.#cms.getContent(actor2, input.contentItemId);
     assertDomain(snapshot.item.contentTypeKey === "article", "ARTICLE_CONTENT_MISMATCH", "Content is not an article", 422);
-    await this.#cms.authorizeOperation(actor, Capabilities.ContentRevise, {
+    await this.#cms.authorizeOperation(actor2, Capabilities.ContentRevise, {
       workspaceId: snapshot.item.workspaceId,
       siteId: snapshot.item.siteId,
       contentType: "article",
       risk: "medium"
     }, "article.update-posted-at", "article", input.contentItemId);
     const article = await this.#store.updateArticlePostedAt(input.contentItemId, input.postedAt);
-    await this.#cms.recordSuccessfulOperation(actor, {
+    await this.#cms.recordSuccessfulOperation(actor2, {
       workspaceId: snapshot.item.workspaceId,
       siteId: snapshot.item.siteId,
       action: "article.update-posted-at",
@@ -4124,32 +4149,32 @@ class BlogService {
     });
     return article;
   }
-  async reviseArticle(actor, input) {
+  async reviseArticle(actor2, input) {
     const article = await this.#requireArticle(input.contentItemId);
-    const revision = await this.#cms.commitRevision(actor, input);
+    const revision = await this.#cms.commitRevision(actor2, input);
     if (input.termIdsByTaxonomy) {
       for (const [taxonomyId, termIds] of Object.entries(input.termIdsByTaxonomy)) {
-        await this.#setTaxonomyValue(actor, article.collectionId, revision.id, asTaxonomyId(taxonomyId), termIds);
+        await this.#setTaxonomyValue(actor2, article.collectionId, revision.id, asTaxonomyId(taxonomyId), termIds);
       }
     }
     return revision;
   }
-  async createTaxonomy(actor, input) {
+  async createTaxonomy(actor2, input) {
     const collection = await this.#requireCollection(input.collectionId);
-    await this.#cms.authorizeOperation(actor, Capabilities.TaxonomyManage, { workspaceId: collection.workspaceId, siteId: collection.siteId, contentType: "blog", risk: "medium" }, "taxonomy.create", "blog-collection", collection.id);
+    await this.#cms.authorizeOperation(actor2, Capabilities.TaxonomyManage, { workspaceId: collection.workspaceId, siteId: collection.siteId, contentType: "blog", risk: "medium" }, "taxonomy.create", "blog-collection", collection.id);
     const taxonomy = await this.#createTaxonomyRecord(collection, {
       key: normalizeTaxonomyKey(input.key),
       title: input.title.trim(),
       kind: input.kind,
       hierarchical: input.kind === "category" ? input.hierarchical ?? true : false
     }, this.#clock.now());
-    await this.#cms.recordSuccessfulOperation(actor, { workspaceId: collection.workspaceId, siteId: collection.siteId, action: "taxonomy.create", resourceType: "taxonomy", resourceId: taxonomy.id, capability: Capabilities.TaxonomyManage, details: { collectionId: collection.id, key: taxonomy.key } });
+    await this.#cms.recordSuccessfulOperation(actor2, { workspaceId: collection.workspaceId, siteId: collection.siteId, action: "taxonomy.create", resourceType: "taxonomy", resourceId: taxonomy.id, capability: Capabilities.TaxonomyManage, details: { collectionId: collection.id, key: taxonomy.key } });
     return taxonomy;
   }
-  async createTerm(actor, input) {
+  async createTerm(actor2, input) {
     const taxonomy = await this.#requireTaxonomy(input.taxonomyId);
     const collection = await this.#requireCollection(taxonomy.collectionId);
-    await this.#cms.authorizeOperation(actor, Capabilities.TaxonomyManage, { workspaceId: collection.workspaceId, siteId: collection.siteId, contentType: "blog", risk: "medium" }, "term.create", "taxonomy", taxonomy.id);
+    await this.#cms.authorizeOperation(actor2, Capabilities.TaxonomyManage, { workspaceId: collection.workspaceId, siteId: collection.siteId, contentType: "blog", risk: "medium" }, "term.create", "taxonomy", taxonomy.id);
     let parentId = input.parentId ?? null;
     if (parentId) {
       assertDomain(taxonomy.hierarchical, "TAXONOMY_NOT_HIERARCHICAL", "This taxonomy does not allow parent terms", 422);
@@ -4169,10 +4194,10 @@ class BlogService {
     };
     assertDomain(term.title.length > 0, "TERM_TITLE_REQUIRED", "Term title is required", 422);
     await this.#store.createTerm(term);
-    await this.#cms.recordSuccessfulOperation(actor, { workspaceId: collection.workspaceId, siteId: collection.siteId, action: "term.create", resourceType: "term", resourceId: term.id, capability: Capabilities.TaxonomyManage, details: { taxonomyId: taxonomy.id, slug: term.slug } });
+    await this.#cms.recordSuccessfulOperation(actor2, { workspaceId: collection.workspaceId, siteId: collection.siteId, action: "term.create", resourceType: "term", resourceId: term.id, capability: Capabilities.TaxonomyManage, details: { taxonomyId: taxonomy.id, slug: term.slug } });
     return term;
   }
-  async classifyRevision(actor, articleContentItemId, revisionId, termIds) {
+  async classifyRevision(actor2, articleContentItemId, revisionId, termIds) {
     const article = await this.#requireArticle(articleContentItemId);
     const taxonomies = await this.#store.listTaxonomies(article.collectionId);
     const grouped = /* @__PURE__ */ new Map();
@@ -4184,7 +4209,7 @@ class BlogService {
       grouped.set(taxonomy.id, [...grouped.get(taxonomy.id) ?? [], term.id]);
     }
     for (const taxonomy of taxonomies)
-      await this.#setTaxonomyValue(actor, article.collectionId, revisionId, taxonomy.id, grouped.get(taxonomy.id) ?? []);
+      await this.#setTaxonomyValue(actor2, article.collectionId, revisionId, taxonomy.id, grouped.get(taxonomy.id) ?? []);
   }
   async listTaxonomies(collectionId) {
     const taxonomies = await this.#store.listTaxonomies(collectionId);
@@ -4254,11 +4279,11 @@ class BlogService {
     await this.#store.createTaxonomy(taxonomy);
     return taxonomy;
   }
-  async #setTaxonomyValue(actor, collectionId, revisionId, taxonomyId, termIds) {
+  async #setTaxonomyValue(actor2, collectionId, revisionId, taxonomyId, termIds) {
     const collection = await this.#requireCollection(collectionId);
     const taxonomy = await this.#requireTaxonomy(taxonomyId);
     assertDomain(taxonomy.collectionId === collection.id, "TAXONOMY_COLLECTION_MISMATCH", "Taxonomy belongs to another blog", 422);
-    await this.#cms.authorizeOperation(actor, Capabilities.ArticleClassify, { workspaceId: collection.workspaceId, siteId: collection.siteId, contentType: "article", risk: "low" }, "article.classify", "revision", revisionId);
+    await this.#cms.authorizeOperation(actor2, Capabilities.ArticleClassify, { workspaceId: collection.workspaceId, siteId: collection.siteId, contentType: "article", risk: "low" }, "article.classify", "revision", revisionId);
     const revision = await this.#cms.store.getRevision(revisionId);
     assertDomain(revision, "REVISION_NOT_FOUND", "Revision not found", 404);
     const article = await this.#requireArticle(revision.contentItemId);
@@ -4271,7 +4296,7 @@ class BlogService {
     }
     const value = { revisionId, taxonomyId, termIds: valid };
     await this.#store.setRevisionTaxonomyValue(value);
-    await this.#cms.recordSuccessfulOperation(actor, { workspaceId: collection.workspaceId, siteId: collection.siteId, action: "article.classify", resourceType: "revision", resourceId: revisionId, revisionId, capability: Capabilities.ArticleClassify, details: { taxonomyId, termIds: valid } });
+    await this.#cms.recordSuccessfulOperation(actor2, { workspaceId: collection.workspaceId, siteId: collection.siteId, action: "article.classify", resourceType: "revision", resourceId: revisionId, revisionId, capability: Capabilities.ArticleClassify, details: { taxonomyId, termIds: valid } });
   }
   async #resolveTerms(collectionId, revisionId) {
     const taxonomies = await this.#store.listTaxonomies(collectionId);
@@ -4511,8 +4536,8 @@ class CustomContentService {
   get store() {
     return this.#store;
   }
-  async createField(actor, input) {
-    await this.#cms.authorizeOperation(actor, Capabilities.CustomFieldManage, { workspaceId: input.workspaceId, contentType: "custom-content", risk: "medium" }, "custom-field.create", "workspace", input.workspaceId);
+  async createField(actor2, input) {
+    await this.#cms.authorizeOperation(actor2, Capabilities.CustomFieldManage, { workspaceId: input.workspaceId, contentType: "custom-content", risk: "medium" }, "custom-field.create", "workspace", input.workspaceId);
     const now = this.#clock.now();
     const field = {
       id: asCustomFieldId(newId("customField")),
@@ -4528,11 +4553,11 @@ class CustomContentService {
     };
     assertDomain(field.name.length > 0, "CUSTOM_FIELD_NAME_REQUIRED", "Field name is required", 422);
     await this.#store.createField(field);
-    await this.#audit(actor, input.workspaceId, null, "custom-field.create", "custom-field", field.id, Capabilities.CustomFieldManage, { key: field.key, type: field.type });
+    await this.#audit(actor2, input.workspaceId, null, "custom-field.create", "custom-field", field.id, Capabilities.CustomFieldManage, { key: field.key, type: field.type });
     return field;
   }
-  async createTable(actor, input) {
-    await this.#cms.authorizeOperation(actor, Capabilities.CustomTableManage, { workspaceId: input.workspaceId, contentType: "custom-content", risk: "high" }, "custom-table.create", "workspace", input.workspaceId);
+  async createTable(actor2, input) {
+    await this.#cms.authorizeOperation(actor2, Capabilities.CustomTableManage, { workspaceId: input.workspaceId, contentType: "custom-content", risk: "high" }, "custom-table.create", "workspace", input.workspaceId);
     const now = this.#clock.now();
     const table = {
       id: asCustomTableId(newId("customTable")),
@@ -4549,14 +4574,14 @@ class CustomContentService {
     };
     assertDomain(table.name.length > 0, "CUSTOM_TABLE_NAME_REQUIRED", "Table name is required", 422);
     await this.#store.createTable(table);
-    await this.#audit(actor, input.workspaceId, null, "custom-table.create", "custom-table", table.id, Capabilities.CustomTableManage, { key: table.key, kind: table.kind });
+    await this.#audit(actor2, input.workspaceId, null, "custom-table.create", "custom-table", table.id, Capabilities.CustomTableManage, { key: table.key, kind: table.kind });
     return table;
   }
-  async attachField(actor, input) {
+  async attachField(actor2, input) {
     const table = await this.#requireTable(input.tableId);
     const field = await this.#requireField(input.fieldId);
     assertDomain(table.workspaceId === field.workspaceId, "CUSTOM_FIELD_WORKSPACE_MISMATCH", "Field belongs to another workspace", 422);
-    await this.#cms.authorizeOperation(actor, Capabilities.CustomTableManage, { workspaceId: table.workspaceId, contentType: "custom-content", risk: "high" }, "custom-table.attach-field", "custom-table", table.id);
+    await this.#cms.authorizeOperation(actor2, Capabilities.CustomTableManage, { workspaceId: table.workspaceId, contentType: "custom-content", risk: "high" }, "custom-table.attach-field", "custom-table", table.id);
     const relation = { tableId: table.id, fieldId: field.id, required: Boolean(input.required), searchable: Boolean(input.searchable), unique: Boolean(input.unique), sortOrder: input.sortOrder ?? (await this.#store.listTableFields(table.id)).length * 10, labelOverride: input.labelOverride?.trim() || null, createdAt: this.#clock.now() };
     await this.#store.attachField(relation);
     table.schemaVersion += 1;
@@ -4564,7 +4589,7 @@ class CustomContentService {
     if (!table.displayFieldKey)
       table.displayFieldKey = field.key;
     await this.#store.updateTable(table);
-    await this.#audit(actor, table.workspaceId, null, "custom-table.attach-field", "custom-table", table.id, Capabilities.CustomTableManage, { fieldId: field.id, schemaVersion: table.schemaVersion });
+    await this.#audit(actor2, table.workspaceId, null, "custom-table.attach-field", "custom-table", table.id, Capabilities.CustomTableManage, { fieldId: field.id, schemaVersion: table.schemaVersion });
     return this.getTableSchema(table.id);
   }
   async getTableSchema(tableId) {
@@ -4577,7 +4602,7 @@ class CustomContentService {
     }
     return { table, fields };
   }
-  async createCustomContent(actor, input) {
+  async createCustomContent(actor2, input) {
     const table = await this.#requireTable(input.tableId);
     assertDomain(table.kind === "content", "CONTENT_TABLE_REQUIRED", "Only content tables can be bound to Custom Content", 422);
     const schema = await this.getTableSchema(table.id);
@@ -4585,19 +4610,19 @@ class CustomContentService {
     const site = await this.#cms.store.getSite(input.siteId);
     assertDomain(site, "SITE_NOT_FOUND", "Site not found", 404);
     assertDomain(site.workspaceId === table.workspaceId, "CUSTOM_TABLE_WORKSPACE_MISMATCH", "Table belongs to another workspace", 422);
-    const snapshot = await this.#cms.createCustomContent(actor, { siteId: input.siteId, parentId: input.parentId, slug: input.slug, title: input.title, document: input.document ?? createEmptyDocument() });
+    const snapshot = await this.#cms.createCustomContent(actor2, { siteId: input.siteId, parentId: input.parentId, slug: input.slug, title: input.title, document: input.document ?? createEmptyDocument() });
     const orderKey = input.listOrderFieldKey ? normalizeKey$2(input.listOrderFieldKey) : table.displayFieldKey ?? schema.fields[0].definition.key;
     assertDomain(schema.fields.some((item) => item.definition.key === orderKey), "CUSTOM_LIST_ORDER_FIELD_INVALID", "List order field is not in the table", 422);
     const now = this.#clock.now();
     const definition2 = { id: asCustomContentId(newId("customContent")), workspaceId: snapshot.item.workspaceId, siteId: snapshot.item.siteId, contentItemId: snapshot.item.id, tableId: table.id, listCount: clamp$1(input.listCount ?? 10, 1, 100), listOrderFieldKey: orderKey, listDirection: input.listDirection ?? "asc", templateKey: normalizeTemplate(input.templateKey ?? "default"), state: "active", createdAt: now, updatedAt: now };
     await this.#store.createCustomContent(definition2);
-    await this.#audit(actor, definition2.workspaceId, definition2.siteId, "custom-content.configure", "custom-content", definition2.id, Capabilities.CustomContentCreate, { contentItemId: definition2.contentItemId, tableId: definition2.tableId });
+    await this.#audit(actor2, definition2.workspaceId, definition2.siteId, "custom-content.configure", "custom-content", definition2.id, Capabilities.CustomContentCreate, { contentItemId: definition2.contentItemId, tableId: definition2.tableId });
     return { definition: definition2, snapshot };
   }
-  async createEntry(actor, input) {
+  async createEntry(actor2, input) {
     const content = await this.#requireContent(input.customContentId);
     const table = await this.#requireTable(content.tableId);
-    await this.#cms.authorizeOperation(actor, Capabilities.CustomEntryCreate, { workspaceId: content.workspaceId, siteId: content.siteId, contentType: "custom-entry", risk: "low" }, "custom-entry.create", "custom-content", content.id);
+    await this.#cms.authorizeOperation(actor2, Capabilities.CustomEntryCreate, { workspaceId: content.workspaceId, siteId: content.siteId, contentType: "custom-entry", risk: "low" }, "custom-entry.create", "custom-content", content.id);
     const schema = await this.getTableSchema(table.id);
     const values = await this.#validateValues(schema, input.values, null, content.id);
     const parentEntryId = input.parentEntryId ?? null;
@@ -4611,42 +4636,42 @@ class CustomContentService {
     const entryId = asCustomEntryId(newId("customEntry"));
     const revisionId = asCustomEntryRevisionId(newId("customEntryRevision"));
     const hash = await sha256(stableStringify({ schemaVersion: table.schemaVersion, values }));
-    const revision = { id: revisionId, entryId, revisionNumber: 1, basedOnRevisionId: null, schemaVersion: table.schemaVersion, values, contentHash: hash, createdBy: actor.actorId, changeSummary: "Initial custom entry", createdAt: now };
-    const entry = { id: entryId, customContentId: content.id, tableId: table.id, slug, parentEntryId, workingRevisionId: revision.id, publishedRevisionId: null, lockVersion: 0, state: "active", createdBy: actor.onBehalfOf ?? actor.actorId, createdAt: now, updatedAt: now };
+    const revision = { id: revisionId, entryId, revisionNumber: 1, basedOnRevisionId: null, schemaVersion: table.schemaVersion, values, contentHash: hash, createdBy: actor2.actorId, changeSummary: "Initial custom entry", createdAt: now };
+    const entry = { id: entryId, customContentId: content.id, tableId: table.id, slug, parentEntryId, workingRevisionId: revision.id, publishedRevisionId: null, lockVersion: 0, state: "active", createdBy: actor2.onBehalfOf ?? actor2.actorId, createdAt: now, updatedAt: now };
     const snapshot = await this.#store.createEntry(entry, revision);
-    await this.#audit(actor, content.workspaceId, content.siteId, "custom-entry.create", "custom-entry", entry.id, Capabilities.CustomEntryCreate, { customContentId: content.id, revisionId: revision.id });
+    await this.#audit(actor2, content.workspaceId, content.siteId, "custom-entry.create", "custom-entry", entry.id, Capabilities.CustomEntryCreate, { customContentId: content.id, revisionId: revision.id });
     return snapshot;
   }
-  async reviseEntry(actor, input) {
+  async reviseEntry(actor2, input) {
     const snapshot = await this.#requireEntry(input.entryId);
     const content = await this.#requireContent(snapshot.entry.customContentId);
     const schema = await this.getTableSchema(snapshot.entry.tableId);
-    await this.#cms.authorizeOperation(actor, Capabilities.CustomEntryRevise, { workspaceId: content.workspaceId, siteId: content.siteId, contentType: "custom-entry", risk: "low" }, "custom-entry.revise", "custom-entry", snapshot.entry.id);
+    await this.#cms.authorizeOperation(actor2, Capabilities.CustomEntryRevise, { workspaceId: content.workspaceId, siteId: content.siteId, contentType: "custom-entry", risk: "low" }, "custom-entry.revise", "custom-entry", snapshot.entry.id);
     const values = await this.#validateValues(schema, input.values, snapshot.entry.id, content.id);
     const now = this.#clock.now();
     const hash = await sha256(stableStringify({ schemaVersion: schema.table.schemaVersion, values }));
-    const revision = { id: asCustomEntryRevisionId(newId("customEntryRevision")), entryId: snapshot.entry.id, revisionNumber: snapshot.workingRevision.revisionNumber + 1, basedOnRevisionId: input.baseRevisionId, schemaVersion: schema.table.schemaVersion, values, contentHash: hash, createdBy: actor.actorId, changeSummary: input.changeSummary.trim() || "Custom entry revision", createdAt: now };
+    const revision = { id: asCustomEntryRevisionId(newId("customEntryRevision")), entryId: snapshot.entry.id, revisionNumber: snapshot.workingRevision.revisionNumber + 1, basedOnRevisionId: input.baseRevisionId, schemaVersion: schema.table.schemaVersion, values, contentHash: hash, createdBy: actor2.actorId, changeSummary: input.changeSummary.trim() || "Custom entry revision", createdAt: now };
     const saved = await this.#store.commitEntryRevision({ entryId: snapshot.entry.id, baseRevisionId: input.baseRevisionId, expectedLockVersion: input.expectedLockVersion, revision });
-    await this.#audit(actor, content.workspaceId, content.siteId, "custom-entry.revise", "custom-entry", snapshot.entry.id, Capabilities.CustomEntryRevise, { revisionId: saved.id, schemaVersion: saved.schemaVersion });
+    await this.#audit(actor2, content.workspaceId, content.siteId, "custom-entry.revise", "custom-entry", snapshot.entry.id, Capabilities.CustomEntryRevise, { revisionId: saved.id, schemaVersion: saved.schemaVersion });
     return saved;
   }
-  async requestApproval(actor, input) {
+  async requestApproval(actor2, input) {
     const snapshot = await this.#requireEntry(input.entryId);
     const content = await this.#requireContent(snapshot.entry.customContentId);
-    await this.#cms.authorizeOperation(actor, Capabilities.CustomEntryRequestPublish, { workspaceId: content.workspaceId, siteId: content.siteId, contentType: "custom-entry", risk: "medium" }, "custom-entry.request-publish", "custom-entry", snapshot.entry.id);
+    await this.#cms.authorizeOperation(actor2, Capabilities.CustomEntryRequestPublish, { workspaceId: content.workspaceId, siteId: content.siteId, contentType: "custom-entry", risk: "medium" }, "custom-entry.request-publish", "custom-entry", snapshot.entry.id);
     assertDomain(snapshot.workingRevision.id === input.revisionId, "CUSTOM_ENTRY_REVISION_NOT_CURRENT", "Approval must target the current working revision", 409);
     const now = this.#clock.now();
-    const approval = { id: asCustomEntryApprovalId(newId("customEntryApproval")), entryId: snapshot.entry.id, revisionId: snapshot.workingRevision.id, revisionHash: snapshot.workingRevision.contentHash, state: "pending", requestedBy: actor.actorId, requestedAt: now, decidedBy: null, decidedAt: null, decisionComment: "" };
+    const approval = { id: asCustomEntryApprovalId(newId("customEntryApproval")), entryId: snapshot.entry.id, revisionId: snapshot.workingRevision.id, revisionHash: snapshot.workingRevision.contentHash, state: "pending", requestedBy: actor2.actorId, requestedAt: now, decidedBy: null, decidedAt: null, decisionComment: "" };
     await this.#store.createApproval(approval);
-    await this.#audit(actor, content.workspaceId, content.siteId, "custom-entry.request-publish", "custom-entry", snapshot.entry.id, Capabilities.CustomEntryRequestPublish, { approvalId: approval.id, revisionId: approval.revisionId });
+    await this.#audit(actor2, content.workspaceId, content.siteId, "custom-entry.request-publish", "custom-entry", snapshot.entry.id, Capabilities.CustomEntryRequestPublish, { approvalId: approval.id, revisionId: approval.revisionId });
     return approval;
   }
-  async listPendingApprovals(actor, siteId) {
+  async listPendingApprovals(actor2, siteId) {
     const definitions = await this.#store.listCustomContents(siteId);
     if (!definitions.length)
       return [];
     const first = definitions[0];
-    await this.#cms.authorizeOperation(actor, Capabilities.CustomEntryApprove, { workspaceId: first.workspaceId, siteId: first.siteId, contentType: "custom-entry", risk: "medium" }, "custom-entry.approvals.list", "site", siteId);
+    await this.#cms.authorizeOperation(actor2, Capabilities.CustomEntryApprove, { workspaceId: first.workspaceId, siteId: first.siteId, contentType: "custom-entry", risk: "medium" }, "custom-entry.approvals.list", "site", siteId);
     const pending = await this.#store.listPendingApprovalsBySite(siteId);
     const items = [];
     for (const approval of pending) {
@@ -4661,37 +4686,37 @@ class CustomContentService {
     }
     return items;
   }
-  async decideApproval(actor, input) {
+  async decideApproval(actor2, input) {
     const approval = await this.#requireApproval(input.approvalId);
     const snapshot = await this.#requireEntry(approval.entryId);
     const content = await this.#requireContent(snapshot.entry.customContentId);
-    await this.#cms.authorizeOperation(actor, Capabilities.CustomEntryApprove, { workspaceId: content.workspaceId, siteId: content.siteId, contentType: "custom-entry", risk: "high" }, "custom-entry.approve", "custom-entry", snapshot.entry.id);
+    await this.#cms.authorizeOperation(actor2, Capabilities.CustomEntryApprove, { workspaceId: content.workspaceId, siteId: content.siteId, contentType: "custom-entry", risk: "high" }, "custom-entry.approve", "custom-entry", snapshot.entry.id);
     assertDomain(approval.state === "pending", "CUSTOM_ENTRY_APPROVAL_DECIDED", "Approval has already been decided", 409);
     approval.state = input.decision;
-    approval.decidedBy = actor.actorId;
+    approval.decidedBy = actor2.actorId;
     approval.decidedAt = this.#clock.now();
     approval.decisionComment = input.comment?.trim() ?? "";
     await this.#store.updateApproval(approval);
-    await this.#audit(actor, content.workspaceId, content.siteId, "custom-entry.approve", "custom-entry", snapshot.entry.id, Capabilities.CustomEntryApprove, { approvalId: approval.id, decision: approval.state });
+    await this.#audit(actor2, content.workspaceId, content.siteId, "custom-entry.approve", "custom-entry", snapshot.entry.id, Capabilities.CustomEntryApprove, { approvalId: approval.id, decision: approval.state });
     return approval;
   }
-  async publishEntry(actor, input) {
+  async publishEntry(actor2, input) {
     const snapshot = await this.#requireEntry(input.entryId);
     const content = await this.#requireContent(snapshot.entry.customContentId);
-    await this.#cms.authorizeOperation(actor, Capabilities.CustomEntryPublish, { workspaceId: content.workspaceId, siteId: content.siteId, contentType: "custom-entry", risk: "high" }, "custom-entry.publish", "custom-entry", snapshot.entry.id);
+    await this.#cms.authorizeOperation(actor2, Capabilities.CustomEntryPublish, { workspaceId: content.workspaceId, siteId: content.siteId, contentType: "custom-entry", risk: "high" }, "custom-entry.publish", "custom-entry", snapshot.entry.id);
     const published = await this.#store.publishEntry({ ...input, now: this.#clock.now() });
-    await this.#audit(actor, content.workspaceId, content.siteId, "custom-entry.publish", "custom-entry", snapshot.entry.id, Capabilities.CustomEntryPublish, { revisionId: input.revisionId, approvalId: input.approvalId });
+    await this.#audit(actor2, content.workspaceId, content.siteId, "custom-entry.publish", "custom-entry", snapshot.entry.id, Capabilities.CustomEntryPublish, { revisionId: input.revisionId, approvalId: input.approvalId });
     return published;
   }
-  async unpublishEntry(actor, input) {
+  async unpublishEntry(actor2, input) {
     const snapshot = await this.#requireEntry(input.entryId);
     const content = await this.#requireContent(snapshot.entry.customContentId);
-    await this.#cms.authorizeOperation(actor, Capabilities.CustomEntryUnpublish, { workspaceId: content.workspaceId, siteId: content.siteId, contentType: "custom-entry", risk: "high" }, "custom-entry.unpublish", "custom-entry", snapshot.entry.id);
+    await this.#cms.authorizeOperation(actor2, Capabilities.CustomEntryUnpublish, { workspaceId: content.workspaceId, siteId: content.siteId, contentType: "custom-entry", risk: "high" }, "custom-entry.unpublish", "custom-entry", snapshot.entry.id);
     const previousRevisionId = snapshot.entry.publishedRevisionId;
     if (!previousRevisionId)
       throw new DomainError("CUSTOM_ENTRY_NOT_PUBLISHED", "Custom entry is not published", 409);
     const unpublished = await this.#store.unpublishEntry({ entryId: input.entryId, now: this.#clock.now() });
-    await this.#audit(actor, content.workspaceId, content.siteId, "custom-entry.unpublish", "custom-entry", snapshot.entry.id, Capabilities.CustomEntryUnpublish, { previousRevisionId });
+    await this.#audit(actor2, content.workspaceId, content.siteId, "custom-entry.unpublish", "custom-entry", snapshot.entry.id, Capabilities.CustomEntryUnpublish, { previousRevisionId });
     return unpublished;
   }
   async listPublished(customContentId, options = {}) {
@@ -4714,15 +4739,15 @@ class CustomContentService {
   async listCustomContents(siteId) {
     return this.#store.listCustomContents(siteId);
   }
-  async getEntry(actor, entryId) {
+  async getEntry(actor2, entryId) {
     const snapshot = await this.#requireEntry(entryId);
     const content = await this.#requireContent(snapshot.entry.customContentId);
-    await this.#cms.authorizeOperation(actor, Capabilities.CustomEntryRead, { workspaceId: content.workspaceId, siteId: content.siteId, contentType: "custom-entry", risk: "low" }, "custom-entry.read", "custom-entry", entryId);
+    await this.#cms.authorizeOperation(actor2, Capabilities.CustomEntryRead, { workspaceId: content.workspaceId, siteId: content.siteId, contentType: "custom-entry", risk: "low" }, "custom-entry.read", "custom-entry", entryId);
     return snapshot;
   }
-  async listEntries(actor, customContentId) {
+  async listEntries(actor2, customContentId) {
     const content = await this.#requireContent(customContentId);
-    await this.#cms.authorizeOperation(actor, Capabilities.CustomEntryRead, { workspaceId: content.workspaceId, siteId: content.siteId, contentType: "custom-entry", risk: "low" }, "custom-entry.list", "custom-content", customContentId);
+    await this.#cms.authorizeOperation(actor2, Capabilities.CustomEntryRead, { workspaceId: content.workspaceId, siteId: content.siteId, contentType: "custom-entry", risk: "low" }, "custom-entry.list", "custom-content", customContentId);
     return this.#store.listEntries(customContentId);
   }
   async listFields(workspaceId) {
@@ -4795,8 +4820,8 @@ class CustomContentService {
     assertDomain(value, "CUSTOM_ENTRY_APPROVAL_NOT_FOUND", "Custom entry approval not found", 404);
     return value;
   }
-  async #audit(actor, workspaceId, siteId, action, resourceType, resourceId, capability, details) {
-    await this.#cms.recordSuccessfulOperation(actor, { workspaceId, siteId, action, resourceType, resourceId, revisionId: null, capability, details });
+  async #audit(actor2, workspaceId, siteId, action, resourceType, resourceId, capability, details) {
+    await this.#cms.recordSuccessfulOperation(actor2, { workspaceId, siteId, action, resourceType, resourceId, revisionId: null, capability, details });
   }
 }
 function validateCustomFieldValue(field, value) {
@@ -5050,7 +5075,7 @@ class MailFormService {
   get store() {
     return this.#store;
   }
-  async createMailForm(actor, input) {
+  async createMailForm(actor2, input) {
     const schema = await this.#custom.getTableSchema(input.tableId);
     const site = await this.#cms.store.getSite(input.siteId);
     assertDomain(site, "SITE_NOT_FOUND", "Site not found", 404);
@@ -5075,7 +5100,7 @@ class MailFormService {
       assertDomain(fieldIds.has(String(policy.fieldId)), "MAIL_FORM_FIELD_POLICY_INVALID", "Field policy refers to a field outside the form table", 422);
     const confirmationTtlSeconds = clamp(input.confirmationTtlSeconds ?? 900, 60, 3600);
     const retentionDays = clamp(input.retentionDays ?? 90, 1, 3650);
-    const snapshot = await this.#cms.createMailForm(actor, { siteId: input.siteId, parentId: input.parentId, slug: input.slug, title: input.title, document: input.document ?? createEmptyDocument() });
+    const snapshot = await this.#cms.createMailForm(actor2, { siteId: input.siteId, parentId: input.parentId, slug: input.slug, title: input.title, document: input.document ?? createEmptyDocument() });
     const now = this.#clock.now();
     const definition2 = { id: asMailFormId(newId("mailForm")), workspaceId: site.workspaceId, siteId: site.id, contentItemId: snapshot.item.id, tableId: schema.table.id, recipientEmails: recipients, senderAddress: sender, subjectTemplate, autoReplyEnabled: Boolean(input.autoReplyEnabled), autoReplyEmailFieldKey: autoReplyKey, autoReplySubject, confirmationTtlSeconds, retentionDays, turnstileRequired: input.turnstileRequired ?? true, state: "active", createdAt: now, updatedAt: now };
     const requested = new Map((input.fieldPolicies ?? []).map((p) => [String(p.fieldId), p]));
@@ -5085,7 +5110,7 @@ class MailFormService {
       return { mailFormId: definition2.id, fieldId: field.id, privacyClass: privacyClass2, includeInOwnerNotification: policy?.includeInOwnerNotification ?? true, includeInAutoReply: policy?.includeInAutoReply ?? privacyClass2 !== "sensitive", createdAt: now };
     });
     await this.#store.createForm(definition2, policies);
-    await this.#audit(actor, definition2, "mail-form.configure", Capabilities.MailFormManage, { tableId: definition2.tableId, recipientCount: recipients.length, turnstileRequired: definition2.turnstileRequired });
+    await this.#audit(actor2, definition2, "mail-form.configure", Capabilities.MailFormManage, { tableId: definition2.tableId, recipientCount: recipients.length, turnstileRequired: definition2.turnstileRequired });
     return { definition: definition2, snapshot };
   }
   async prepareConfirmation(input) {
@@ -5124,39 +5149,39 @@ class MailFormService {
     const notifications = this.#buildNotifications(form, schema, submission, session.values, now);
     return this.#store.acceptSubmission({ confirmationId: session.id, submission, payload: storedPayload, notifications, now });
   }
-  async listSubmissions(actor, mailFormId) {
+  async listSubmissions(actor2, mailFormId) {
     const form = await this.#requireForm(mailFormId);
-    await this.#authorize(actor, form, Capabilities.MailSubmissionRead, "mail-submission.list", "low");
+    await this.#authorize(actor2, form, Capabilities.MailSubmissionRead, "mail-submission.list", "low");
     const policies = await this.#store.listFieldPolicies(form.id);
     const schema = await this.#custom.getTableSchema(form.tableId);
     return (await this.#store.listSubmissions(form.id)).map((v) => this.#redact(v, schema, policies, false));
   }
-  async getSubmission(actor, id, input = {}) {
+  async getSubmission(actor2, id, input = {}) {
     const raw = await this.#store.getSubmission(id);
     assertDomain(raw, "MAIL_SUBMISSION_NOT_FOUND", "Submission not found", 404);
     const form = await this.#requireForm(raw.submission.mailFormId);
-    await this.#authorize(actor, form, Capabilities.MailSubmissionRead, "mail-submission.read", "low");
+    await this.#authorize(actor2, form, Capabilities.MailSubmissionRead, "mail-submission.read", "low");
     let allowSensitive = false;
-    if (input.includeSensitive && actor.actorType === "human") {
-      await this.#authorize(actor, form, Capabilities.MailSubmissionReadSensitive, "mail-submission.read-sensitive", "high");
+    if (input.includeSensitive && actor2.actorType === "human") {
+      await this.#authorize(actor2, form, Capabilities.MailSubmissionReadSensitive, "mail-submission.read-sensitive", "high");
       allowSensitive = true;
     }
     const policies = await this.#store.listFieldPolicies(form.id);
     const schema = await this.#custom.getTableSchema(form.tableId);
     return this.#redact(raw, schema, policies, allowSensitive);
   }
-  async purgeSubmission(actor, id) {
+  async purgeSubmission(actor2, id) {
     const raw = await this.#store.getSubmission(id);
     assertDomain(raw, "MAIL_SUBMISSION_NOT_FOUND", "Submission not found", 404);
     const form = await this.#requireForm(raw.submission.mailFormId);
-    await this.#authorize(actor, form, Capabilities.MailSubmissionPurge, "mail-submission.purge", "high");
+    await this.#authorize(actor2, form, Capabilities.MailSubmissionPurge, "mail-submission.purge", "high");
     const result = await this.#store.purgeSubmission(id, this.#clock.now());
-    await this.#audit(actor, form, "mail-submission.purge", Capabilities.MailSubmissionPurge, { submissionId: id });
+    await this.#audit(actor2, form, "mail-submission.purge", Capabilities.MailSubmissionPurge, { submissionId: id });
     return result;
   }
-  async purgeExpired(actor, mailFormId) {
+  async purgeExpired(actor2, mailFormId) {
     const form = await this.#requireForm(mailFormId);
-    await this.#authorize(actor, form, Capabilities.MailSubmissionPurge, "mail-submission.purge-expired", "high");
+    await this.#authorize(actor2, form, Capabilities.MailSubmissionPurge, "mail-submission.purge-expired", "high");
     let count = 0;
     for (const view of await this.#store.listSubmissions(form.id))
       if (view.submission.payloadState === "available" && view.submission.purgeAt <= this.#clock.now()) {
@@ -5165,7 +5190,7 @@ class MailFormService {
       }
     return count;
   }
-  async deliverPending(actor, limit = 20) {
+  async deliverPending(actor2, limit = 20) {
     assertDomain(this.#sender, "MAIL_SENDER_NOT_CONFIGURED", "Mail sender is not configured", 503);
     const pending = await this.#store.listPendingNotifications(clamp(limit, 1, 100), this.#clock.now());
     let sent = 0, failed = 0;
@@ -5180,7 +5205,7 @@ class MailFormService {
         continue;
       }
       const form = await this.#requireForm(view.submission.mailFormId);
-      await this.#authorize(actor, form, Capabilities.MailNotificationDeliver, "mail-notification.deliver", "high");
+      await this.#authorize(actor2, form, Capabilities.MailNotificationDeliver, "mail-notification.deliver", "high");
       const schema = await this.#custom.getTableSchema(form.tableId);
       const policies = await this.#store.listFieldPolicies(form.id);
       try {
@@ -5233,11 +5258,11 @@ class MailFormService {
     assertDomain(form && form.state === "active", "MAIL_FORM_NOT_FOUND", "Mail form not found", 404);
     return form;
   }
-  async #authorize(actor, form, capability, action, risk) {
-    await this.#cms.authorizeOperation(actor, capability, { workspaceId: form.workspaceId, siteId: form.siteId, contentType: "mail-form", risk }, action, "mail-form", form.id);
+  async #authorize(actor2, form, capability, action, risk) {
+    await this.#cms.authorizeOperation(actor2, capability, { workspaceId: form.workspaceId, siteId: form.siteId, contentType: "mail-form", risk }, action, "mail-form", form.id);
   }
-  async #audit(actor, form, action, capability, details) {
-    await this.#cms.recordSuccessfulOperation(actor, { workspaceId: form.workspaceId, siteId: form.siteId, action, resourceType: "mail-form", resourceId: form.id, revisionId: null, capability, details });
+  async #audit(actor2, form, action, capability, details) {
+    await this.#cms.recordSuccessfulOperation(actor2, { workspaceId: form.workspaceId, siteId: form.siteId, action, resourceType: "mail-form", resourceId: form.id, revisionId: null, capability, details });
   }
   async #fingerprint(ip, ua) {
     return sha256(`${this.#privacySalt}|${ip ?? ""}|${ua ?? ""}`);
@@ -5347,9 +5372,9 @@ class ThemeService {
     this.#security = input.security;
     this.#clock = input.clock ?? systemClock;
   }
-  async createTheme(actor, input) {
+  async createTheme(actor2, input) {
     const key2 = normalizeKey$1(input.key);
-    await this.#authorize(actor, Capabilities.ThemeManage, { workspaceId: input.workspaceId, risk: "medium" }, "theme.create", "theme", key2);
+    await this.#authorize(actor2, Capabilities.ThemeManage, { workspaceId: input.workspaceId, risk: "medium" }, "theme.create", "theme", key2);
     const theme = {
       id: asThemeId(newId("theme")),
       workspaceId: input.workspaceId,
@@ -5357,20 +5382,20 @@ class ThemeService {
       name: requiredText$1(input.name, 120),
       description: optionalText$1(input.description ?? "", 1e3),
       state: "active",
-      createdBy: actor.actorId,
+      createdBy: actor2.actorId,
       createdAt: this.#clock.now()
     };
     await this.store.createTheme(theme);
-    await this.#success(actor, theme.workspaceId, null, "theme.create", "theme", theme.id, Capabilities.ThemeManage, { key: theme.key });
+    await this.#success(actor2, theme.workspaceId, null, "theme.create", "theme", theme.id, Capabilities.ThemeManage, { key: theme.key });
     return theme;
   }
-  async listThemes(actor, workspaceId) {
-    await this.#authorize(actor, Capabilities.ThemeRead, { workspaceId, risk: "low" }, "theme.list", "workspace", workspaceId);
+  async listThemes(actor2, workspaceId) {
+    await this.#authorize(actor2, Capabilities.ThemeRead, { workspaceId, risk: "low" }, "theme.list", "workspace", workspaceId);
     return this.store.listThemes(workspaceId);
   }
-  async createTokenRevision(actor, input) {
+  async createTokenRevision(actor2, input) {
     const theme = await this.#requireTheme(input.themeId);
-    await this.#authorize(actor, Capabilities.ThemeManage, { workspaceId: theme.workspaceId, risk: "medium" }, "theme.tokens.create", "theme", theme.id);
+    await this.#authorize(actor2, Capabilities.ThemeManage, { workspaceId: theme.workspaceId, risk: "medium" }, "theme.tokens.create", "theme", theme.id);
     const tokens = validateTokens(input.tokens);
     const revision = {
       id: asDesignTokenRevisionId(newId("designTokenRevision")),
@@ -5379,16 +5404,16 @@ class ThemeService {
       name: requiredText$1(input.name, 120),
       tokens,
       contentHash: await sha256(stableStringify(tokens)),
-      createdBy: actor.actorId,
+      createdBy: actor2.actorId,
       createdAt: this.#clock.now()
     };
     await this.store.createTokenRevision(revision);
-    await this.#success(actor, theme.workspaceId, null, "theme.tokens.create", "design-token-revision", revision.id, Capabilities.ThemeManage, { revisionNumber: revision.revisionNumber });
+    await this.#success(actor2, theme.workspaceId, null, "theme.tokens.create", "design-token-revision", revision.id, Capabilities.ThemeManage, { revisionNumber: revision.revisionNumber });
     return revision;
   }
-  async createLayoutRevision(actor, input) {
+  async createLayoutRevision(actor2, input) {
     const theme = await this.#requireTheme(input.themeId);
-    await this.#authorize(actor, Capabilities.ThemeManage, { workspaceId: theme.workspaceId, risk: "medium" }, "theme.layout.create", "theme", theme.id);
+    await this.#authorize(actor2, Capabilities.ThemeManage, { workspaceId: theme.workspaceId, risk: "medium" }, "theme.layout.create", "theme", theme.id);
     const layout = validateLayout(input.layout);
     const revision = {
       id: asLayoutRevisionId(newId("layoutRevision")),
@@ -5397,16 +5422,16 @@ class ThemeService {
       name: requiredText$1(input.name, 120),
       layout,
       contentHash: await sha256(stableStringify(layout)),
-      createdBy: actor.actorId,
+      createdBy: actor2.actorId,
       createdAt: this.#clock.now()
     };
     await this.store.createLayoutRevision(revision);
-    await this.#success(actor, theme.workspaceId, null, "theme.layout.create", "layout-revision", revision.id, Capabilities.ThemeManage, { revisionNumber: revision.revisionNumber });
+    await this.#success(actor2, theme.workspaceId, null, "theme.layout.create", "layout-revision", revision.id, Capabilities.ThemeManage, { revisionNumber: revision.revisionNumber });
     return revision;
   }
-  async createRelease(actor, input) {
+  async createRelease(actor2, input) {
     const theme = await this.#requireTheme(input.themeId);
-    await this.#authorize(actor, Capabilities.ThemeManage, { workspaceId: theme.workspaceId, risk: "high" }, "theme.release.create", "theme", theme.id);
+    await this.#authorize(actor2, Capabilities.ThemeManage, { workspaceId: theme.workspaceId, risk: "high" }, "theme.release.create", "theme", theme.id);
     const tokens = await this.store.getTokenRevision(input.designTokenRevisionId);
     const layout = await this.store.getLayoutRevision(input.layoutRevisionId);
     assertDomain(tokens?.themeId === theme.id, "THEME_TOKEN_MISMATCH", "Design token revision belongs to another theme", 422);
@@ -5423,43 +5448,43 @@ class ThemeService {
       manifest,
       releaseHash: await sha256(stableStringify(releaseMaterial)),
       state: "ready",
-      createdBy: actor.actorId,
+      createdBy: actor2.actorId,
       createdAt: this.#clock.now()
     };
     await this.store.createRelease(release);
-    await this.#success(actor, theme.workspaceId, null, "theme.release.create", "theme-release", release.id, Capabilities.ThemeManage, { version, releaseHash: release.releaseHash });
+    await this.#success(actor2, theme.workspaceId, null, "theme.release.create", "theme-release", release.id, Capabilities.ThemeManage, { version, releaseHash: release.releaseHash });
     return release;
   }
-  async listReleases(actor, themeId) {
+  async listReleases(actor2, themeId) {
     const theme = await this.#requireTheme(themeId);
-    await this.#authorize(actor, Capabilities.ThemeRead, { workspaceId: theme.workspaceId, risk: "low" }, "theme.release.list", "theme", theme.id);
+    await this.#authorize(actor2, Capabilities.ThemeRead, { workspaceId: theme.workspaceId, risk: "low" }, "theme.release.list", "theme", theme.id);
     return this.store.listReleases(theme.id);
   }
-  async activate(actor, input) {
-    assertDomain(actor.actorType === "human", "HUMAN_THEME_ACTIVATION_REQUIRED", "Theme activation requires a human principal", 403);
+  async activate(actor2, input) {
+    assertDomain(actor2.actorType === "human", "HUMAN_THEME_ACTIVATION_REQUIRED", "Theme activation requires a human principal", 403);
     const site = await this.#cms.store.getSite(input.siteId);
     assertDomain(site, "SITE_NOT_FOUND", "Site not found", 404);
     const release = await this.#requireRelease(input.themeReleaseId);
     const theme = await this.#requireTheme(release.themeId);
     assertDomain(theme.workspaceId === site.workspaceId, "CROSS_WORKSPACE_THEME", "Theme belongs to another workspace", 422);
     assertDomain(release.state === "ready", "THEME_RELEASE_NOT_READY", "Theme release is not ready", 409);
-    await this.#authorize(actor, Capabilities.ThemeActivate, { workspaceId: site.workspaceId, siteId: site.id, risk: "high" }, "theme.activate", "site", site.id);
+    await this.#authorize(actor2, Capabilities.ThemeActivate, { workspaceId: site.workspaceId, siteId: site.id, risk: "high" }, "theme.activate", "site", site.id);
     const activation = {
       id: asThemeActivationId(newId("themeActivation")),
       siteId: site.id,
       themeReleaseId: release.id,
-      activatedBy: actor.actorId,
+      activatedBy: actor2.actorId,
       activatedAt: this.#clock.now(),
       deactivatedAt: null
     };
     await this.store.activate(activation);
-    await this.#success(actor, site.workspaceId, site.id, "theme.activate", "theme-release", release.id, Capabilities.ThemeActivate, { releaseHash: release.releaseHash });
+    await this.#success(actor2, site.workspaceId, site.id, "theme.activate", "theme-release", release.id, Capabilities.ThemeActivate, { releaseHash: release.releaseHash });
     return this.resolveRelease(release.id, site.id, activation);
   }
-  async getActive(actor, siteId) {
+  async getActive(actor2, siteId) {
     const site = await this.#cms.store.getSite(siteId);
     assertDomain(site, "SITE_NOT_FOUND", "Site not found", 404);
-    await this.#authorize(actor, Capabilities.ThemeRead, { workspaceId: site.workspaceId, siteId, risk: "low" }, "theme.active.read", "site", site.id);
+    await this.#authorize(actor2, Capabilities.ThemeRead, { workspaceId: site.workspaceId, siteId, risk: "low" }, "theme.active.read", "site", site.id);
     return this.resolveActive(siteId);
   }
   async resolveActive(siteId) {
@@ -5489,11 +5514,11 @@ class ThemeService {
     assertDomain(value, "THEME_RELEASE_NOT_FOUND", "Theme release not found", 404);
     return value;
   }
-  #authorize(actor, capability, resource, action, resourceType, resourceId) {
-    return this.#security.authorize(actor, capability, resource, action, resourceType, resourceId);
+  #authorize(actor2, capability, resource, action, resourceType, resourceId) {
+    return this.#security.authorize(actor2, capability, resource, action, resourceType, resourceId);
   }
-  #success(actor, workspaceId, siteId, action, resourceType, resourceId, capability, details) {
-    return this.#security.success(actor, { workspaceId, siteId, action, resourceType, resourceId, capability, details });
+  #success(actor2, workspaceId, siteId, action, resourceType, resourceId, capability, details) {
+    return this.#security.success(actor2, { workspaceId, siteId, action, resourceType, resourceId, capability, details });
   }
 }
 class MemoryThemeStore {
@@ -5686,10 +5711,10 @@ class PluginService {
     this.#sandboxRuntime = input.sandboxRuntime;
     this.#clock = input.clock ?? systemClock;
   }
-  async createPlugin(actor, input) {
+  async createPlugin(actor2, input) {
     const key2 = normalizeKey(input.key);
-    await this.#authorize(actor, Capabilities.PluginManage, { workspaceId: input.workspaceId, risk: "high" }, "plugin.create", "workspace", input.workspaceId);
-    assertDomain(actor.actorType === "human", "HUMAN_PLUGIN_CREATION_REQUIRED", "Only a human can register a plugin identity", 403);
+    await this.#authorize(actor2, Capabilities.PluginManage, { workspaceId: input.workspaceId, risk: "high" }, "plugin.create", "workspace", input.workspaceId);
+    assertDomain(actor2.actorType === "human", "HUMAN_PLUGIN_CREATION_REQUIRED", "Only a human can register a plugin identity", 403);
     const plugin = {
       id: asPluginId(newId("plugin")),
       workspaceId: input.workspaceId,
@@ -5698,21 +5723,21 @@ class PluginService {
       description: optionalText(input.description ?? "", 1e3),
       trust: input.trust,
       state: "active",
-      createdBy: actor.actorId,
+      createdBy: actor2.actorId,
       createdAt: this.#clock.now()
     };
     await this.store.createPlugin(plugin);
-    await this.#success(actor, plugin.workspaceId, null, "plugin.create", "plugin", plugin.id, Capabilities.PluginManage, { key: key2, trust: plugin.trust });
+    await this.#success(actor2, plugin.workspaceId, null, "plugin.create", "plugin", plugin.id, Capabilities.PluginManage, { key: key2, trust: plugin.trust });
     return plugin;
   }
-  async listPlugins(actor, workspaceId) {
-    await this.#authorize(actor, Capabilities.PluginRead, { workspaceId, risk: "low" }, "plugin.list", "workspace", workspaceId);
+  async listPlugins(actor2, workspaceId) {
+    await this.#authorize(actor2, Capabilities.PluginRead, { workspaceId, risk: "low" }, "plugin.list", "workspace", workspaceId);
     return this.store.listPlugins(workspaceId);
   }
-  async createRelease(actor, input) {
+  async createRelease(actor2, input) {
     const plugin = await this.#requirePlugin(input.pluginId);
-    await this.#authorize(actor, Capabilities.PluginManage, { workspaceId: plugin.workspaceId, risk: "high" }, "plugin.release.create", "plugin", plugin.id);
-    assertDomain(actor.actorType === "human", "HUMAN_PLUGIN_RELEASE_REQUIRED", "Only a human can register a plugin release", 403);
+    await this.#authorize(actor2, Capabilities.PluginManage, { workspaceId: plugin.workspaceId, risk: "high" }, "plugin.release.create", "plugin", plugin.id);
+    assertDomain(actor2.actorType === "human", "HUMAN_PLUGIN_RELEASE_REQUIRED", "Only a human can register a plugin release", 403);
     const manifest = validateManifest(input.manifest);
     assertDomain(manifest.key === plugin.key, "PLUGIN_MANIFEST_KEY_MISMATCH", "Manifest key does not match plugin key", 422);
     const bundle = validateBundle(input.bundle, plugin.trust);
@@ -5726,31 +5751,31 @@ class PluginService {
       bundle,
       releaseHash: await sha256(stableStringify(material)),
       state: "ready",
-      createdBy: actor.actorId,
+      createdBy: actor2.actorId,
       createdAt: this.#clock.now()
     };
     await this.store.createRelease(release);
-    await this.#success(actor, plugin.workspaceId, null, "plugin.release.create", "plugin-release", release.id, Capabilities.PluginManage, {
+    await this.#success(actor2, plugin.workspaceId, null, "plugin.release.create", "plugin-release", release.id, Capabilities.PluginManage, {
       version,
       releaseHash: release.releaseHash,
       requestedCapabilities: manifest.capabilities
     });
     return release;
   }
-  async listReleases(actor, pluginId) {
+  async listReleases(actor2, pluginId) {
     const plugin = await this.#requirePlugin(pluginId);
-    await this.#authorize(actor, Capabilities.PluginRead, { workspaceId: plugin.workspaceId, risk: "low" }, "plugin.release.list", "plugin", plugin.id);
+    await this.#authorize(actor2, Capabilities.PluginRead, { workspaceId: plugin.workspaceId, risk: "low" }, "plugin.release.list", "plugin", plugin.id);
     return this.store.listReleases(plugin.id);
   }
-  async listInvocations(actor, pluginReleaseId) {
+  async listInvocations(actor2, pluginReleaseId) {
     const release = await this.#requireRelease(pluginReleaseId);
     const plugin = await this.#requirePlugin(release.pluginId);
-    await this.#authorize(actor, Capabilities.PluginRead, { workspaceId: plugin.workspaceId, risk: "low" }, "plugin.invocation.list", "plugin-release", release.id);
+    await this.#authorize(actor2, Capabilities.PluginRead, { workspaceId: plugin.workspaceId, risk: "low" }, "plugin.invocation.list", "plugin-release", release.id);
     return this.store.listInvocations(release.id);
   }
-  async activate(actor, input) {
-    await this.#authorize(actor, Capabilities.PluginActivate, { workspaceId: input.workspaceId, ...input.siteId ? { siteId: input.siteId } : {}, risk: "critical" }, "plugin.activate", "plugin-release", input.pluginReleaseId);
-    assertDomain(actor.actorType === "human", "HUMAN_PLUGIN_ACTIVATION_REQUIRED", "Only a human can activate a plugin release", 403);
+  async activate(actor2, input) {
+    await this.#authorize(actor2, Capabilities.PluginActivate, { workspaceId: input.workspaceId, ...input.siteId ? { siteId: input.siteId } : {}, risk: "critical" }, "plugin.activate", "plugin-release", input.pluginReleaseId);
+    assertDomain(actor2.actorType === "human", "HUMAN_PLUGIN_ACTIVATION_REQUIRED", "Only a human can activate a plugin release", 403);
     const release = await this.#requireRelease(input.pluginReleaseId);
     const plugin = await this.#requirePlugin(release.pluginId);
     assertDomain(plugin.workspaceId === input.workspaceId, "PLUGIN_WORKSPACE_MISMATCH", "Plugin belongs to another workspace", 422);
@@ -5772,12 +5797,12 @@ class PluginService {
       grantedCapabilities,
       allowedHosts,
       state: "active",
-      activatedBy: actor.actorId,
+      activatedBy: actor2.actorId,
       activatedAt: this.#clock.now(),
       deactivatedAt: null
     };
     await this.store.activate(activation);
-    await this.#success(actor, input.workspaceId, input.siteId ?? null, "plugin.activate", "plugin-release", release.id, Capabilities.PluginActivate, {
+    await this.#success(actor2, input.workspaceId, input.siteId ?? null, "plugin.activate", "plugin-release", release.id, Capabilities.PluginActivate, {
       activationId: activation.id,
       grantedCapabilities,
       allowedHosts,
@@ -5785,15 +5810,15 @@ class PluginService {
     });
     return activation;
   }
-  async deactivate(actor, activationId) {
+  async deactivate(actor2, activationId) {
     const activation = await this.#requireActivation(activationId);
-    await this.#authorize(actor, Capabilities.PluginActivate, { workspaceId: activation.workspaceId, ...activation.siteId ? { siteId: activation.siteId } : {}, risk: "high" }, "plugin.deactivate", "plugin-activation", activation.id);
-    assertDomain(actor.actorType === "human", "HUMAN_PLUGIN_ACTIVATION_REQUIRED", "Only a human can deactivate a plugin", 403);
+    await this.#authorize(actor2, Capabilities.PluginActivate, { workspaceId: activation.workspaceId, ...activation.siteId ? { siteId: activation.siteId } : {}, risk: "high" }, "plugin.deactivate", "plugin-activation", activation.id);
+    assertDomain(actor2.actorType === "human", "HUMAN_PLUGIN_ACTIVATION_REQUIRED", "Only a human can deactivate a plugin", 403);
     await this.store.deactivate(activation.id, this.#clock.now());
-    await this.#success(actor, activation.workspaceId, activation.siteId, "plugin.deactivate", "plugin-activation", activation.id, Capabilities.PluginActivate, {});
+    await this.#success(actor2, activation.workspaceId, activation.siteId, "plugin.deactivate", "plugin-activation", activation.id, Capabilities.PluginActivate, {});
   }
-  async listActivations(actor, workspaceId, siteId) {
-    await this.#authorize(actor, Capabilities.PluginRead, { workspaceId, ...siteId ? { siteId } : {}, risk: "low" }, "plugin.activation.list", "workspace", workspaceId);
+  async listActivations(actor2, workspaceId, siteId) {
+    await this.#authorize(actor2, Capabilities.PluginRead, { workspaceId, ...siteId ? { siteId } : {}, risk: "low" }, "plugin.activation.list", "workspace", workspaceId);
     const result = [];
     const activations = siteId === void 0 ? await this.store.listActiveActivations(workspaceId) : await this.#effectiveActivations(workspaceId, siteId);
     for (const activation of activations) {
@@ -5803,8 +5828,8 @@ class PluginService {
     }
     return result;
   }
-  async listAdminExtensions(actor, workspaceId, siteId) {
-    const active = await this.listActivations(actor, workspaceId, siteId);
+  async listAdminExtensions(actor2, workspaceId, siteId) {
+    const active = await this.listActivations(actor2, workspaceId, siteId);
     return active.map(({ plugin, release, activation }) => ({
       pluginKey: plugin.key,
       releaseId: release.id,
@@ -5812,8 +5837,8 @@ class PluginService {
       widgets: activation.grantedCapabilities.includes(PluginCapabilities.AdminWidget) ? structuredClone(release.manifest.admin.widgets) : []
     })).filter((value) => value.pages.length > 0 || value.widgets.length > 0);
   }
-  async invokeRoute(actor, input) {
-    await this.#authorize(actor, Capabilities.PluginInvoke, { workspaceId: input.workspaceId, ...input.siteId ? { siteId: input.siteId } : {}, risk: input.method === "GET" ? "low" : "medium" }, "plugin.route.invoke", "plugin", input.pluginKey);
+  async invokeRoute(actor2, input) {
+    await this.#authorize(actor2, Capabilities.PluginInvoke, { workspaceId: input.workspaceId, ...input.siteId ? { siteId: input.siteId } : {}, risk: input.method === "GET" ? "low" : "medium" }, "plugin.route.invoke", "plugin", input.pluginKey);
     const plugin = await this.store.getPluginByKey(input.workspaceId, normalizeKey(input.pluginKey));
     assertDomain(plugin, "PLUGIN_NOT_FOUND", "Plugin not found", 404);
     const activation = await this.#findActivationForPlugin(input.workspaceId, input.siteId ?? null, plugin.id);
@@ -5826,7 +5851,7 @@ class PluginService {
       kind: "route",
       handler: route.handler,
       route: { method: input.method, path: routePath, query: input.query ?? {}, headers: safeHeaders(input.headers ?? {}), body: input.body ?? null },
-      context: this.#runtimeContext(actor.requestId, activation)
+      context: this.#runtimeContext(actor2.requestId, activation)
     }, { routeId: route.id });
     assertDomain(result.response, "PLUGIN_ROUTE_RESPONSE_REQUIRED", "Plugin route did not return a response", 502);
     return { status: validStatus(result.response.status), headers: safeResponseHeaders(result.response.headers ?? {}), body: String(result.response.body ?? "") };
@@ -5936,11 +5961,11 @@ class PluginService {
     assertDomain(value, "PLUGIN_ACTIVATION_NOT_FOUND", "Plugin activation not found", 404);
     return value;
   }
-  #authorize(actor, capability, resource, action, resourceType, resourceId) {
-    return this.#security.authorize(actor, capability, resource, action, resourceType, resourceId);
+  #authorize(actor2, capability, resource, action, resourceType, resourceId) {
+    return this.#security.authorize(actor2, capability, resource, action, resourceType, resourceId);
   }
-  #success(actor, workspaceId, siteId, action, resourceType, resourceId, capability, details) {
-    return this.#security.success(actor, { workspaceId, siteId, action, resourceType, resourceId, capability, details });
+  #success(actor2, workspaceId, siteId, action, resourceType, resourceId, capability, details) {
+    return this.#security.success(actor2, { workspaceId, siteId, action, resourceType, resourceId, capability, details });
   }
 }
 class MemoryPluginStore {
@@ -23661,8 +23686,8 @@ class AuthService {
     this.#secureCookies = options.secureCookies ?? false;
     this.#bootstrapSecret = options.bootstrapSecret ?? null;
   }
-  async beginPasskeyRegistration(actor, input) {
-    await this.#assertRegistrationAuthority(actor, input);
+  async beginPasskeyRegistration(actor2, input) {
+    await this.#assertRegistrationAuthority(actor2, input);
     const principal = await this.#requireHumanPrincipal(input.principalId, input.workspaceId);
     let identity = await this.#store.getIdentityByLabel(input.workspaceId, principal.id, input.label);
     if (!identity) {
@@ -23697,9 +23722,9 @@ class AuthService {
     });
     return { challengeId, options };
   }
-  async finishPasskeyRegistration(actor, input) {
+  async finishPasskeyRegistration(actor2, input) {
     const record = await this.#requireChallenge(input.challengeId, "registration");
-    await this.#assertActorOwnsPrincipal(actor, record.principalId);
+    await this.#assertActorOwnsPrincipal(actor2, record.principalId);
     assertDomain(record.identityId, "IDENTITY_REQUIRED", "Registration identity is missing", 422);
     const verified = await this.#webauthn.verifyRegistration({
       response: input.response,
@@ -23782,12 +23807,12 @@ class AuthService {
       ipHint: input.ipHint ?? null
     });
   }
-  async beginStepUp(actor, operation) {
-    assertDomain(actor.authSessionId, "SESSION_REQUIRED", "An authenticated session is required for step-up", 401);
-    assertDomain(actor.actorType === "human", "STEP_UP_HUMAN_ONLY", "Only human principals can perform step-up authentication", 403);
-    const session = await this.#requireActiveSession(actor.authSessionId);
-    assertDomain(session.principalId === actor.actorId, "SESSION_PRINCIPAL_MISMATCH", "Session does not belong to the actor", 403);
-    const identities = await this.#store.listIdentitiesForPrincipal(actor.actorId);
+  async beginStepUp(actor2, operation) {
+    assertDomain(actor2.authSessionId, "SESSION_REQUIRED", "An authenticated session is required for step-up", 401);
+    assertDomain(actor2.actorType === "human", "STEP_UP_HUMAN_ONLY", "Only human principals can perform step-up authentication", 403);
+    const session = await this.#requireActiveSession(actor2.authSessionId);
+    assertDomain(session.principalId === actor2.actorId, "SESSION_PRINCIPAL_MISMATCH", "Session does not belong to the actor", 403);
+    const identities = await this.#store.listIdentitiesForPrincipal(actor2.actorId);
     const credentials = [];
     for (const identity of identities) {
       credentials.push(...await this.#store.listPasskeysForIdentity(identity.id));
@@ -23798,7 +23823,7 @@ class AuthService {
     await this.#store.createChallenge({
       id: challengeId,
       workspaceId: session.workspaceId,
-      principalId: actor.actorId,
+      principalId: actor2.actorId,
       identityId: null,
       purpose: "step-up",
       challenge,
@@ -23808,8 +23833,8 @@ class AuthService {
     });
     return { challengeId, options, operation };
   }
-  async finishStepUp(actor, input) {
-    assertDomain(actor.authSessionId, "SESSION_REQUIRED", "An authenticated session is required for step-up", 401);
+  async finishStepUp(actor2, input) {
+    assertDomain(actor2.authSessionId, "SESSION_REQUIRED", "An authenticated session is required for step-up", 401);
     const record = await this.#requireChallenge(input.challengeId, "step-up");
     assertDomain(record.operation, "STEP_UP_OPERATION_REQUIRED", "Step-up operation is missing", 422);
     const passkey = await this.#store.getPasskeyByCredentialId(input.response.id);
@@ -23823,26 +23848,26 @@ class AuthService {
     const expiresAt = this.#clock.now() + this.#stepUpTtlMs;
     await this.#store.upsertStepUp({
       id: asSessionStepUpId(newId("sessionStepUp")),
-      sessionId: actor.authSessionId,
+      sessionId: actor2.authSessionId,
       operation: record.operation,
       expiresAt,
       createdAt: this.#clock.now()
     });
     return { operation: record.operation, expiresAt };
   }
-  async assertStepUp(actor, input) {
-    if (actor.authenticationMethod !== "session" || !actor.authSessionId)
+  async assertStepUp(actor2, input) {
+    if (actor2.authenticationMethod !== "session" || !actor2.authSessionId)
       return;
     const operation = requiredStepUpOperation(input);
     if (!operation)
       return;
-    if (actor.actorType !== "human") {
+    if (actor2.actorType !== "human") {
       throw new DomainError("STEP_UP_REQUIRED", "Step-up authentication is required for this operation", 403, { operation });
     }
-    if (!actor.authSessionId) {
+    if (!actor2.authSessionId) {
       throw new DomainError("SESSION_REQUIRED", "A server-side session is required for this operation", 401, { operation });
     }
-    const stepUp = await this.#store.getStepUp(actor.authSessionId, operation, this.#clock.now());
+    const stepUp = await this.#store.getStepUp(actor2.authSessionId, operation, this.#clock.now());
     if (!stepUp) {
       throw new DomainError("STEP_UP_REQUIRED", "Recent step-up authentication is required for this operation", 403, { operation });
     }
@@ -23872,45 +23897,45 @@ class AuthService {
   async assertCsrf(request, session) {
     await assertCsrfForMutation(request, session.csrfTokenHash);
   }
-  async logout(actor) {
-    if (!actor.authSessionId)
+  async logout(actor2) {
+    if (!actor2.authSessionId)
       return;
-    const session = await this.#store.getSession(actor.authSessionId);
+    const session = await this.#store.getSession(actor2.authSessionId);
     if (!session)
       return;
     session.revokedAt = this.#clock.now();
     await this.#store.updateSession(session);
     await this.#store.deleteStepUpsForSession(session.id);
   }
-  async getSessionView(actor) {
-    assertDomain(actor.authSessionId, "SESSION_REQUIRED", "No active session", 401);
-    const session = await this.#requireActiveSession(actor.authSessionId);
+  async getSessionView(actor2) {
+    assertDomain(actor2.authSessionId, "SESSION_REQUIRED", "No active session", 401);
+    const session = await this.#requireActiveSession(actor2.authSessionId);
     return { sessionId: session.id, principalId: session.principalId, expiresAt: session.expiresAt };
   }
-  async listSessions(actor) {
-    const sessions = await this.#store.listSessionsForPrincipal(actor.actorId);
+  async listSessions(actor2) {
+    const sessions = await this.#store.listSessionsForPrincipal(actor2.actorId);
     const now = this.#clock.now();
     return sessions.filter((session) => session.revokedAt === null && session.expiresAt > now).map((session) => ({
       id: session.id,
       createdAt: session.createdAt,
       expiresAt: session.expiresAt,
       lastSeenAt: session.lastSeenAt,
-      current: session.id === actor.authSessionId
+      current: session.id === actor2.authSessionId
     }));
   }
-  async revokeSession(actor, sessionId) {
+  async revokeSession(actor2, sessionId) {
     const session = await this.#store.getSession(sessionId);
     assertDomain(session, "SESSION_NOT_FOUND", "Session not found", 404);
-    assertDomain(session.principalId === actor.actorId, "SESSION_FORBIDDEN", "Cannot revoke another principal's session", 403);
+    assertDomain(session.principalId === actor2.actorId, "SESSION_FORBIDDEN", "Cannot revoke another principal's session", 403);
     session.revokedAt = this.#clock.now();
     await this.#store.updateSession(session);
-    if (session.id === actor.authSessionId) {
+    if (session.id === actor2.authSessionId) {
       await this.#store.deleteStepUpsForSession(session.id);
     }
   }
-  async revokeAllSessions(actor) {
-    await this.assertStepUp(actor, { action: "session.revoke-all", capability: "session.revoke-all", risk: "high" });
-    const sessions = await this.#store.listSessionsForPrincipal(actor.actorId);
+  async revokeAllSessions(actor2) {
+    await this.assertStepUp(actor2, { action: "session.revoke-all", capability: "session.revoke-all", risk: "high" });
+    const sessions = await this.#store.listSessionsForPrincipal(actor2.actorId);
     const now = this.#clock.now();
     for (const session of sessions) {
       if (session.revokedAt !== null)
@@ -23952,23 +23977,23 @@ class AuthService {
     await this.#store.createSession(session);
     return { session, sessionToken, csrfToken };
   }
-  async #assertRegistrationAuthority(actor, input) {
-    if (actor.authenticationMethod === "session" || actor.authSessionId) {
-      await this.#assertActorOwnsPrincipal(actor, input.principalId);
+  async #assertRegistrationAuthority(actor2, input) {
+    if (actor2.authenticationMethod === "session" || actor2.authSessionId) {
+      await this.#assertActorOwnsPrincipal(actor2, input.principalId);
       return;
     }
-    if (actor.authenticationMethod === "dev-header" && actor.actorId === input.principalId) {
+    if (actor2.authenticationMethod === "dev-header" && actor2.actorId === input.principalId) {
       return;
     }
-    if (this.#bootstrapSecret && input.bootstrapSecret === this.#bootstrapSecret && actor.actorId === input.principalId) {
+    if (this.#bootstrapSecret && input.bootstrapSecret === this.#bootstrapSecret && actor2.actorId === input.principalId) {
       return;
     }
     throw new DomainError("REGISTRATION_FORBIDDEN", "Passkey registration requires an authenticated session or bootstrap secret", 403);
   }
-  async #assertActorOwnsPrincipal(actor, principalId) {
+  async #assertActorOwnsPrincipal(actor2, principalId) {
     assertDomain(principalId, "PRINCIPAL_REQUIRED", "Principal is required", 422);
-    assertDomain(actor.actorId === principalId, "PRINCIPAL_MISMATCH", "Actor cannot register passkeys for another principal", 403);
-    assertDomain(actor.actorType === "human", "HUMAN_ONLY", "Only human principals can manage authentication identities", 403);
+    assertDomain(actor2.actorId === principalId, "PRINCIPAL_MISMATCH", "Actor cannot register passkeys for another principal", 403);
+    assertDomain(actor2.actorType === "human", "HUMAN_ONLY", "Only human principals can manage authentication identities", 403);
   }
   async #requireHumanPrincipal(principalId, workspaceId) {
     const principal = await this.#principals.getPrincipal(principalId);
@@ -24115,9 +24140,9 @@ async function resolveActorContext(request, env, auth) {
   }
   const session = await auth.resolveSessionFromRequest(request);
   if (session) {
-    const actor = auth.actorFromSession(session, request);
+    const actor2 = auth.actorFromSession(session, request);
     await auth.assertCsrf(request, session);
-    return actor;
+    return actor2;
   }
   throw new DomainError("AUTHENTICATION_REQUIRED", "A valid session or development principal headers are required", 401);
 }
@@ -24154,8 +24179,8 @@ async function handleAuthRoute(request, url, env, auth, readJson2) {
   }
   if (request.method === "POST" && url.pathname === "/v1/auth/passkeys/register/begin") {
     const body = await readJson2(request);
-    const actor = await resolveActorContext(request, env, auth);
-    const result = await auth.beginPasskeyRegistration(actor, {
+    const actor2 = await resolveActorContext(request, env, auth);
+    const result = await auth.beginPasskeyRegistration(actor2, {
       workspaceId: body.workspaceId,
       principalId: asPrincipalId(String(body.principalId)),
       label: String(body.label),
@@ -24165,8 +24190,8 @@ async function handleAuthRoute(request, url, env, auth, readJson2) {
   }
   if (request.method === "POST" && url.pathname === "/v1/auth/passkeys/register/finish") {
     const body = await readJson2(request);
-    const actor = await resolveActorContext(request, env, auth);
-    const result = await auth.finishPasskeyRegistration(actor, {
+    const actor2 = await resolveActorContext(request, env, auth);
+    const result = await auth.finishPasskeyRegistration(actor2, {
       challengeId: asWebAuthnChallengeId(String(body.challengeId)),
       response: body.response,
       transports: Array.isArray(body.transports) ? body.transports.map(String) : []
@@ -24193,40 +24218,40 @@ async function handleAuthRoute(request, url, env, auth, readJson2) {
     return json$1({ principalId: issue.session.principalId, expiresAt: issue.session.expiresAt }, 201, auth.sessionCookieHeaders(issue));
   }
   if (request.method === "GET" && url.pathname === "/v1/auth/session") {
-    const actor = await resolveActorContext(request, env, auth);
-    return json$1(await auth.getSessionView(actor));
+    const actor2 = await resolveActorContext(request, env, auth);
+    return json$1(await auth.getSessionView(actor2));
   }
   if (request.method === "GET" && url.pathname === "/v1/auth/sessions") {
-    const actor = await resolveActorContext(request, env, auth);
-    return json$1(await auth.listSessions(actor));
+    const actor2 = await resolveActorContext(request, env, auth);
+    return json$1(await auth.listSessions(actor2));
   }
   if (request.method === "DELETE" && url.pathname === "/v1/auth/sessions") {
-    const actor = await resolveActorContext(request, env, auth);
-    await auth.revokeAllSessions(actor);
+    const actor2 = await resolveActorContext(request, env, auth);
+    await auth.revokeAllSessions(actor2);
     return clearCookieResponse(auth.clearSessionCookieHeaders());
   }
   const sessionMatch = url.pathname.match(/^\/v1\/auth\/sessions\/([^/]+)$/);
   if (request.method === "DELETE" && sessionMatch?.[1]) {
-    const actor = await resolveActorContext(request, env, auth);
-    await auth.revokeSession(actor, sessionMatch[1]);
+    const actor2 = await resolveActorContext(request, env, auth);
+    await auth.revokeSession(actor2, sessionMatch[1]);
     return new Response(null, { status: 204 });
   }
   if (request.method === "POST" && url.pathname === "/v1/auth/logout") {
-    const actor = await resolveActorContext(request, env, auth);
-    await auth.logout(actor);
+    const actor2 = await resolveActorContext(request, env, auth);
+    await auth.logout(actor2);
     return clearCookieResponse(auth.clearSessionCookieHeaders());
   }
   if (request.method === "POST" && url.pathname === "/v1/auth/step-up/begin") {
     const body = await readJson2(request);
-    const actor = await resolveActorContext(request, env, auth);
+    const actor2 = await resolveActorContext(request, env, auth);
     const operation = String(body.operation);
-    const result = await auth.beginStepUp(actor, operation);
+    const result = await auth.beginStepUp(actor2, operation);
     return json$1(result);
   }
   if (request.method === "POST" && url.pathname === "/v1/auth/step-up/finish") {
     const body = await readJson2(request);
-    const actor = await resolveActorContext(request, env, auth);
-    const result = await auth.finishStepUp(actor, {
+    const actor2 = await resolveActorContext(request, env, auth);
+    const result = await auth.finishStepUp(actor2, {
       challengeId: asWebAuthnChallengeId(String(body.challengeId)),
       response: body.response
     });
@@ -24286,12 +24311,12 @@ let activeCorsRequest;
 let activeCorsEnv;
 function mapConsoleUrlToAssetPath(pathname) {
   if (pathname === "/console")
-    return "/index.html";
+    return "/";
   if (!pathname.startsWith("/console/"))
     return null;
   const rest = pathname.slice("/console".length);
   if (!rest || rest === "/")
-    return "/index.html";
+    return "/";
   return rest;
 }
 async function tryServeConsole(request, env) {
@@ -24303,6 +24328,45 @@ async function tryServeConsole(request, env) {
     return null;
   const assetUrl = new URL(assetPath, url.origin);
   return env.STATIC_ASSETS.fetch(new Request(assetUrl, request));
+}
+async function createInitialHomepage(cms, input) {
+  const siteId = asSiteId(input.siteId);
+  const owner = actor(asPrincipalId(input.ownerPrincipalId), "human");
+  const tree = await cms.listContentTree(owner, siteId);
+  if (tree.some((entry) => entry.snapshot.route.path === "/home"))
+    return;
+  const document = createEmptyDocument();
+  const body = document.root.slots.body ??= [];
+  body.push(createBlock("heading", { level: 1, text: input.siteName }), createBlock("richText", { paragraphs: ["baserEdgeへようこそ。管理画面からこのページを編集できます。"] }));
+  const page = await cms.createPage(owner, {
+    siteId,
+    parentId: null,
+    slug: "home",
+    title: "ホーム",
+    document
+  });
+  const approval = await cms.requestApproval(owner, {
+    contentItemId: page.item.id,
+    revisionId: page.workingRevision.id
+  });
+  await cms.decideApproval(owner, { approvalId: approval.id, decision: "approved", comment: "初期サイトの作成" });
+  await cms.publish(owner, {
+    contentItemId: page.item.id,
+    revisionId: page.workingRevision.id,
+    approvalId: approval.id
+  });
+}
+async function ensureTrialHomepage(cms, env) {
+  if (!instantLoginEnabled(env))
+    return;
+  const hint = parseInstantOwnerHint(env.BASER_INSTANT_OWNER_HINT);
+  if (!hint)
+    return;
+  await createInitialHomepage(cms, {
+    siteId: hint.siteId,
+    ownerPrincipalId: hint.ownerPrincipalId,
+    siteName: hint.siteName ?? "マイサイト"
+  });
 }
 function createApiWorker(resolveCms = defaultResolver, options = {}) {
   return {
@@ -24316,12 +24380,15 @@ function createApiWorker(resolveCms = defaultResolver, options = {}) {
         if (request.method === "GET" && url.pathname === "/") {
           return Response.redirect(`${url.origin}/console/`, 302);
         }
+        const cms = resolveCms(env);
+        if (request.method === "GET" && (url.pathname === "/console" || url.pathname === "/console/")) {
+          await ensureTrialHomepage(cms, env);
+        }
         const consoleResponse = await tryServeConsole(request, env);
         if (consoleResponse)
           return consoleResponse;
-        const cms = resolveCms(env);
         const auth = options.resolveAuth?.(env, cms) ?? createAuthService(env, cms);
-        cms.attachSecurityHooks({ assertStepUp: (actor, input) => auth.assertStepUp(actor, input) });
+        cms.attachSecurityHooks({ assertStepUp: (actor2, input) => auth.assertStepUp(actor2, input) });
         const assets = options.resolveAssets?.(env, cms) ?? createAssetService(env, cms);
         const previews = options.resolvePreviews?.(env, cms) ?? createPreviewService(env, cms);
         const blog = options.resolveBlog?.(env, cms) ?? createBlogService(env, cms);
@@ -24362,13 +24429,21 @@ function createApiWorker(resolveCms = defaultResolver, options = {}) {
             assertBootstrapAllowed(request, env);
             const body = await readJson(request);
             try {
-              return json(await cms.bootstrap({
+              const boot = await cms.bootstrap({
                 workspaceName: stringField(body, "workspaceName"),
                 siteName: stringField(body, "siteName"),
                 hostname: stringField(body, "hostname"),
                 ownerName: stringField(body, "ownerName"),
                 ...typeof body.locale === "string" ? { locale: body.locale } : {}
-              }), 201);
+              });
+              if (env.BASER_BOOTSTRAP_SECRET) {
+                await createInitialHomepage(cms, {
+                  siteId: boot.siteId,
+                  ownerPrincipalId: boot.ownerPrincipalId,
+                  siteName: stringField(body, "siteName")
+                });
+              }
+              return json(boot, 201);
             } catch (error) {
               if (error instanceof DomainError)
                 throw error;
@@ -25199,6 +25274,7 @@ function withCors(response) {
 const index = createApiWorker();
 export {
   createApiWorker,
+  createInitialHomepage,
   index as default,
   mapConsoleUrlToAssetPath
 };

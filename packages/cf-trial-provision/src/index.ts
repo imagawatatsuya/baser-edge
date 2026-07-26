@@ -29,12 +29,14 @@ export {
   type TrialProvisionReleaseStepResult,
 } from "./run-trial-provision-release-step.js";
 export {
+  MIGRATION_RUNNER_ROUTE_PROBE_ATTEMPTS,
   MIGRATION_STATEMENTS_PER_INVOCATION,
   baserEdgeSchemaReady,
   cleanupTrialMigrationRunner,
   expectedMigrationSchemaObjects,
   prepareTrialMigrationRunner,
   runTrialMigrationChunk,
+  trialMigrationRunnerSource,
   trialMigrationStatementCount,
   type TrialMigrationMode,
   type TrialMigrationRunner,

@@ -53,12 +53,17 @@ type Session = {
   step: string;
   message: string;
   consoleUrl?: string;
+  publicUrl?: string;
   stackId?: string;
   error?: string;
   accountName?: string;
 };
 
-type LastSite = { stackId: string };
+type LastSite = {
+  stackId: string;
+  consoleUrl?: string;
+  publicUrl?: string;
+};
 
 function loadLastSite(): LastSite | null {
   try {
@@ -71,8 +76,8 @@ function loadLastSite(): LastSite | null {
   }
 }
 
-function saveLastSite(stackId: string) {
-  localStorage.setItem(LAST_SITE_KEY, JSON.stringify({ stackId }));
+function saveLastSite(site: LastSite) {
+  localStorage.setItem(LAST_SITE_KEY, JSON.stringify(site));
 }
 
 function clearLastSite() {
@@ -88,6 +93,7 @@ export function App() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [stackId, setStackId] = useState("");
+  const [lastSite, setLastSite] = useState<LastSite | null>(null);
   const [destroyMsg, setDestroyMsg] = useState("");
   const [destroyError, setDestroyError] = useState("");
   const [destroying, setDestroying] = useState(false);
@@ -116,7 +122,9 @@ export function App() {
     if (!res.ok) throw new Error(body.error?.message ?? "開始できませんでした");
     if (body.stackId) {
       setStackId(body.stackId);
-      saveLastSite(body.stackId);
+      const next = { stackId: body.stackId };
+      setLastSite(next);
+      saveLastSite(next);
     }
     setSession({
       id: body.sessionId,
@@ -156,6 +164,7 @@ export function App() {
       setDestroyMsg(body.message ?? "削除しました");
       clearLastSite();
       setStackId("");
+      setLastSite(null);
       setSession(null);
     } finally {
       setDestroying(false);
@@ -192,7 +201,10 @@ export function App() {
       .catch(() => setHelp(null));
 
     const last = loadLastSite();
-    if (last) setStackId(last.stackId);
+    if (last) {
+      setStackId(last.stackId);
+      setLastSite(last);
+    }
 
     const params = new URLSearchParams(window.location.search);
     const oauthError = params.get("oauth_error");
@@ -226,10 +238,13 @@ export function App() {
           setSession(body);
           if (body.stackId) {
             setStackId(body.stackId);
-            saveLastSite(body.stackId);
-          }
-          if (body.status === "succeeded" && body.consoleUrl) {
-            window.location.href = body.consoleUrl;
+            const completedSite = {
+              stackId: body.stackId,
+              consoleUrl: body.consoleUrl,
+              publicUrl: body.publicUrl,
+            };
+            setLastSite(completedSite);
+            saveLastSite(completedSite);
           }
         })
         .catch(() => {});
@@ -518,12 +533,30 @@ export function App() {
         {error && <p className="error">{error}</p>}
         {session?.error && <p className="error">{session.error}</p>}
 
-        {session?.status === "succeeded" && session.consoleUrl && (
-          <p>
-            <a className="btn-primary" href={session.consoleUrl}>
-              管理画面を開く
-            </a>
-          </p>
+        {(session?.status === "succeeded" ? session.consoleUrl : lastSite?.consoleUrl) && (
+          <div className="success-card" role="status">
+            <h2>開設したサイト</h2>
+            <p>
+              <strong>管理画面URL</strong>
+              <br />
+              <a
+                href={session?.status === "succeeded" ? session.consoleUrl : lastSite?.consoleUrl}
+              >
+                {session?.status === "succeeded" ? session.consoleUrl : lastSite?.consoleUrl}
+              </a>
+            </p>
+            {(session?.status === "succeeded" ? session.publicUrl : lastSite?.publicUrl) && (
+              <p>
+                <strong>公開サイトURL</strong>
+                <br />
+                <a
+                  href={session?.status === "succeeded" ? session.publicUrl : lastSite?.publicUrl}
+                >
+                  {session?.status === "succeeded" ? session.publicUrl : lastSite?.publicUrl}
+                </a>
+              </p>
+            )}
+          </div>
         )}
         </div>
       </section>

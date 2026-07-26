@@ -167,6 +167,28 @@ export function createPublicWorker(
         }
 
         const resolution = await cms.resolvePublicPath(siteId, url.pathname);
+        if (!resolution && url.pathname === "/") {
+          const homepage = await cms.resolvePublicPath(siteId, "/home");
+          if (homepage?.kind === "content" && homepage.snapshot.publishedRevision) {
+            return new Response(null, {
+              status: 302,
+              headers: {
+                location: "/home",
+                "cache-control": "public, max-age=60",
+              },
+            });
+          }
+          const title = siteName || "baserEdge";
+          const html = `<!doctype html><html lang="ja"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${escapeHtml(title)}</title><style>body{margin:0;background:#f4f7f5;color:#18382f;font-family:system-ui,-apple-system,"Segoe UI",sans-serif}.shell{max-width:760px;margin:12vh auto;padding:48px 40px;background:#fff;border:1px solid #d6e2dc;border-radius:18px;box-shadow:0 18px 50px #153d2d16}h1{margin:0 0 18px;font-size:clamp(2rem,7vw,3.8rem)}p{font-size:1.08rem;line-height:1.8}.mark{color:#2c735b;font-weight:700;letter-spacing:.04em}</style></head><body><main class="shell"><div class="mark">baserEdge</div><h1>${escapeHtml(title)}</h1><p>サイトの開設が完了しました。管理画面を開くと、編集できるホームページが自動で準備されます。</p></main></body></html>`;
+          return new Response(request.method === "HEAD" ? null : html, {
+            status: 200,
+            headers: {
+              "content-type": "text/html; charset=utf-8",
+              "cache-control": "no-store",
+              "x-robots-tag": "noindex",
+            },
+          });
+        }
         if (!resolution) return new Response("Not Found", { status: 404 });
         if (resolution.kind === "redirect") {
           return new Response(null, { status: resolution.statusCode, headers: { location: resolution.location, "cache-control": "public, max-age=300" } });

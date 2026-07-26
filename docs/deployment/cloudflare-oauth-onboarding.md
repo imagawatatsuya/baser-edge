@@ -10,7 +10,7 @@
 |------|------|
 | **利用者** | 自分の CF アカウント内にサイトを載せる（共有サーバーに預けない） |
 
-利用者が API トークン画面を触らない OAuth 導線は、**公式が開始ページをホストするとき**に意味があります。個人メンテナが Secrets を設定する前提ではありません。
+利用者がAPIトークン画面を触らないOAuth導線では、開始ページの運用者がOAuthクライアントとSecretsを管理します。リポジトリをforkして利用する一般ユーザーごとにSecrets設定を要求しません。
 
 ## 運営側セットアップ（1 回）
 
@@ -53,7 +53,8 @@ BASER_CF_OAUTH_SCOPES="account-settings.read workers-scripts.write d1.write"
 1. アカウント作成（未所持なら）
 2. 開始ページ → **Cloudflare でログインしてサイトを開設**
 3. Cloudflare の同意画面でアカウントを選び **Authorize**
-4. 自動で戻り、サイト開設が始まる → 管理画面へ
+4. 自動で開始ページへ戻り、工程別のサイト開設が始まる
+5. 完了後に表示された管理画面URLを開く
 
 ## トラブル: *not allowed to request scope* / *invalid, unknown, or malformed*
 

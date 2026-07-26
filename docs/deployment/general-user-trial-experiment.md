@@ -1,140 +1,79 @@
-# 一般ユーザー立場のお試し実証（準備と実施）
+# 一般ユーザー向けお試し実証
 
-**目的:** コマンドラインを使わない利用者が、GitHub Pages のスタートページ → **Deploy to Cloudflare** → 管理画面まで到達できることを確認する。
+コマンドを使わない参加者が、Cloudflareログインから管理画面・公開サイトまで到達できることを確認するためのメンテナ向けチェックリストです。
 
-**正本（開設）:** [cloudflare-one-click-trial.md](cloudflare-one-click-trial.md)  
-**片付け（開発者）:** [cloudflare-teardown.md](cloudflare-teardown.md)（スタック `trial`）
+参加者へ渡す操作説明は[利用ガイド](../user-guide.md)、開設方式は[ブラウザだけで試す](cloudflare-one-click-trial.md)が正本です。
 
----
+## 役割
 
-## 誰が何をするか
+| 役割 | 行うこと |
+|---|---|
+| 参加者 | ブラウザでOAuth開設、管理開始、編集、公開、削除を試す |
+| 観察者 | 参加者が迷った箇所、画面メッセージ、所要時間を記録する |
+| メンテナ | trial-host、Queue、固定リリース、Operations Workerを事前確認する |
 
-| 役割 | 人 | やること |
-|------|-----|----------|
-| **準備・観察** | メンテナ（あなた） | Pages 公開・リポジトリ push・失敗時ログ確認・片付け |
-| **参加者** | 一般ユーザー想定のテスター | ブラウザだけ。スタート URL → Deploy → 管理画面で「管理をはじめる」 |
+参加者にはnpm、PowerShell、Wrangler、APIトークン、CloudflareのD1設定画面を操作させません。
 
-参加者に **npm / PowerShell / Wrangler を渡さない**。
+## 実証前の確認
 
----
+- [ ] [お試し開始ページ](https://baser-edge-trial-host.papehiko.workers.dev/start/)が表示される
+- [ ] 開始ページに**Cloudflareでログインしてサイトを開設**が表示される
+- [ ] OAuth設定に必要なスコープが反映されている
+- [ ] `baser-edge-trial-provision` Queueのproducerとconsumerが稼働している
+- [ ] 最新のAPI Worker、公開Worker、管理画面Assets、Migrationが固定リリースへ梱包されている
+- [ ] Operations Workerの**お試しをやめる**が利用できる
+- [ ] R2なしがお試しの既定であることを説明できる
 
-## メンテナ準備チェックリスト（実証の前日）
+## 参加者へ渡す手順
 
-### 1. リポジトリ
+1. お試し開始ページを開く
+2. Cloudflareアカウントを用意する
+3. **Cloudflareでログインしてサイトを開設**を押す
+4. 対象アカウントと権限を確認して許可する
+5. 開設画面へ戻り、完了まで待つ
+6. 表示された管理画面URLを開く
+7. **管理をはじめる**を押す
+8. サイトツリーの**ホーム**を編集・公開する
+9. 表示された公開サイトURLで内容を確認する
+10. 実証後、開始ページの**お試しをやめる**で削除する
 
-- [ ] リポジトリが **public**（GitHub Pages お試し導線の前提）
-- [ ] `main` に最新の `docs/start/` と `deploy/one-click/` が入っている
-- [ ] **Settings → Pages → Build and deployment → Source: GitHub Actions** を有効化（初回のみ）
-
-### 2. Pages のスタート URL
-
-push 後、Actions の **github-pages-start** が成功していること。
-
-| 項目 | 値の例 |
-|------|--------|
-| スタート URL | `https://<org>.github.io/<repo>/start/`（ルート `/` は `/start/` へリダイレクト） |
-| Deploy ボタン | 上記ページ内。リポジトリ名は workflow が `__GITHUB_REPOSITORY__` を置換 |
-
-**Pages 設定:** Settings → **Pages** → Build and deployment → **Source: GitHub Actions**（「Static HTML / Jekyll の Configure」は押さない）。
-
-**Actions が `Get Pages site failed` / `HttpError: Not Found` で落ちたとき:**
-
-1. 上記 Source が **GitHub Actions** になっているか再確認して保存
-2. `main` に `.github/workflows/github-pages-start.yml` の最新（`configure-pages` の `enablement: true`）を push
-3. Actions → **github-pages-start** → **Re-run all jobs**（または workflow_dispatch で手動実行）
-4. 初回は **Environment `github-pages` の承認**を求められたら Approve
-
-成功後、Pages 画面にデプロイ URL と workflow 実行履歴が表示される。
-
-ローカルで HTML だけ見る場合（Deploy は動かない）:
-
-```powershell
-npm run preview:start-page
-# → deploy/_preview/start/index.html をブラウザで開く（ボタン URL の確認用）
-```
-
-### 3. Cloudflare（参加者側の前提を案内）
-
-- [ ] Cloudflare **無料アカウント**を作れること
-- [ ] （画像の公開配信まで試す場合）R2 サブスクリプション — [cloudflare-r2-and-media.md](cloudflare-r2-and-media.md)
-- [ ] Deploy 完了後、**Workers Builds のログ**に管理画面 URL が出ることを参加者に伝える準備
-
-### 4. 今回の実証で「しない」こと
-
-- [ ] スタートページからの **削除**（未実装。片付けはメンテナが `trial` スタックで destroy またはダッシュボード）
-- [ ] 参加者への **API トークン貼り付け**（Deploy ボタン経路では不要）
-
----
-
-## 参加者向けスクリプト（そのまま渡せる）
-
-1. スタートページを開く（メンテナから URL をもらう）
-2. Cloudflare アカウントが無ければ [無料登録](https://dash.cloudflare.com/sign-up)
-3. **Deploy to Cloudflare** をクリック
-4. Cloudflare / GitHub の画面で **ログイン・許可**（初回はリポジトリコピー作成の案内あり）
-5. デプロイが終わるまで待つ（**数分**）
-6. ログまたは完了画面から **`/console/` で終わる管理画面 URL** を開く
-7. **「管理をはじめる」** を 1 回押す
-8. コンテンツ画面が表示されれば成功
-9. （任意）メディアをアップロード — R2 無しのときは画面上部に **公開メディア配信は無効** の注意が出る
-
-**困ったとき:** ビルドログをメンテナに共有。ターミナルは開かなくてよい。
-
----
-
-## 成功基準（観察者用）
+## 成功基準
 
 | # | 確認 |
-|---|------|
-| 1 | 参加者が CLI なしでデプロイ完了まで進めた |
-| 2 | 管理 URL で `/console/` が開き、真っ白にならない |
-| 3 | instant login でツリー画面に入れた |
-| 4 | `GET …/v1/console/capabilities` が 200（開発者ツール・観察者確認可） |
-| 5 | R2 なし構成なら capabilities バナーでメディア制限が分かる |
-| 6 | ページ・記事を編集画面またはツリーから **削除（ゴミ箱へ）** できる |
-| 7 | メディアライブラリで **削除** できる（公開中使用はエラー表示） |
-| 8 | 公開ページ URL（ログに出る `baser-edge-public-trial` 等）でトップが 200 |
+|---|---|
+| 1 | CLIやGitHubなしでOAuth開始から完了まで進める |
+| 2 | 開設の現在工程が画面に表示され、無期限に待たされない |
+| 3 | 完了画面に管理画面URLと公開サイトURLが残る |
+| 4 | `/console/`がHTMLを返し、真っ白やリダイレクトループにならない |
+| 5 | **管理をはじめる**でコンテンツツリーへ入れる |
+| 6 | 初期の`/home`がサイトツリーにあり、公開済みである |
+| 7 | 公開サイトのルートURLからホームを表示できる |
+| 8 | ページを編集、承認、公開できる |
+| 9 | R2なしの場合、公開メディア制限が管理画面で分かる |
+| 10 | OAuth操作で`trial`環境を削除できる |
 
----
+## 失敗時に記録する情報
 
-## 失敗時に集める情報
+- 発生日時とCloudflareアカウント名
+- 開設画面で停止した工程とエラーメッセージ
+- 管理画面URLと公開サイトURL
+- ブラウザ名と強制再読み込み後の結果
+- 管理画面が失敗した場合は`/console/`の状態
+- Cloudflare上の対象Worker名、D1名、Queueログ
 
-- Workers Builds の **全文ログ**（特に `prove` / `deploy.mjs` 周辺）
-- 参加者のブラウザ種別
-- 管理 URL と `/console/assets/*.js` のステータス（観察者が代行可）
-- Cloudflare ダッシュボードに Worker `baser-edge-api-trial` / D1 `baser-edge-trial` ができているか
+一般参加者には開発者ツールの調査を要求せず、画面とURLのスクリーンショットを依頼します。
 
----
-
-## 実証後の片付け（メンテナ・開発者）
-
-Deploy ボタンは **`BASER_CF_STACK=trial`** でリソースを作る（`default` とは別名）。
-
-```powershell
-cd <リポジトリ>
-$env:BASER_CF_STACK = "trial"
-npm run destroy:cloudflare
-$env:BASER_CF_DESTROY = "1"
-npm run destroy:cloudflare
-```
-
-R2 `baser-edge-assets-trial` が空でない場合は [cloudflare-teardown.md](cloudflare-teardown.md) の **10008** 手順。
-
----
-
-## 製品ギャップ（次回以降）
-
-- 管理コンソールから **お試しをやめる** → [ADR-0022](adr/0022-cloud-operations-worker-security.md) の Cloud Operations Worker
-- スタートページは **コンソール／公式 Operations URL への誘導**（OAuth 削除は Operations 側）
-
-実証レポートはこのファイル末尾に日付・結果を追記してよい。
-
-### 実施記録（テンプレ）
+## 実証記録
 
 ```text
 日付:
 参加者:
-スタート URL:
-結果: 成功 / 部分成功 / 失敗
-メモ:
+Cloudflareアカウント:
+開設所要時間:
+管理画面: 成功 / 失敗
+公開サイト: 成功 / 失敗
+編集・公開: 成功 / 失敗
+削除: 成功 / 失敗
+迷った箇所:
+エラー:
 ```

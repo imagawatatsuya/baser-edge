@@ -1,6 +1,6 @@
 # ADR-0022: Cloud Operations Worker（方式1）— セキュリティとクラウド破産防止
 
-- Status: Accepted
+- Status: Accepted / Implemented（trial teardown）
 - Date: 2026-07-26
 - Deciders: product / platform
 - Supersedes: informal teardown notes in [cloudflare-teardown.md](../deployment/cloudflare-teardown.md) §製品ロードマップ（方針は本 ADR を正とする）
@@ -135,10 +135,10 @@ Operations Worker は **メンテナの請求**に載る。以下を **実装要
 
 ## Consequences
 
-- メンテナは **小さな常時 Worker**（おおよそ **Workers Paid $5/月** 想定）を運用するが、§5 により **従量爆発は設計上抑止**する。
-- `docs/deployment/cloudflare-teardown.md` の一般ユーザー導線は **Operations URL + コンソール** に更新する（実装後）。
+- メンテナは小さな常時Workerを運用し、レート制限と固定レシピに加えてCloudflare側の利用量・料金を継続監視する。
+- 一般ユーザーは開始ページの**お試しをやめる**からOperations URLへ進む。
 - 新規コードは **汎用 CF 管理 API** を公開しない。レビューで「プロキシ化」していないか確認する。
-- `general-user-trial-experiment.md` の片付けは、実装完了後に **コンソール手順**へ差し替える。
+- [general-user-trial-experiment.md](../deployment/general-user-trial-experiment.md)はOAuth削除までを成功基準に含める。
 
 ## References
 

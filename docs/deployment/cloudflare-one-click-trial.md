@@ -1,66 +1,63 @@
-# ブラウザだけでお試し（public リポジトリ + Cloudflare Deploy ボタン）
+# ブラウザだけでbaserEdgeを試す
 
-旧版ドキュメントの正本: [docs/README.md](../README.md)
+一般ユーザー向けの詳しい操作は[利用ガイド](../user-guide.md)が正本です。この文書では、お試し開設の経路とCloudflare上で行われることを説明します。
 
-## 結論
+## 現在の標準経路
 
-**public にするだけでは足りない。** GitHub Pages の案内と Cloudflare Deploy ボタンが必要（[下記](#利用者がやることブラウザ)）。
+1. [お試し開始ページ](https://baser-edge-trial-host.papehiko.workers.dev/start/)を開く
+2. Cloudflare OAuthでログイン・許可する
+3. 開設画面で進捗を確認する
+4. 完了後に表示される管理画面URLと公開サイトURLを開く
 
+通常の利用者にGitHubアカウント、Deploy to Cloudflare画面、APIトークン、npm、Wranglerは要求しません。
 
-| ステップ | 誰 | 内容 |
-|----------|-----|------|
-| 1 | メンテナ | リポジトリを **public** にする |
-| 2 | メンテナ（一度だけ） | GitHub **Settings → Pages → Source: GitHub Actions**（下記トラブルシュート参照） |
-| 3 | 利用者 | `https://<org>.github.io/baser-edge/start/` を開く |
-| 4 | 利用者 | **Deploy to Cloudflare** → 自分の Cloudflare / GitHub で承認 → **管理画面 URL** |
+## 利用者のCloudflareに作られるもの
 
-**一般ユーザー実証の準備・チェックリスト:** [general-user-trial-experiment.md](general-user-trial-experiment.md)
+- 管理APIと管理画面を配信するWorker
+- 公開サイトを配信するWorker
+- CMSデータを保存するD1
+- 開設時だけ使用し、完了後に削除されるMigration Worker
+- R2を有効にした構成ではメディア用R2
 
-利用者のサイトは **利用者の Cloudflare アカウント内のみ**。fork 管理者が共有 Worker や `repository_dispatch` 用 Secrets を持つ必要はありません。
+サイトのWorkerとD1は利用者自身のCloudflareアカウントに作られます。お試し開始ホストはOAuth、進捗、固定リリースの配布を担当し、利用者のCMSデータを共有ホスティングへ保存しません。
 
-## 技術的な中身
+## 開設処理
 
-- 案内ページ: [docs/start/](../start/) → [github-pages-start.yml](../../.github/workflows/github-pages-start.yml)
-- ワンクリック: [deploy/one-click/](../../deploy/one-click/)（[Deploy ボタン](https://developers.cloudflare.com/workers/platform/deploy-button/)）
-- ビルド / デプロイは **利用者アカウント上の Workers Builds** が `prove:cloudflare` 相当を実行
+開設は一つの長いWorker処理ではなく、Cloudflare Queueのチェックポイントに分けて実行します。
 
-Deploy ボタン URL（`OWNER` を差し替え）:
+1. D1の作成
+2. D1 Migration
+3. 管理画面Assetsの準備
+4. API Workerと公開Workerの配置
+5. Secretと環境変数の設定
+6. 初期サイト、所有者、公開済みホームページの作成
+7. 管理画面と公開サイトの配信確認
 
-```md
-[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/OWNER/baser-edge/tree/main/deploy/one-click)
-```
+完了画面にはURLを残し、自動的に別ページへ移動しません。利用者は管理画面URLと公開サイトURLを確認してから開けます。
 
-## 利用者がやること（ブラウザ）
+## 完了の目印
 
-1. Cloudflare アカウント（無料可）
-2. 開始ページの **お試しをはじめる**（公式ホストの OAuth 開設。D1/Git の設定画面は出ない）
-3. Cloudflare でログイン・許可 → 進捗表示 → 管理画面へ
-4. **「管理をはじめる」**
+- 管理画面URLは`/console/`で終わる
+- 管理画面で**サイトの準備ができました**と表示される
+- **管理をはじめる**でコンテンツツリーへ入れる
+- 公開サイトのルートURLから公開済み`/home`を表示できる
 
-**裏側（暫定）:** メンテナがホストする [onboarding Worker](../../apps/onboarding-worker/) が OAuth 後、**メンテナの GitHub Actions** で `prove:cloudflare` 相当を実行します（[ADR-0023](adr/0023-trial-provision-without-github-actions.md) で **利用者 Cloudflare のみ**へ移行予定）。`deploy/one-click` の Deploy ボタンは開発者向けフォールバック（もともと利用者 CF のみ）。
+Workerの`/health`だけでは開設成功と判定しません。管理画面のHTMLが200で配信されることと、D1の初期化完了を確認します。
 
-npm・手動 API トークンは不要です。
+## お試しをやめる
 
-## fork 管理者が必須ではないこと
+開始ページの**お試しをやめる**から、同じCloudflareアカウントでOAuth認証して`trial`環境を削除できます。復元できないため、必要な内容を退避してから実行してください。
 
-- 不特定多数向けの共有 OAuth ホスト
-- リポジトリ Secrets に利用者向け `CLOUDFLARE_API_TOKEN` を置くこと
-- 自前 VM / Docker での常時オンボーディング API
+開発者がCLIで片付ける場合は[Cloudflare環境の削除](cloudflare-teardown.md)を参照してください。
 
+## 代替経路
 
-## 制限・注意
+`deploy/one-click/`のCloudflare Deployボタンと、開発者向け`prove:cloudflare`はフォールバックとして残しています。一般ユーザー向けの標準経路ではありません。
 
-- 初回デプロイは **数分**かかることがある（Deploy ボタンは利用者の GitHub にコピーを作る場合あり）
-- GitHub Pages は **public リポジトリ** が前提
-- ビルド失敗時は Workers Builds のログを確認
-- **デプロイ後の片付け（開発者）:** [cloudflare-teardown.md](cloudflare-teardown.md) — `destroy:cloudflare`、R2 空でないときの 10008、Wrangler 4 に object list が無いこと
-- **画像の公開 URL（メディア）** には Cloudflare **R2** が必要。支払い方法（カード / PayPal / Apple Pay / Google Pay / Link 等）の登録と **R2 サブスクリプション** は別手続き。詳細: [cloudflare-r2-and-media.md](cloudflare-r2-and-media.md)
-- **一般ユーザー向けワンクリック削除**は未実装（予定: 管理コンソール + OAuth）。Pages `/start/` に削除ボタンはない
+## 関連文書
 
-### GitHub Pages（`/start/`）の Actions が失敗する
-
-`Get Pages site failed` / `HttpError: Not Found` → Settings → Pages で **Source: GitHub Actions** を確認し、workflow を再実行。[general-user-trial-experiment.md](general-user-trial-experiment.md) の Pages 節も参照。
-
-## 履歴を遡って読まれたとき
-
-private 時代のメモや旧要件（Migration First 等）が残っていても **現行方針ではありません**。[docs/README.md](../README.md) と [relationship-to-basercms.md](../compatibility/relationship-to-basercms.md) を参照してください。
+- [利用ガイド](../user-guide.md)
+- [一般ユーザー実証](general-user-trial-experiment.md)
+- [お試し開設ホスト](trial-oauth-host.md)
+- [Cloudflareのみで完結する開設](trial-provision-cloudflare-only.md)
+- [ADR-0023](../adr/0023-trial-provision-without-github-actions.md)

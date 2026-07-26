@@ -196,6 +196,13 @@ export async function putWorkerScript(
 
   if (bindings.keepAssets) {
     metadata.keep_assets = true;
+    // keep_assets retains the uploaded files, but the script upload still
+    // replaces omitted bindings. Re-declare the Assets binding or /console/*
+    // falls through to authenticated API routing and returns 401.
+    metadata.bindings = [
+      ...(metadata.bindings as object[]),
+      { type: "assets", name: bindings.assetsBindingName ?? "STATIC_ASSETS" },
+    ];
   }
 
   if (bindings.assetsJwt) {
@@ -204,6 +211,7 @@ export async function putWorkerScript(
       config: {
         not_found_handling: "single-page-application",
         html_handling: "auto-trailing-slash",
+        run_worker_first: true,
       },
     };
     metadata.bindings = [
@@ -346,21 +354,38 @@ export async function waitForWorkersDevSubdomainApi(
 /** Wait until workers.dev route responds (not CF edge 404). */
 export async function waitForWorkersDevRoute(
   probeUrl: string,
-  options?: { maxAttempts?: number; delayMs?: number },
+  options?: {
+    maxAttempts?: number;
+    delayMs?: number;
+    expectedContentTypePrefix?: string;
+  },
 ): Promise<void> {
   const maxAttempts = options?.maxAttempts ?? WORKERS_DEV_ROUTE_MAX_ATTEMPTS;
   const delayMs = options?.delayMs ?? WORKERS_DEV_ROUTE_RETRY_DELAY_MS;
-  const url = probeUrl.replace(/\/$/, "");
+  const expectedContentTypePrefix = options?.expectedContentTypePrefix?.toLowerCase();
+  const url = probeUrl;
+  let lastStatus = 0;
+  let lastContentType = "";
   for (let attempt = 0; attempt < maxAttempts; attempt++) {
     if (attempt > 0) await sleep(delayMs);
     try {
       const res = await fetch(url, { method: "GET", redirect: "manual" });
-      if (res.status !== 404) return;
+      lastStatus = res.status;
+      lastContentType = res.headers.get("content-type")?.toLowerCase() ?? "";
+      if (
+        res.ok
+        && (!expectedContentTypePrefix || lastContentType.startsWith(expectedContentTypePrefix))
+      ) {
+        return;
+      }
     } catch {
       /* retry */
     }
   }
-  throw new CfApiCallError(`workers.dev が応答しません (404): ${url}`, 404);
+  const detail = expectedContentTypePrefix
+    ? `status=${lastStatus || "network-error"}, content-type=${lastContentType || "missing"}`
+    : `status=${lastStatus || "network-error"}`;
+  throw new CfApiCallError(`workers.dev の配信確認に失敗しました (${detail}): ${url}`, lastStatus || 502);
 }
 
 /** Enable workers.dev for a script via REST (retries). */
@@ -410,7 +435,11 @@ export async function publishWorkerToWorkersDev(
   budget: ReturnType<typeof createApiBudget>,
   options?: {
     httpProbeUrl?: string;
-    httpProbeOptions?: { maxAttempts?: number; delayMs?: number };
+    httpProbeOptions?: {
+      maxAttempts?: number;
+      delayMs?: number;
+      expectedContentTypePrefix?: string;
+    };
   },
 ): Promise<void> {
   await waitForWorkersDevSubdomainApi(token, accountId, scriptName, budget);

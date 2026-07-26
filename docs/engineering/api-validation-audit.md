@@ -41,7 +41,7 @@ Living inventory of **existing** `/v1/*` routes against [validation-policy.md](.
 
 | Route | Methods | Domain | API | −T | Status | Notes |
 |-------|---------|--------|-----|-----|--------|-------|
-| `/v1/bootstrap` | POST | Y | Y | Partial | Partial | Prod gate + provision secret; missing/wrong secret rejection tests; hostname rejection still pending |
+| `/v1/bootstrap` | POST | Y | Y | Partial | Partial | Prod gate + provision secret; authenticated bootstrap creates and publishes the initial `/home` through normal services; missing/wrong secret rejection tests; hostname rejection still pending |
 | `/v1/bootstrap/ready` | POST | N/A | N/A | Y | OK | Non-mutating provision-secret readiness probe; missing/wrong secret rejection + success tests |
 | `/v1/principals` | POST | Y | Y | Partial | Partial | Happy path in flows only |
 | `/v1/grants` | POST | Y | Partial | Gap | Gap | `scope` is opaque `isRecord`; capability string unchecked at API |

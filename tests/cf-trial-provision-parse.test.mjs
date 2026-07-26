@@ -13,6 +13,7 @@ import {
   parseWorkerSubdomainUrl,
   runTrialMigrationChunk,
   runTrialProvisionReleaseStep,
+  trialMigrationRunnerSource,
   trialProvisionStageProgress,
 } from "../packages/cf-trial-provision/dist/index.js";
 import {
@@ -20,6 +21,26 @@ import {
   waitForWorkersDevRoute,
   workerAssetContentType,
 } from "../packages/cf-trial-provision/dist/deploy-worker.js";
+
+async function loadMigrationRunnerModule() {
+  if (typeof globalThis.crypto.subtle.timingSafeEqual !== "function") {
+    Object.defineProperty(globalThis.crypto.subtle, "timingSafeEqual", {
+      configurable: true,
+      value(left, right) {
+        const a = new Uint8Array(left.buffer ?? left, left.byteOffset ?? 0, left.byteLength);
+        const b = new Uint8Array(right.buffer ?? right, right.byteOffset ?? 0, right.byteLength);
+        if (a.byteLength !== b.byteLength) return false;
+        let difference = 0;
+        for (let index = 0; index < a.byteLength; index += 1) {
+          difference |= a[index] ^ b[index];
+        }
+        return difference === 0;
+      },
+    });
+  }
+  const encoded = Buffer.from(trialMigrationRunnerSource(), "utf8").toString("base64");
+  return import(`data:text/javascript;base64,${encoded}#${crypto.randomUUID()}`);
+}
 
 describe("cf-trial-provision log parse", () => {
   it("uploads Worker assets with browser-renderable content types", async () => {
@@ -88,7 +109,7 @@ describe("cf-trial-provision log parse", () => {
     assert.equal(parseWorkerSubdomainUrl(log, "baser-edge-public-trial"), "https://baser-edge-public-trial.bar.workers.dev");
   });
 
-  it("keeps each direct D1 migration stage below the Queue API budget", () => {
+  it("keeps each bound Migration Worker invocation below the Queue API budget", () => {
     assert.ok(MIGRATION_STATEMENTS_PER_INVOCATION > 0);
     assert.ok(MIGRATION_STATEMENTS_PER_INVOCATION <= 30);
   });
@@ -101,6 +122,7 @@ describe("cf-trial-provision log parse", () => {
     const bulkSecretRequests = [];
     const workerUploadMetadata = [];
     const d1Sql = [];
+    const migrationWorkerChunks = [];
     let migrationWorkerCalls = 0;
     let assetSessionCount = 0;
     const migrations = [{
@@ -117,7 +139,9 @@ describe("cf-trial-provision log parse", () => {
       publicWorkerName: "baser-edge-public-trial",
       apiModule: "api-index.js",
       publicModule: "public-index.js",
-      adminAssets: {},
+      adminAssets: {
+        "/assets/admin.js": { hash: "admin-js", size: 21 },
+      },
       migrations,
     };
     const releaseFetch = async (input) => {
@@ -178,8 +202,13 @@ describe("cf-trial-provision log parse", () => {
         return Response.json({ success: true, result: {} });
       }
       if (url.hostname.startsWith("baser-edge-trial-migrate.")) {
+        if (method === "GET") {
+          return Response.json({ ok: true, service: "baser-edge-trial-migrate" });
+        }
         migrationWorkerCalls += 1;
-        return Response.json({ ok: true, applied: 40 });
+        const body = await request.json();
+        migrationWorkerChunks.push(body.statements);
+        return Response.json({ ok: true, applied: body.statements.length, skipped: 0 });
       }
       if (url.pathname === "/v1/bootstrap") {
         return Response.json({
@@ -192,6 +221,11 @@ describe("cf-trial-provision log parse", () => {
         return Response.json({ ready: true });
       }
       if (url.pathname === "/health") return Response.json({ ok: true });
+      if (url.pathname === "/console/") {
+        return new Response("<!doctype html><title>baserEdge</title>", {
+          headers: { "content-type": "text/html; charset=utf-8" },
+        });
+      }
       throw new Error(`Unexpected external fetch: ${method} ${url}`);
     };
 
@@ -255,10 +289,14 @@ describe("cf-trial-provision log parse", () => {
         "deploy-api-final",
       ]);
       assert.ok(Math.max(...callsByStage.map(({ calls }) => calls)) < 50);
-      assert.equal(bulkSecretRequests.length, 2);
-      assert.deepEqual(bulkSecretRequests.map(({ method }) => method), ["PATCH", "PATCH"]);
+      assert.equal(bulkSecretRequests.length, 3);
+      assert.deepEqual(bulkSecretRequests.map(({ method }) => method), ["PATCH", "PATCH", "PATCH"]);
       assert.deepEqual(
-        Object.keys(bulkSecretRequests[0].body.secrets).sort(),
+        Object.keys(bulkSecretRequests[0].body.secrets),
+        ["MIGRATE_RUNNER_SECRET"],
+      );
+      assert.deepEqual(
+        Object.keys(bulkSecretRequests[1].body.secrets).sort(),
         [
           "ASSET_UPLOAD_SECRET",
           "BASER_BOOTSTRAP_SECRET",
@@ -268,7 +306,7 @@ describe("cf-trial-provision log parse", () => {
         ],
       );
       assert.deepEqual(
-        Object.keys(bulkSecretRequests[1].body.secrets).sort(),
+        Object.keys(bulkSecretRequests[2].body.secrets).sort(),
         ["MAIL_FORM_SECRET", "MAIL_PRIVACY_SALT", "PREVIEW_SECRET"],
       );
       assert.ok(
@@ -283,19 +321,34 @@ describe("cf-trial-provision log parse", () => {
       assert.equal(assetSessionCount, 3);
       assert.equal(apiUploads.length, 3);
       assert.equal(apiUploads[0].assets.jwt, "assets-jwt-2");
+      assert.equal(apiUploads[0].assets.config.run_worker_first, true);
+      assert.deepEqual(
+        apiUploads[0].bindings.find(({ type }) => type === "assets"),
+        { type: "assets", name: "STATIC_ASSETS" },
+      );
       assert.equal(apiUploads[0].keep_assets, undefined);
       assert.equal(apiUploads[1].assets.jwt, "assets-jwt-3");
       assert.notEqual(apiUploads[1].assets.jwt, apiUploads[0].assets.jwt);
+      assert.equal(apiUploads[1].assets.config.run_worker_first, true);
       assert.equal(apiUploads[1].keep_assets, undefined);
       assert.equal(apiUploads[2].assets, undefined);
       assert.equal(apiUploads[2].keep_assets, true);
-      assert.equal(migrationWorkerCalls, 0);
+      assert.deepEqual(
+        apiUploads[2].bindings.find(({ type }) => type === "assets"),
+        { type: "assets", name: "STATIC_ASSETS" },
+      );
+      assert.equal(migrationWorkerCalls, 2);
+      assert.deepEqual(migrationWorkerChunks.map((chunk) => chunk.length), [30, 17]);
+      assert.ok(migrationWorkerChunks.flat().some((sql) => sql.startsWith("CREATE TABLE trial_0")));
+      assert.ok(
+        migrationWorkerChunks.flat().some((sql) => sql.includes("INSERT OR IGNORE INTO d1_migrations")),
+      );
       assert.equal(
         workerUploadMetadata.some(({ scriptName }) => scriptName === "baser-edge-trial-migrate"),
-        false,
+        true,
       );
-      assert.ok(d1Sql.some((sql) => sql.startsWith("CREATE TABLE trial_0")));
-      assert.ok(d1Sql.some((sql) => sql.includes("INSERT OR IGNORE INTO d1_migrations")));
+      assert.equal(d1Sql.length, 1);
+      assert.match(d1Sql[0], /sqlite_master/);
     } finally {
       globalThis.fetch = originalFetch;
     }
@@ -403,23 +456,114 @@ describe("cf-trial-provision log parse", () => {
     }
   });
 
-  it("applies already-split trigger SQL directly to D1 and resumes past existing objects", async () => {
-    const originalFetch = globalThis.fetch;
+  it("executes a complete CREATE TRIGGER through the deployed runner source", async () => {
+    const { default: runnerWorker } = await loadMigrationRunnerModule();
     const sqlCalls = [];
+    const triggerSql =
+      "CREATE TRIGGER validate_workspace BEFORE INSERT ON workspaces BEGIN SELECT 1; END;";
+    const env = {
+      MIGRATE_RUNNER_SECRET: "runner-secret",
+      DB: {
+        prepare(sql) {
+          sqlCalls.push(sql);
+          return {
+            async run() {
+              if (sql.includes("duplicate_table")) throw new Error("table duplicate_table already exists");
+              return { success: true };
+            },
+          };
+        },
+      },
+    };
+    const response = await runnerWorker.fetch(
+      new Request("https://runner.test/", {
+        method: "POST",
+        headers: {
+          Authorization: "Bearer runner-secret",
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          statements: [
+            triggerSql,
+            "CREATE TABLE duplicate_table (id TEXT PRIMARY KEY);",
+          ],
+        }),
+      }),
+      env,
+    );
+    assert.equal(response.status, 200);
+    assert.deepEqual(await response.json(), { ok: true, applied: 1, skipped: 1 });
+    assert.deepEqual(sqlCalls, [
+      triggerSql,
+      "CREATE TABLE duplicate_table (id TEXT PRIMARY KEY);",
+    ]);
+  });
+
+  it("rejects unauthenticated Migration Worker requests before D1 access", async () => {
+    const { default: runnerWorker } = await loadMigrationRunnerModule();
+    let prepared = false;
+    const response = await runnerWorker.fetch(
+      new Request("https://runner.test/", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ statements: ["SELECT 1;"] }),
+      }),
+      {
+        MIGRATE_RUNNER_SECRET: "runner-secret",
+        DB: {
+          prepare() {
+            prepared = true;
+            throw new Error("must not execute");
+          },
+        },
+      },
+    );
+    assert.equal(response.status, 401);
+    assert.deepEqual(await response.json(), { ok: false, code: "UNAUTHORIZED" });
+    assert.equal(prepared, false);
+  });
+
+  it("rejects oversized Migration Worker chunks before D1 access", async () => {
+    const { default: runnerWorker } = await loadMigrationRunnerModule();
+    let prepared = false;
+    const response = await runnerWorker.fetch(
+      new Request("https://runner.test/", {
+        method: "POST",
+        headers: {
+          Authorization: "Bearer runner-secret",
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          statements: Array.from(
+            { length: MIGRATION_STATEMENTS_PER_INVOCATION + 1 },
+            () => "SELECT 1;",
+          ),
+        }),
+      }),
+      {
+        MIGRATE_RUNNER_SECRET: "runner-secret",
+        DB: {
+          prepare() {
+            prepared = true;
+            throw new Error("must not execute");
+          },
+        },
+      },
+    );
+    assert.equal(response.status, 422);
+    assert.deepEqual(await response.json(), { ok: false, code: "TOO_MANY_STATEMENTS" });
+    assert.equal(prepared, false);
+  });
+
+  it("sends a complete trigger to the bound Migration Worker in one chunk", async () => {
+    const originalFetch = globalThis.fetch;
+    const chunks = [];
     globalThis.fetch = async (input, init) => {
       const request = input instanceof Request ? input : new Request(input, init);
       const body = await request.json();
-      sqlCalls.push(body.sql);
-      if (sqlCalls.length === 2) {
-        return Response.json(
-          {
-            success: false,
-            errors: [{ code: 7500, message: "table workspaces already exists" }],
-          },
-          { status: 400 },
-        );
-      }
-      return Response.json({ success: true, result: [{ success: true, results: [] }] });
+      chunks.push(body.statements);
+      assert.equal(request.headers.get("Authorization"), "Bearer runner-secret");
+      return Response.json({ ok: true, applied: body.statements.length, skipped: 0 });
     };
 
     const triggerSql =
@@ -429,7 +573,11 @@ describe("cf-trial-provision log parse", () => {
         "token",
         "account",
         "database",
-        { mode: "full" },
+        {
+          mode: "full",
+          url: "https://baser-edge-trial-migrate.example.workers.dev",
+          secret: "runner-secret",
+        },
         [{
           name: "0001.sql",
           statements: [
@@ -441,22 +589,24 @@ describe("cf-trial-provision log parse", () => {
         { spend() {} },
       );
       assert.deepEqual(result, { nextCursor: 4, done: true });
-      assert.equal(sqlCalls[2], triggerSql);
-      assert.equal(sqlCalls.some((sql) => sql.includes("baser-edge-trial-migrate")), false);
+      assert.equal(chunks.length, 1);
+      assert.equal(chunks[0][2], triggerSql);
     } finally {
       globalThis.fetch = originalFetch;
     }
   });
 
-  it("fails direct D1 migration on a non-idempotent SQL error", async () => {
+  it("reports the bound Migration Worker statement failure", async () => {
     const originalFetch = globalThis.fetch;
     globalThis.fetch = async () =>
       Response.json(
         {
-          success: false,
-          errors: [{ code: 7500, message: "D1_ERROR: incomplete input" }],
+          ok: false,
+          code: "MIGRATION_STATEMENT_FAILED",
+          error: "D1_ERROR: constraint failed",
+          statementIndex: 0,
         },
-        { status: 400 },
+        { status: 500 },
       );
     try {
       await assert.rejects(
@@ -464,12 +614,16 @@ describe("cf-trial-provision log parse", () => {
           "token",
           "account",
           "database",
-          { mode: "full" },
+          {
+            mode: "full",
+            url: "https://baser-edge-trial-migrate.example.workers.dev",
+            secret: "runner-secret",
+          },
           [{ name: "0001.sql", statements: ["CREATE TABLE broken (id TEXT);"] }],
           0,
           { spend() {} },
         ),
-        /incomplete input/,
+        /constraint failed/,
       );
     } finally {
       globalThis.fetch = originalFetch;
@@ -483,7 +637,7 @@ describe("cf-trial-provision log parse", () => {
 
     globalThis.fetch = async () => {
       attempts += 1;
-      return new Response("", { status: attempts <= 8 ? 404 : 405 });
+      return new Response("", { status: attempts <= 8 ? 404 : 200 });
     };
     globalThis.setTimeout = (callback) => {
       queueMicrotask(callback);
@@ -496,6 +650,62 @@ describe("cf-trial-provision log parse", () => {
     } finally {
       globalThis.fetch = originalFetch;
       globalThis.setTimeout = originalSetTimeout;
+    }
+  });
+
+  it("does not accept an authenticated-route 401 as workers.dev readiness", async () => {
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = async () => new Response("", { status: 401 });
+    try {
+      await assert.rejects(
+        waitForWorkersDevRoute("https://trial.example.workers.dev/", {
+          maxAttempts: 1,
+          delayMs: 0,
+        }),
+        /status=401/,
+      );
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it("does not accept a console redirect as workers.dev readiness", async () => {
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = async () => new Response(null, {
+      status: 302,
+      headers: { location: "/" },
+    });
+    try {
+      await assert.rejects(
+        waitForWorkersDevRoute("https://trial.example.workers.dev/console/", {
+          maxAttempts: 1,
+          delayMs: 0,
+          expectedContentTypePrefix: "text/html",
+        }),
+        /status=302/,
+      );
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
+
+  it("does not accept the SPA HTML fallback as a JavaScript asset", async () => {
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = async () => new Response("<!doctype html>", {
+      status: 200,
+      headers: { "content-type": "text/html; charset=utf-8" },
+    });
+    try {
+      await assert.rejects(
+        waitForWorkersDevRoute("https://trial.example.workers.dev/console/assets/admin.js", {
+          maxAttempts: 1,
+          delayMs: 0,
+          expectedContentTypePrefix: "text/javascript",
+        }),
+        /content-type=text\/html/,
+      );
+    } finally {
+      globalThis.fetch = originalFetch;
     }
   });
 

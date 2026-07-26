@@ -8,8 +8,8 @@
 
 1. **README** にプレビュー／未完成である旨を明記する（[relationship-to-basercms.md](../compatibility/relationship-to-basercms.md) へのリンク推奨）
 2. **関係するメンテナ・組織**へ、公開予定または公開した旨を共有する（通知が届く可能性があるため）
-3. 一般向けお試しは [cloudflare-one-click-trial.md](../deployment/cloudflare-one-click-trial.md)（Pages + Deploy ボタン）の準備ができてから案内する
-4. ホスト型オンボーディング（Worker + 多数 Secrets）は **公式サービス用**（[optional-hosted-start-page.md](optional-hosted-start-page.md)）。fork 先で必須ではない
+3. 一般向けお試しは[cloudflare-one-click-trial.md](../deployment/cloudflare-one-click-trial.md)のOAuth trial-host、Queue、固定リリース、Operations削除が揃ってから案内する
+4. GitHub Pagesは案内ページとして利用できるが、Deployボタンは開発者向けフォールバックとする
 
 ## public 前に private のまま進める場合
 
