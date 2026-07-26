@@ -63,6 +63,7 @@ Desktop.ini
 
 # --- Editor (keep .cursor/rules/ in repo; ignore local IDE state) ---
 .cursor/settings.json
+.cursor-task-mit-review/
 .idea/
 *.swp
 *.swo
