@@ -288,9 +288,10 @@ export function ContentEditPage() {
                     method: "PATCH",
                     json: { postedAt: parseDatetimeLocalValue(postedAtLocal) },
                   })
-                    .then((meta) => {
+                    .then(async (meta) => {
                       setArticleMeta(meta);
                       setPostedAtLocal(toDatetimeLocalValue(meta.postedAt));
+                      await reloadContentTree();
                     })
                     .catch((e) => setStatus(e instanceof Error ? e.message : String(e)));
                 }}
