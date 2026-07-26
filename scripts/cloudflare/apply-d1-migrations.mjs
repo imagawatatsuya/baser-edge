@@ -91,7 +91,11 @@ function tableExists(databaseName, configRel, tableName) {
 
 /** True when the remote DB already has the full v0.9 schema (prove re-run / missing ledger). */
 export function baserEdgeSchemaReady(databaseName, configRel) {
-  return tableExists(databaseName, configRel, "workspaces") && tableExists(databaseName, configRel, "auth_sessions");
+  return (
+    tableExists(databaseName, configRel, "workspaces") &&
+    tableExists(databaseName, configRel, "auth_sessions") &&
+    tableExists(databaseName, configRel, "theme_releases")
+  );
 }
 
 function recordMigration(databaseName, configRel, fileName, log) {
@@ -150,7 +154,7 @@ export function applyD1MigrationsRemote(options = {}) {
         d1Execute({ databaseName, configRel, sql: stmt, log });
       }
     } catch (err) {
-      if (!isAlreadyExistsError(err) || !baserEdgeSchemaReady(databaseName, configRel)) throw err;
+      if (!isAlreadyExistsError(err)) throw err;
       log(`D1 migration ${fileName} (objects already exist; recording ledger only)…`);
     }
     recordMigration(databaseName, configRel, fileName, log);

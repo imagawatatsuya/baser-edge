@@ -1,6 +1,6 @@
 /** @see apps/onboarding-worker/src/cf-oauth-scopes.ts */
 export const DEFAULT_BASER_CF_OAUTH_SCOPES =
-  "account-settings.read workers-scripts.write d1.write";
+  "account-settings.read workers-scripts.write workers-ci.write d1.write";
 
 const LEGACY_INVALID_SCOPE = /\b(?:account_settings|workers_scripts)\./;
 

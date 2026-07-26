@@ -1,15 +1,32 @@
 import helpJson from "../../../scripts/onboarding/help.json";
 import { resolveBaserCfOAuthScopes, validateOAuthScopeShape } from "./cf-oauth-scopes";
+import {
+  createTrialReleaseFetch,
+  provisionMode,
+  provisionStrategy,
+  runCloudflareProvisionJob,
+  trialReleaseBaseUrl,
+} from "./run-provision-job";
+import {
+  decryptTrialProvisionToken,
+  encryptTrialProvisionToken,
+  parseTrialProvisionQueueMessage,
+  runTrialProvisionReleaseStep,
+  trialProvisionStageProgress,
+  type TrialProvisionReleaseState,
+  type TrialProvisionQueueMessage,
+} from "@baser-edge/cf-trial-provision";
 
 export interface Env {
   ASSETS: Fetcher;
   ONBOARDING_KV: KVNamespace;
+  TRIAL_PROVISION_QUEUE: Queue<TrialProvisionQueueMessage>;
   BASER_CF_OAUTH_CLIENT_ID: string;
   BASER_CF_OAUTH_CLIENT_SECRET: string;
   BASER_CF_OAUTH_SCOPES?: string;
   BASER_ONBOARDING_PUBLIC?: string;
-  GITHUB_REPO: string;
-  GH_DISPATCH_TOKEN: string;
+  GITHUB_REPO?: string;
+  GH_DISPATCH_TOKEN?: string;
   ONBOARDING_TOKEN_ENCRYPTION_KEY: string;
   ONBOARDING_CALLBACK_SECRET: string;
   BASER_ONBOARDING_RATE_LIMIT_PER_MIN?: string;
@@ -17,6 +34,15 @@ export interface Env {
   BASER_ONBOARDING_PROVISION_STACK_ID?: string;
   /** お試しをやめる（Cloud Operations Worker）の公開 URL */
   BASER_EDGE_OPS_PUBLIC_URL?: string;
+  /** cloudflare（既定）| github — github は暫定の repository_dispatch */
+  BASER_TRIAL_PROVISION_MODE?: string;
+  BASER_TRIAL_PROVISION_STRATEGY?: string;
+  BASER_TRIAL_RELEASE_BASE_URL?: string;
+  BASER_TRIAL_BUILDS_REPO?: string;
+  BASER_TRIAL_BUILDS_BRANCH?: string;
+  BASER_TRIAL_BUILDS_ROOT?: string;
+  BASER_TRIAL_BUILDS_BUILD_CMD?: string;
+  BASER_TRIAL_BUILDS_DEPLOY_CMD?: string;
 }
 
 type SessionRecord = {
@@ -29,6 +55,9 @@ type SessionRecord = {
   consoleUrl: string | null;
   publicUrl: string | null;
   error: string | null;
+  /** AES-GCM encrypted resumable release-provision state; never returned by the public session API. */
+  provisionState?: string | null;
+  runner?: "queue" | "github";
   createdAt: number;
   updatedAt: number;
 };
@@ -38,6 +67,8 @@ const TOKEN_URL = "https://dash.cloudflare.com/oauth2/token";
 const CF_API = "https://api.cloudflare.com/client/v4";
 const GRANT_TTL = 15 * 60;
 const SESSION_TTL = 24 * 60 * 60;
+const LEGACY_SESSION_STALE_MS = 2 * 60 * 1000;
+const QUEUED_SESSION_STALE_MS = 16 * 60 * 1000;
 
 function publicTrial(env: Env): boolean {
   const v = env.BASER_ONBOARDING_PUBLIC?.trim().toLowerCase();
@@ -131,20 +162,11 @@ async function pkceChallenge(verifier: string): Promise<string> {
 }
 
 async function encryptToken(env: Env, plaintext: string): Promise<string> {
-  const keyRaw = Uint8Array.from(atob(env.ONBOARDING_TOKEN_ENCRYPTION_KEY.trim()), (c) => c.charCodeAt(0));
-  if (keyRaw.length !== 32) throw new Error("ONBOARDING_TOKEN_ENCRYPTION_KEY invalid");
-  const iv = crypto.getRandomValues(new Uint8Array(12));
-  const key = await crypto.subtle.importKey("raw", keyRaw, "AES-GCM", false, ["encrypt"]);
-  const enc = new TextEncoder().encode(plaintext);
-  const cipher = await crypto.subtle.encrypt({ name: "AES-GCM", iv, tagLength: 128 }, key, enc);
-  const cipherBytes = new Uint8Array(cipher);
-  const tag = cipherBytes.slice(-16);
-  const data = cipherBytes.slice(0, -16);
-  const packed = new Uint8Array(12 + 16 + data.length);
-  packed.set(iv, 0);
-  packed.set(tag, 12);
-  packed.set(data, 28);
-  return base64url(packed);
+  return encryptTrialProvisionToken(env.ONBOARDING_TOKEN_ENCRYPTION_KEY, plaintext);
+}
+
+async function decryptToken(env: Env, packedToken: string): Promise<string> {
+  return decryptTrialProvisionToken(env.ONBOARDING_TOKEN_ENCRYPTION_KEY, packedToken);
 }
 
 async function takeGrant(env: Env, id: string): Promise<string | null> {
@@ -170,9 +192,13 @@ async function loadSession(env: Env, id: string): Promise<SessionRecord | null> 
   return JSON.parse(raw) as SessionRecord;
 }
 
-async function listAccounts(token: string): Promise<{ name: string }[]> {
+async function listAccounts(token: string): Promise<{ id: string; name: string }[]> {
   const res = await fetch(`${CF_API}/accounts`, { headers: { Authorization: `Bearer ${token}` } });
-  const body = (await res.json()) as { success?: boolean; result?: { name: string }[]; errors?: { message?: string }[] };
+  const body = (await res.json()) as {
+    success?: boolean;
+    result?: { id: string; name: string }[];
+    errors?: { message?: string }[];
+  };
   if (!body.success) throw new Error(body.errors?.[0]?.message ?? "アカウント一覧の取得に失敗しました");
   const accounts = body.result ?? [];
   if (!accounts.length) throw new Error("このトークンで利用できる Cloudflare アカウントがありません");
@@ -227,11 +253,23 @@ async function resolveApiToken(
   return manual;
 }
 
-async function startProveJob(env: Env, req: Request, apiToken: string): Promise<Response> {
-  if (!env.GITHUB_REPO?.trim() || !env.GH_DISPATCH_TOKEN?.trim()) {
-    throw new Error("お試しの開設ジョブが未設定です（ホスト運用の GitHub 連携）");
-  }
+async function patchSessionById(env: Env, sessionId: string, body: Partial<SessionRecord>): Promise<void> {
+  const session = await loadSession(env, sessionId);
+  if (!session) return;
+  Object.assign(session, body);
+  await saveSession(env, session);
+}
+
+async function startProveJob(
+  env: Env,
+  req: Request,
+  apiToken: string,
+): Promise<Response> {
   const accounts = await listAccounts(apiToken);
+  const accountId = accounts[0]?.id;
+  if (!accountId) throw new Error("Cloudflare アカウント ID を取得できませんでした");
+
+  const mode = provisionMode(env);
   const stackId = provisionStackId(env);
   const sessionId = randomHex(12);
   const session: SessionRecord = {
@@ -244,31 +282,246 @@ async function startProveJob(env: Env, req: Request, apiToken: string): Promise<
     consoleUrl: null,
     publicUrl: null,
     error: null,
+    runner: mode === "github" ? "github" : "queue",
     createdAt: Date.now(),
     updatedAt: Date.now(),
   };
   await saveSession(env, session);
 
-  const ciphertext = await encryptToken(env, apiToken);
-  const origin = requestOrigin(req);
-  await dispatchGithub(env, "onboarding-prove", {
-    sessionId,
-    stackId,
-    ciphertext,
-    callbackUrl: `${origin}/api/onboarding/internal/progress`,
-  });
-
-  await saveSession(env, { ...session, status: "running", step: "connect", message: "Cloudflare に接続しました" });
+  if (mode === "github") {
+    if (!env.GITHUB_REPO?.trim() || !env.GH_DISPATCH_TOKEN?.trim()) {
+      throw new Error("お試しの開設ジョブが未設定です（BASER_TRIAL_PROVISION_MODE=github）");
+    }
+    const ciphertext = await encryptToken(env, apiToken);
+    const origin = requestOrigin(req);
+    await dispatchGithub(env, "onboarding-prove", {
+      sessionId,
+      stackId,
+      ciphertext,
+      callbackUrl: `${origin}/api/onboarding/internal/progress`,
+    });
+    await saveSession(env, { ...session, status: "running", step: "connect", message: "Cloudflare に接続しました" });
+  } else {
+    const requestOriginValue = requestOrigin(req);
+    const encryptedApiToken = await encryptToken(env, apiToken);
+    try {
+      await env.TRIAL_PROVISION_QUEUE.send({
+        version: 1,
+        sessionId,
+        accountId,
+        requestOrigin: requestOriginValue,
+        encryptedApiToken,
+      });
+    } catch (error) {
+      await patchSessionById(env, sessionId, {
+        status: "failed",
+        step: "failed",
+        message: "開設ジョブを開始できませんでした",
+        error: error instanceof Error ? error.message : String(error),
+      });
+      throw error;
+    }
+  }
 
   return json(
     {
       sessionId,
       stackId,
       accountName: session.accountName,
-      status: "running",
+      status: mode === "github" ? "running" : "queued",
+      provisionMode: mode,
     },
-    201,
+    202,
   );
+}
+
+function queuedMessageSessionId(input: unknown): string | null {
+  if (!input || typeof input !== "object" || Array.isArray(input)) return null;
+  const sessionId = String((input as Record<string, unknown>).sessionId ?? "");
+  return /^[a-f0-9]{24}$/.test(sessionId) ? sessionId : null;
+}
+
+async function consumeTrialProvisionMessage(
+  message: Message<TrialProvisionQueueMessage>,
+  env: Env,
+): Promise<void> {
+  let body: TrialProvisionQueueMessage;
+  try {
+    body = parseTrialProvisionQueueMessage(message.body);
+  } catch (error) {
+    const sessionId = queuedMessageSessionId(message.body);
+    if (sessionId) {
+      await patchSessionById(env, sessionId, {
+        status: "failed",
+        step: "failed",
+        message: "開設ジョブの形式が正しくありません",
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+    console.error(JSON.stringify({
+      event: "trial_provision_queue_invalid",
+      messageId: message.id,
+      error: error instanceof Error ? error.message : String(error),
+    }));
+    message.ack();
+    return;
+  }
+
+  const session = await loadSession(env, body.sessionId);
+  if (!session || session.status === "succeeded" || session.status === "failed") {
+    message.ack();
+    return;
+  }
+
+  const currentCheckpoint = session.provisionState ?? undefined;
+  if (body.encryptedState !== currentCheckpoint) {
+    // A completed stage may have saved its checkpoint before enqueue failed,
+    // or an older at-least-once delivery may arrive later. Reconcile both to
+    // the single latest encrypted state instead of replaying a stale mutation.
+    if (currentCheckpoint) {
+      await env.TRIAL_PROVISION_QUEUE.send({
+        version: 1,
+        sessionId: body.sessionId,
+        accountId: body.accountId,
+        requestOrigin: body.requestOrigin,
+        encryptedApiToken: body.encryptedApiToken,
+        encryptedState: currentCheckpoint,
+      });
+    }
+    message.ack();
+    return;
+  }
+
+  try {
+    const apiToken = await decryptToken(env, body.encryptedApiToken);
+    if (provisionStrategy(env) === "release") {
+      const packedState = session.provisionState ?? body.encryptedState;
+      let provisionState: TrialProvisionReleaseState | undefined;
+      if (packedState) {
+        const parsed = JSON.parse(await decryptToken(env, packedState)) as unknown;
+        if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+          throw new Error("開設チェックポイントを復元できません");
+        }
+        provisionState = parsed as TrialProvisionReleaseState;
+      }
+      const currentProgress = trialProvisionStageProgress(provisionState?.stage ?? "prepare");
+      await patchSessionById(env, body.sessionId, {
+        status: "running",
+        step: currentProgress.step,
+        message: currentProgress.message ?? "",
+        error: null,
+      });
+      const result = await runTrialProvisionReleaseStep(
+        apiToken,
+        {
+          accountId: body.accountId,
+          releaseBaseUrl: trialReleaseBaseUrl(env, body.requestOrigin),
+          httpFetch: createTrialReleaseFetch(env.ASSETS, body.requestOrigin),
+        },
+        provisionState,
+      );
+      if (result.done) {
+        await patchSessionById(env, body.sessionId, {
+          status: "succeeded",
+          step: result.progress.step,
+          message: result.progress.message ?? "サイトの準備ができました",
+          consoleUrl: result.result.consoleUrl,
+          publicUrl: result.result.publicUrl,
+          error: null,
+          provisionState: null,
+        });
+      } else {
+        const nextProvisionState = await encryptToken(env, JSON.stringify(result.state));
+        const nextProgress =
+          result.state.stage === provisionState?.stage
+            ? result.progress
+            : trialProvisionStageProgress(result.state.stage);
+        // Persist before enqueue. If enqueue fails and this message is retried,
+        // the consumer resumes from the next checkpoint instead of repeating
+        // the completed Cloudflare mutation.
+        await patchSessionById(env, body.sessionId, {
+          status: "running",
+          step: nextProgress.step,
+          message: nextProgress.message ?? "",
+          error: null,
+          provisionState: nextProvisionState,
+        });
+        await env.TRIAL_PROVISION_QUEUE.send({
+          version: 1,
+          sessionId: body.sessionId,
+          accountId: body.accountId,
+          requestOrigin: body.requestOrigin,
+          encryptedApiToken: body.encryptedApiToken,
+          encryptedState: nextProvisionState,
+        });
+      }
+    } else {
+      await runCloudflareProvisionJob(
+        env,
+        apiToken,
+        body.accountId,
+        body.requestOrigin,
+        (patch) => patchSessionById(env, body.sessionId, patch),
+        createTrialReleaseFetch(env.ASSETS, body.requestOrigin),
+      );
+    }
+  } catch (error) {
+    const errorMessage = error instanceof Error ? error.message : String(error);
+    if (message.attempts < 3) {
+      await patchSessionById(env, body.sessionId, {
+        status: "running",
+        message: "開設処理を再試行しています…",
+        error: null,
+      }).catch(() => {});
+      console.warn(JSON.stringify({
+        event: "trial_provision_queue_retry",
+        messageId: message.id,
+        sessionId: body.sessionId,
+        attempt: message.attempts,
+        error: errorMessage,
+      }));
+      message.retry({ delaySeconds: 2 });
+      return;
+    }
+    await patchSessionById(env, body.sessionId, {
+      status: "failed",
+      step: "failed",
+      message: "開設に失敗しました",
+      error: errorMessage,
+    });
+    console.error(JSON.stringify({
+      event: "trial_provision_queue_failed",
+      messageId: message.id,
+      sessionId: body.sessionId,
+      attempt: message.attempts,
+      error: errorMessage,
+    }));
+  }
+  message.ack();
+}
+
+async function failStaleSession(env: Env, session: SessionRecord): Promise<SessionRecord> {
+  if (session.status === "succeeded" || session.status === "failed") return session;
+  const maxIdleMs =
+    session.runner === "queue"
+      ? QUEUED_SESSION_STALE_MS
+      : session.runner === "github"
+        ? 30 * 60 * 1000
+        : LEGACY_SESSION_STALE_MS;
+  if (Date.now() - session.updatedAt <= maxIdleMs) return session;
+
+  const legacy = !session.runner;
+  const failed: SessionRecord = {
+    ...session,
+    status: "failed",
+    step: "failed",
+    message: "開設処理が停止しました",
+    error: legacy
+      ? "旧方式のバックグラウンド処理が停止しました。もう一度開設を実行してください。"
+      : "開設処理の進捗が長時間更新されませんでした。もう一度開設を実行してください。",
+  };
+  await saveSession(env, failed);
+  return failed;
 }
 
 function oauthClientIdSuffix(env: Env): string | undefined {
@@ -297,9 +550,21 @@ async function handleApi(req: Request, env: Env, url: URL): Promise<Response> {
         oauthClientIdSuffix: oauthOn ? oauthClientIdSuffix(env) : undefined,
         oauthScopes: scopes,
         oauthScopeConfigError: oauthScopeConfigError ?? undefined,
+        trialProvisionMode: provisionMode(env),
+        trialProvisionStrategy: provisionStrategy(env),
       },
       ready && !oauthScopeConfigError ? 200 : 503,
     );
+  }
+
+  if (url.pathname.startsWith("/api/onboarding/trial-release/") && req.method === "GET") {
+    const suffix = url.pathname.slice("/api/onboarding/trial-release/".length);
+    const assetPath = `/trial-release/${suffix}`;
+    const assetReq = new Request(new URL(assetPath, url.origin), req);
+    const res = await env.ASSETS.fetch(assetReq);
+    const headers = new Headers(res.headers);
+    for (const [k, v] of Object.entries(corsHeaders())) headers.set(k, v);
+    return new Response(res.body, { status: res.status, headers });
   }
 
   if (url.pathname === "/api/onboarding/help") {
@@ -452,7 +717,8 @@ async function handleApi(req: Request, env: Env, url: URL): Promise<Response> {
 
   const sessionMatch = url.pathname.match(/^\/api\/onboarding\/sessions\/([a-f0-9]+)$/);
   if (sessionMatch && req.method === "GET") {
-    const session = await loadSession(env, sessionMatch[1]);
+    const loaded = await loadSession(env, sessionMatch[1]);
+    const session = loaded ? await failStaleSession(env, loaded) : null;
     if (!session) return json({ error: { message: "セッションが見つかりません" } }, 404);
     return json({
       id: session.id,
@@ -481,4 +747,9 @@ export default {
     }
     return env.ASSETS.fetch(req);
   },
-};
+  async queue(batch: MessageBatch<TrialProvisionQueueMessage>, env: Env): Promise<void> {
+    for (const message of batch.messages) {
+      await consumeTrialProvisionMessage(message, env);
+    }
+  },
+} satisfies ExportedHandler<Env, TrialProvisionQueueMessage>;

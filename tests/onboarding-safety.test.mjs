@@ -90,6 +90,12 @@ test("one-click deploy entry exists for Cloudflare deploy button", () => {
   assert.equal(typeof pkg.scripts?.deploy, "string");
 });
 
+test("trial release asset hashes change when upload metadata format changes", () => {
+  const packSource = readFileSync(join(root, "scripts/cloudflare/pack-trial-release.mjs"), "utf8");
+  assert.match(packSource, /ASSET_HASH_FORMAT_VERSION = "baser-edge-static-assets-v2"/);
+  assert.match(packSource, /\.update\(assetContentType\(manifestPath\)\)/);
+});
+
 test("onboarding token encryption roundtrip", () => {
   const prev = process.env.ONBOARDING_TOKEN_ENCRYPTION_KEY;
   process.env.ONBOARDING_TOKEN_ENCRYPTION_KEY = Buffer.alloc(32, 7).toString("base64");
@@ -101,4 +107,45 @@ test("onboarding token encryption roundtrip", () => {
     if (prev === undefined) delete process.env.ONBOARDING_TOKEN_ENCRYPTION_KEY;
     else process.env.ONBOARDING_TOKEN_ENCRYPTION_KEY = prev;
   }
+});
+
+test("hosted trial provisioning chains encrypted Queue checkpoints instead of one long invocation", () => {
+  const worker = readFileSync(join(root, "apps/onboarding-worker/src/index.ts"), "utf8");
+  const config = readFileSync(join(root, "wrangler.onboarding-host.jsonc"), "utf8");
+  const pkg = JSON.parse(readFileSync(join(root, "package.json"), "utf8"));
+  const help = JSON.parse(readFileSync(join(root, "scripts/onboarding/help.json"), "utf8"));
+  const web = readFileSync(join(root, "apps/onboarding-web/src/App.tsx"), "utf8");
+
+  assert.doesNotMatch(worker, /ctx\.waitUntil\(\s*runCloudflareProvisionJob/);
+  assert.ok((worker.match(/TRIAL_PROVISION_QUEUE\.send\(/g) ?? []).length >= 2);
+  assert.match(worker, /async queue\(batch:/);
+  assert.match(worker, /runTrialProvisionReleaseStep\(/);
+  assert.match(worker, /provisionState:\s*nextProvisionState/);
+  assert.match(config, /"queue":\s*"baser-edge-trial-provision"/);
+  assert.match(config, /"max_batch_size":\s*1/);
+  assert.match(config, /"max_retries":\s*2/);
+  assert.match(config, /"max_concurrency":\s*1/);
+  assert.match(worker, /body\.encryptedState !== currentCheckpoint/);
+  assert.match(worker, /encryptedState:\s*nextProvisionState/);
+  assert.match(worker, /trialProvisionStageProgress\(provisionState\?\.stage \?\? "prepare"\)/);
+  assert.match(worker, /trialProvisionStageProgress\(result\.state\.stage\)/);
+  assert.deepEqual(
+    help.steps.map(({ id }) => id),
+    [
+      "connect",
+      "provision",
+      "migrate",
+      "assets",
+      "deploy-public",
+      "deploy-api",
+      "secrets",
+      "bootstrap",
+      "finalize",
+      "succeeded",
+    ],
+  );
+  for (const { id, label } of help.steps) {
+    assert.match(web, new RegExp(`id: "${id}", label: "${label}"`));
+  }
+  assert.match(pkg.scripts["deploy:trial-host"], /ensure:trial-provision-queue/);
 });

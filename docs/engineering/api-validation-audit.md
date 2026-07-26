@@ -41,7 +41,8 @@ Living inventory of **existing** `/v1/*` routes against [validation-policy.md](.
 
 | Route | Methods | Domain | API | −T | Status | Notes |
 |-------|---------|--------|-----|-----|--------|-------|
-| `/v1/bootstrap` | POST | Y | Y | Partial | Partial | Prod gate; no hostname/slug rejection tests |
+| `/v1/bootstrap` | POST | Y | Y | Partial | Partial | Prod gate + provision secret; missing/wrong secret rejection tests; hostname rejection still pending |
+| `/v1/bootstrap/ready` | POST | N/A | N/A | Y | OK | Non-mutating provision-secret readiness probe; missing/wrong secret rejection + success tests |
 | `/v1/principals` | POST | Y | Y | Partial | Partial | Happy path in flows only |
 | `/v1/grants` | POST | Y | Partial | Gap | Gap | `scope` is opaque `isRecord`; capability string unchecked at API |
 | `/v1/delegations` | POST | Y | Y | Partial | Partial | |
@@ -202,3 +203,14 @@ Work in this order unless a feature touches a specific route.
 | Login / CSRF | auth API | Y | OK | `auth.test.mjs` + client retry |
 
 When adding a console form, add a row here and link the test file.
+
+---
+
+## Hosted onboarding (`apps/onboarding-worker`)
+
+This surface is outside `/v1/*`, but follows the same validation bar because it provisions external Cloudflare resources.
+
+| Route / surface | Methods | Domain | API | −T | Status | Notes |
+|-----------------|---------|--------|-----|-----|--------|-------|
+| `/api/onboarding/sessions` | POST | Y | Partial | Partial | Partial | OAuth grant or manual token; public mode rejects manual tokens |
+| `TRIAL_PROVISION_QUEUE` | Queue | Y | Y | Y | OK | `parseTrialProvisionQueueMessage`; encrypted token only; success + two rejection tests in `cf-trial-provision-parse.test.mjs` |

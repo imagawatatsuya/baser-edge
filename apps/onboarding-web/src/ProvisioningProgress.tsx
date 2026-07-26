@@ -4,9 +4,9 @@ type Step = { id: string; label: string };
 
 const WAITING_HINTS = [
   "バックグラウンドで作業を続けています。このページは開いたままで大丈夫です。",
-  "初回は 3〜5 分ほどかかることがあります。",
+  "通常は 3〜5 分、混雑時でも最大 15 分ほどです。",
   "通信が混み合っているときは、少し時間がかかる場合があります。",
-  "エラーが出ていなければ、処理は止まっていません。",
+  "進捗が長時間更新されない場合は、自動的にエラー表示へ切り替わります。",
 ];
 
 function formatElapsed(ms: number): string {
@@ -18,8 +18,14 @@ function formatElapsed(ms: number): string {
 }
 
 function resolveStepIndex(stepId: string, steps: Step[]): number {
-  if (stepId === "queued") return 0;
-  const i = steps.findIndex((s) => s.id === stepId);
+  const aliases: Record<string, string> = {
+    queued: "connect",
+    build: "assets",
+    deploy: "deploy-public",
+    verify: "finalize",
+  };
+  const resolved = aliases[stepId] ?? stepId;
+  const i = steps.findIndex((s) => s.id === resolved);
   if (i >= 0) return i;
   if (stepId === "succeeded") return steps.length - 1;
   return 0;
@@ -52,11 +58,10 @@ export function ProvisioningProgress({ steps, stepId, message, accountName, phas
 
   const activeIndex = resolveStepIndex(stepId, steps);
   const progressPct = useMemo(() => {
-    const total = steps.length;
-    const base = (activeIndex / total) * 100;
-    const bump = phase === "connecting" ? 4 : 8;
-    return Math.min(96, Math.max(8, base + bump));
-  }, [activeIndex, phase, steps.length]);
+    if (stepId === "succeeded") return 100;
+    const lastIndex = Math.max(1, steps.length - 1);
+    return Math.max(4, Math.round((activeIndex / lastIndex) * 100));
+  }, [activeIndex, stepId, steps.length]);
 
   const headline =
     phase === "connecting"

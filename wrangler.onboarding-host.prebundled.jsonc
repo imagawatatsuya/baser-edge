@@ -1,0 +1,50 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "baser-edge-trial-host",
+  "main": "deploy/_onboarding-host-bundle/index.js",
+  "no_bundle": true,
+  "compatibility_date": "2026-07-24",
+  "compatibility_flags": ["nodejs_compat"],
+  "assets": {
+    "directory": "./apps/onboarding-web/dist",
+    "binding": "ASSETS",
+    "not_found_handling": "single-page-application",
+    "html_handling": "auto-trailing-slash"
+  },
+  "kv_namespaces": [
+    {
+      "binding": "ONBOARDING_KV",
+      "id": "e9154e26df3640889a38501e2b3bf491"
+    }
+  ],
+  "queues": {
+    "producers": [
+      {
+        "binding": "TRIAL_PROVISION_QUEUE",
+        "queue": "baser-edge-trial-provision"
+      }
+    ],
+    "consumers": [
+      {
+        "queue": "baser-edge-trial-provision",
+        "max_batch_size": 1,
+        "max_batch_timeout": 1,
+        "max_retries": 2,
+        "max_concurrency": 1
+      }
+    ]
+  },
+  "observability": {
+    "enabled": true,
+    "head_sampling_rate": 1
+  },
+  "vars": {
+    "BASER_ONBOARDING_PUBLIC": "1",
+    "GITHUB_REPO": "imagawatatsuya/baser-edge",
+    "BASER_CF_OAUTH_SCOPES": "account-settings.read workers-scripts.write d1.write",
+    "BASER_ONBOARDING_PROVISION_STACK_ID": "trial",
+    "BASER_EDGE_OPS_PUBLIC_URL": "https://baser-edge-cloud-operations.papehiko.workers.dev/",
+    "BASER_TRIAL_PROVISION_MODE": "cloudflare",
+    "BASER_TRIAL_PROVISION_STRATEGY": "release"
+  }
+}

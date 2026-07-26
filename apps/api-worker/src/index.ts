@@ -198,18 +198,28 @@ export function createApiWorker(resolveCms: (env: Env) => CmsService = defaultRe
         }
         const authResponse = await handleAuthRoute(request, url, env, auth, readJson);
         if (authResponse) return withCors(authResponse);
+        if (request.method === "POST" && url.pathname === "/v1/bootstrap/ready") {
+          assertBootstrapAllowed(request, env);
+          return json({ ready: true });
+        }
         if (request.method === "POST" && url.pathname === "/v1/bootstrap") {
-          if (isProductionEnv(env) && env.BASER_ALLOW_BOOTSTRAP !== "true") {
-            throw new DomainError("BOOTSTRAP_DISABLED", "Bootstrap is disabled in production", 403);
-          }
+          assertBootstrapAllowed(request, env);
           const body = await readJson(request);
-          return json(await cms.bootstrap({
-            workspaceName: stringField(body, "workspaceName"),
-            siteName: stringField(body, "siteName"),
-            hostname: stringField(body, "hostname"),
-            ownerName: stringField(body, "ownerName"),
-            ...(typeof body.locale === "string" ? { locale: body.locale } : {}),
-          }), 201);
+          try {
+            return json(await cms.bootstrap({
+              workspaceName: stringField(body, "workspaceName"),
+              siteName: stringField(body, "siteName"),
+              hostname: stringField(body, "hostname"),
+              ownerName: stringField(body, "ownerName"),
+              ...(typeof body.locale === "string" ? { locale: body.locale } : {}),
+            }), 201);
+          } catch (error) {
+            if (error instanceof DomainError) throw error;
+            const cause = error instanceof Error ? error.message : String(error);
+            throw new DomainError("BOOTSTRAP_FAILED", "Bootstrap failed", 500, {
+              cause: cause.slice(0, 500),
+            });
+          }
         }
 
         const uploadMatch = url.pathname.match(/^\/v1\/assets\/uploads\/([^/]+)$/);
@@ -804,6 +814,18 @@ function createAuthService(env: Env, cms: CmsService): AuthService {
   });
 }
 
+function assertBootstrapAllowed(request: Request, env: Env): void {
+  if (isProductionEnv(env) && env.BASER_ALLOW_BOOTSTRAP !== "true") {
+    throw new DomainError("BOOTSTRAP_DISABLED", "Bootstrap is disabled in production", 403);
+  }
+  if (
+    env.BASER_BOOTSTRAP_SECRET
+    && request.headers.get("x-baser-bootstrap-secret") !== env.BASER_BOOTSTRAP_SECRET
+  ) {
+    throw new DomainError("BOOTSTRAP_SECRET_INVALID", "Bootstrap secret is invalid", 403);
+  }
+}
+
 function securityGateway(cms: CmsService) {
   return {
     authorize: cms.authorizeOperation.bind(cms),
@@ -934,7 +956,7 @@ function withCors(response: Response): Response {
   } else {
     headers.set("access-control-allow-origin", "*");
   }
-  headers.set("access-control-allow-headers", `content-type,x-baser-principal-id,x-baser-principal-type,x-baser-on-behalf-of,x-baser-delegation-id,x-request-id,${CSRF_HEADER}`);
+  headers.set("access-control-allow-headers", `content-type,x-baser-bootstrap-secret,x-baser-principal-id,x-baser-principal-type,x-baser-on-behalf-of,x-baser-delegation-id,x-request-id,${CSRF_HEADER}`);
   headers.set("access-control-allow-credentials", "true");
   headers.set("access-control-allow-methods", "GET,POST,PUT,DELETE,OPTIONS");
   return new Response(response.body, { status: response.status, statusText: response.statusText, headers });

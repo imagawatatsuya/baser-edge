@@ -37,7 +37,7 @@ Deploy ボタン URL（`OWNER` を差し替え）:
 3. Cloudflare でログイン・許可 → 進捗表示 → 管理画面へ
 4. **「管理をはじめる」**
 
-**裏側:** メンテナがホストする [onboarding Worker](../../apps/onboarding-worker/) が OAuth 後、GitHub Actions で `prove:cloudflare` 相当を実行します（`deploy/one-click` の Deploy ボタンは開発者向けフォールバック）。
+**裏側（暫定）:** メンテナがホストする [onboarding Worker](../../apps/onboarding-worker/) が OAuth 後、**メンテナの GitHub Actions** で `prove:cloudflare` 相当を実行します（[ADR-0023](adr/0023-trial-provision-without-github-actions.md) で **利用者 Cloudflare のみ**へ移行予定）。`deploy/one-click` の Deploy ボタンは開発者向けフォールバック（もともと利用者 CF のみ）。
 
 npm・手動 API トークンは不要です。
 

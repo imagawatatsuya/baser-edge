@@ -5,12 +5,14 @@ const LAST_SITE_KEY = "baser-edge-last-site";
 
 const DEFAULT_PROVISION_STEPS: { id: string; label: string }[] = [
   { id: "connect", label: "Cloudflare に接続" },
-  { id: "provision", label: "データベースの準備" },
-  { id: "build", label: "管理画面の準備" },
+  { id: "provision", label: "データベースの作成" },
   { id: "migrate", label: "データベース初期化" },
-  { id: "deploy", label: "サイトの公開" },
-  { id: "bootstrap", label: "サイト開設" },
-  { id: "verify", label: "管理画面の確認" },
+  { id: "assets", label: "管理画面ファイルの準備" },
+  { id: "deploy-public", label: "公開サイト Worker の配置" },
+  { id: "deploy-api", label: "管理 API Worker の配置" },
+  { id: "secrets", label: "認証情報の設定" },
+  { id: "bootstrap", label: "初期サイトの作成" },
+  { id: "finalize", label: "最終設定と動作確認" },
   { id: "succeeded", label: "完了" },
 ];
 
@@ -118,7 +120,7 @@ export function App() {
     }
     setSession({
       id: body.sessionId,
-      status: "running",
+      status: body.status ?? "queued",
       step: "connect",
       message: "接続しました…",
       accountName: body.accountName,
@@ -234,6 +236,28 @@ export function App() {
     }, 2000);
     return () => clearInterval(timer);
   }, [session?.id, session?.status]);
+
+  useEffect(() => {
+    if (
+      !session?.id ||
+      session.status === "succeeded" ||
+      session.status === "failed" ||
+      provisionStartedAt == null
+    ) {
+      return;
+    }
+    const remaining = Math.max(0, 16 * 60 * 1000 - (Date.now() - provisionStartedAt));
+    const timer = window.setTimeout(() => {
+      setSession((current) => current ? {
+        ...current,
+        status: "failed",
+        step: "failed",
+        message: "開設処理が停止しました",
+        error: "16分間で処理が完了しませんでした。もう一度開設を実行してください。",
+      } : current);
+    }, remaining);
+    return () => window.clearTimeout(timer);
+  }, [provisionStartedAt, session?.id, session?.status]);
 
   async function onStart() {
     setError("");

@@ -76,12 +76,14 @@
   ],
   "steps": [
     { "id": "connect", "label": "Cloudflare に接続" },
-    { "id": "provision", "label": "データベースの準備" },
-    { "id": "build", "label": "管理画面の準備" },
+    { "id": "provision", "label": "データベースの作成" },
     { "id": "migrate", "label": "データベース初期化" },
-    { "id": "deploy", "label": "サイトの公開" },
-    { "id": "bootstrap", "label": "サイト開設" },
-    { "id": "verify", "label": "管理画面の確認" },
+    { "id": "assets", "label": "管理画面ファイルの準備" },
+    { "id": "deploy-public", "label": "公開サイト Worker の配置" },
+    { "id": "deploy-api", "label": "管理 API Worker の配置" },
+    { "id": "secrets", "label": "認証情報の設定" },
+    { "id": "bootstrap", "label": "初期サイトの作成" },
+    { "id": "finalize", "label": "最終設定と動作確認" },
     { "id": "succeeded", "label": "完了" }
   ]
 }

@@ -53,6 +53,9 @@
       "path": "packages/cf-stack-destroy"
     },
     {
+      "path": "packages/cf-trial-provision"
+    },
+    {
       "path": "apps/api-worker"
     },
     {

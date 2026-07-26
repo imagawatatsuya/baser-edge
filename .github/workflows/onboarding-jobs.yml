@@ -1,4 +1,5 @@
 # Worker から起動。公式ホスト用 — fork 先で Secrets を設定する想定ではない。
+# prove: BASER_TRIAL_PROVISION_MODE=cloudflare（既定）では未使用。github モード時のみ。
 name: onboarding-jobs
 
 on:

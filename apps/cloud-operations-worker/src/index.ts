@@ -200,34 +200,46 @@ function html(title: string, body: string, status = 200, extra: Record<string, s
   });
 }
 
+function turnstileReady(env: Env): boolean {
+  return Boolean(env.TURNSTILE_SECRET_KEY?.trim() && env.TURNSTILE_SITE_KEY?.trim());
+}
+
 function landingPage(env: Env): Response {
   const siteKey = env.TURNSTILE_SITE_KEY?.trim() || "";
+  const ready = turnstileReady(env);
   const turnstileScript = siteKey
     ? `<script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>`
     : "";
   const widget = siteKey
     ? `<div class="cf-turnstile" data-sitekey="${siteKey}"></div>`
-  : `<p class="warn">Turnstile が未設定のため、本番では利用できません。</p>`;
+    : `<p class="warn">ボット確認（Turnstile）が未設定です。運営者に <code>TURNSTILE_SITE_KEY</code> と <code>TURNSTILE_SECRET_KEY</code> の設定を依頼してください。</p>`;
+  const submit = ready
+    ? `<p><button type="submit">Cloudflare で確認して削除する</button></p>`
+    : `<p><button type="button" disabled>削除を開始できません（Turnstile 未設定）</button></p>`;
 
   return html(
     "お試しサイトをやめる",
     `<p>baserEdge の<strong>お試し</strong>（Cloudflare 上の trial スタック）を削除します。管理画面と公開サイトは使えなくなり、<strong>復元できません</strong>。</p>
 <div class="warn">削除対象: お試し用 Worker・D1・（あれば）R2 のみ。他の Cloudflare リソースには触れません。</div>
+<p><strong>手順:</strong> 下のチェックを完了してからボタンを押してください（<code>/v1/teardown/oauth/start</code> を直接開かないでください）。</p>
 <form method="post" action="/v1/teardown/oauth/start">
   ${widget}
-  <p><button type="submit">Cloudflare で確認して削除する</button></p>
+  ${submit}
 </form>
 ${turnstileScript}`,
   );
 }
 
-async function verifyTurnstile(env: Env, token: string, ip: string): Promise<boolean> {
+async function verifyTurnstile(env: Env, token: string, ip: string): Promise<{ ok: boolean; reason?: string }> {
   const secret = env.TURNSTILE_SECRET_KEY?.trim();
-  if (!secret) return false;
+  const siteKey = env.TURNSTILE_SITE_KEY?.trim();
+  if (!secret || !siteKey) return { ok: false, reason: "not_configured" };
+  if (!token) return { ok: false, reason: "missing_token" };
   const form = new URLSearchParams({ secret, response: token, remoteip: ip });
   const res = await fetch("https://challenges.cloudflare.com/turnstile/v0/siteverify", { method: "POST", body: form });
-  const data = (await res.json()) as { success?: boolean };
-  return data.success === true;
+  const data = (await res.json()) as { success?: boolean; "error-codes"?: string[] };
+  if (data.success === true) return { ok: true };
+  return { ok: false, reason: data["error-codes"]?.join(",") || "siteverify_failed" };
 }
 
 async function parseTurnstileFromRequest(req: Request): Promise<string> {
@@ -264,10 +276,16 @@ async function handleOAuthStart(req: Request, env: Env): Promise<Response> {
   if (globalCap) return globalCap;
 
   const turnstile = await parseTurnstileFromRequest(req);
-  const ok = await verifyTurnstile(env, turnstile, clientIp(req));
-  if (!ok) {
-    logEvent("teardown.denied", { reason: "turnstile" });
-    return html("確認に失敗しました", `<p>ボット確認（Turnstile）に失敗しました。ページを再読み込みして再度お試しください。</p>`, 422);
+  const verified = await verifyTurnstile(env, turnstile, clientIp(req));
+  if (!verified.ok) {
+    logEvent("teardown.denied", { reason: "turnstile", detail: verified.reason });
+    const hint =
+      verified.reason === "not_configured"
+        ? "Turnstile が Worker に設定されていません（運営者向け）。"
+        : verified.reason === "missing_token"
+          ? "チェックボックスが表示されていないか、完了前に送信されました。<a href=\"/\">トップ</a>からやり直してください。"
+          : "ボット確認（Turnstile）に失敗しました。ページを再読み込みして再度お試しください。";
+    return html("確認に失敗しました", `<p>${hint}</p>`, 422);
   }
 
   const origin = requestOrigin(req);
@@ -417,15 +435,21 @@ async function handleFetch(req: Request, env: Env): Promise<Response> {
   if (url.pathname === "/health" && req.method === "GET") {
     const disabled = opsDisabled(env);
     return Response.json({
-      ok: !disabled && oauthConfigured(env),
+      ok: !disabled && oauthConfigured(env) && turnstileReady(env),
       service: "baser-edge-cloud-operations",
       disabled,
       dryRun: dryRun(env),
+      oauthConfigured: oauthConfigured(env),
+      turnstileConfigured: turnstileReady(env),
     });
   }
 
   if ((url.pathname === "/" || url.pathname === "/teardown") && req.method === "GET") {
     return landingPage(env);
+  }
+
+  if (url.pathname === "/v1/teardown/oauth/start" && req.method === "GET") {
+    return Response.redirect(`${requestOrigin(req)}/`, 302);
   }
 
   if (url.pathname === "/v1/teardown/oauth/start" && req.method === "POST") {

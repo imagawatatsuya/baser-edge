@@ -6,6 +6,93 @@ import { CmsService, MemoryCmsStore } from "@baser-edge/content-kernel";
 const cms = new CmsService(new MemoryCmsStore());
 const worker = createApiWorker(() => cms);
 
+test("bootstrap requires the provision secret when configured", async () => {
+  const localCms = new CmsService(new MemoryCmsStore());
+  const localWorker = createApiWorker(() => localCms);
+  const env = { BASER_BOOTSTRAP_SECRET: "trial-bootstrap-secret" };
+  const body = JSON.stringify({
+    workspaceName: "Secret",
+    siteName: "Secret Site",
+    hostname: "secret.test",
+    ownerName: "Owner",
+  });
+
+  for (const headers of [
+    { "content-type": "application/json" },
+    { "content-type": "application/json", "x-baser-bootstrap-secret": "wrong-secret" },
+  ]) {
+    const rejected = await localWorker.fetch(new Request("https://api.test/v1/bootstrap", {
+      method: "POST",
+      headers,
+      body,
+    }), env);
+    assert.equal(rejected.status, 403);
+    assert.equal((await rejected.json()).error.code, "BOOTSTRAP_SECRET_INVALID");
+  }
+
+  const accepted = await localWorker.fetch(new Request("https://api.test/v1/bootstrap", {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      "x-baser-bootstrap-secret": env.BASER_BOOTSTRAP_SECRET,
+    },
+    body,
+  }), env);
+  assert.equal(accepted.status, 201);
+});
+
+test("bootstrap readiness verifies the deployed provision secret without creating data", async () => {
+  const localCms = new CmsService(new MemoryCmsStore());
+  const localWorker = createApiWorker(() => localCms);
+  const env = { BASER_BOOTSTRAP_SECRET: "trial-bootstrap-secret" };
+
+  for (const headers of [
+    {},
+    { "x-baser-bootstrap-secret": "wrong-secret" },
+  ]) {
+    const rejected = await localWorker.fetch(new Request("https://api.test/v1/bootstrap/ready", {
+      method: "POST",
+      headers,
+    }), env);
+    assert.equal(rejected.status, 403);
+    assert.equal((await rejected.json()).error.code, "BOOTSTRAP_SECRET_INVALID");
+  }
+
+  const accepted = await localWorker.fetch(new Request("https://api.test/v1/bootstrap/ready", {
+    method: "POST",
+    headers: { "x-baser-bootstrap-secret": env.BASER_BOOTSTRAP_SECRET },
+  }), env);
+  assert.equal(accepted.status, 200);
+  assert.deepEqual(await accepted.json(), { ready: true });
+});
+
+test("authenticated bootstrap reports the bounded D1 cause to the provisioner", async () => {
+  class FailingBootstrapStore extends MemoryCmsStore {
+    async bootstrap() {
+      throw new Error("D1_ERROR: no such table: content_types");
+    }
+  }
+  const failingCms = new CmsService(new FailingBootstrapStore());
+  const localWorker = createApiWorker(() => failingCms);
+  const response = await localWorker.fetch(new Request("https://api.test/v1/bootstrap", {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      "x-baser-bootstrap-secret": "trial-bootstrap-secret",
+    },
+    body: JSON.stringify({
+      workspaceName: "Failure",
+      siteName: "Failure Site",
+      hostname: "failure.test",
+      ownerName: "Owner",
+    }),
+  }), { BASER_BOOTSTRAP_SECRET: "trial-bootstrap-secret" });
+  assert.equal(response.status, 500);
+  const error = (await response.json()).error;
+  assert.equal(error.code, "BOOTSTRAP_FAILED");
+  assert.equal(error.details.cause, "D1_ERROR: no such table: content_types");
+});
+
 test("API exposes bootstrap and authenticated page creation", async () => {
   const bootstrapResponse = await worker.fetch(new Request("https://api.test/v1/bootstrap", {
     method: "POST",

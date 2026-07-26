@@ -1,0 +1,1 @@
+This folder contains the built output assets for the worker "baser-edge-api-trial" generated at 2026-07-25T23:56:14.875Z.
