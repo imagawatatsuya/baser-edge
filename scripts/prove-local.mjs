@@ -6,6 +6,7 @@
 import { spawn, spawnSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { join } from "node:path";
+import { STACK_DEFAULT_API_PORT } from "./stack-port-utils.mjs";
 
 const repoRoot = join(fileURLToPath(new URL("..", import.meta.url)));
 const stackScript = join(repoRoot, "scripts", "serve-stack.mjs");
@@ -17,7 +18,24 @@ const child = spawn(process.execPath, [stackScript], {
   env: { ...process.env },
 });
 
-child.stdout?.on("data", (chunk) => process.stdout.write(chunk));
+let apiPort = Number(process.env.BASER_STACK_API_PORT ?? STACK_DEFAULT_API_PORT);
+let stackReady = false;
+
+function handleStackOutput(chunk) {
+  const text = chunk.toString();
+  const match = text.match(/BASER_STACK_READY api=(\d+) public=(\d+)/);
+  if (match) {
+    apiPort = Number(match[1]);
+    process.env.BASER_STACK_API_PORT = match[1];
+    process.env.BASER_STACK_PUBLIC_PORT = match[2];
+    stackReady = true;
+  }
+}
+
+child.stdout?.on("data", (chunk) => {
+  handleStackOutput(chunk);
+  process.stdout.write(chunk);
+});
 child.stderr?.on("data", (chunk) => process.stderr.write(chunk));
 
 function shutdown() {
@@ -38,11 +56,15 @@ for (const signal of ["SIGINT", "SIGTERM"]) {
 
 async function waitReady(timeoutMs = 180_000) {
   const deadline = Date.now() + timeoutMs;
-  const url = "http://127.0.0.1:8787/v1/auth/instant-entry";
   while (Date.now() < deadline) {
     if (child.exitCode !== null) {
       throw new Error(`serve-stack exited early (${child.exitCode})`);
     }
+    if (!stackReady) {
+      await new Promise((r) => setTimeout(r, 200));
+      continue;
+    }
+    const url = `http://127.0.0.1:${apiPort}/v1/auth/instant-entry`;
     try {
       const res = await fetch(url);
       if (res.ok) {
@@ -63,6 +85,7 @@ try {
     cwd: repoRoot,
     stdio: "inherit",
     encoding: "utf8",
+    env: { ...process.env },
   });
   if (smoke.status !== 0) {
     process.exitCode = smoke.status ?? 1;

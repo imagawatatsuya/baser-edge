@@ -1,6 +1,11 @@
 import { buildTestAuthenticationResponse } from "../packages/auth-kernel/dist/test-gateway.js";
 
-const entry = await (await fetch("http://localhost:8787/v1/auth/instant-entry")).json();
+const apiPort = Number(process.env.BASER_STACK_API_PORT ?? 8787);
+const publicPort = Number(process.env.BASER_STACK_PUBLIC_PORT ?? 8788);
+const API_BASE = `http://localhost:${apiPort}`;
+const PUBLIC_BASE = `http://localhost:${publicPort}`;
+
+const entry = await (await fetch(`${API_BASE}/v1/auth/instant-entry`)).json();
 if (!entry.available) {
   throw new Error("instant login not available — run npm run dev:stack or prove:local");
 }
@@ -23,7 +28,7 @@ function cookieHeader() {
 async function api(path, { method = "GET", body, csrf } = {}) {
   const headers = { "content-type": "application/json", cookie: cookieHeader() };
   if (csrf) headers["x-baser-csrf-token"] = csrf;
-  const response = await fetch(`http://localhost:8787${path}`, {
+  const response = await fetch(`${API_BASE}${path}`, {
     method,
     headers,
     body: body ? JSON.stringify(body) : undefined,
@@ -82,7 +87,7 @@ await api(`/v1/content/${contentItemId}/publish`, {
   body: { revisionId, approvalId: approval.id },
 });
 
-let publicUrl = `http://localhost:8788${article.route.path}?siteId=${encodeURIComponent(hint.siteId)}`;
+let publicUrl = `${PUBLIC_BASE}${article.route.path}?siteId=${encodeURIComponent(hint.siteId)}`;
 let page = await fetch(publicUrl);
 let html = await page.text();
 if (!page.ok || !html.includes("初めての記事")) {

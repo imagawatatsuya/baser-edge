@@ -37,7 +37,6 @@ import {
   actor,
 } from "@baser-edge/content-kernel";
 import {
-  createBlock,
   createEmptyDocument,
 } from "@baser-edge/structured-document";
 import { AgentOperations } from "@baser-edge/agent-tools";
@@ -78,7 +77,6 @@ import {
   SimpleWebAuthnGateway,
   TestWebAuthnGateway,
   memoryAuthStore,
-  CSRF_HEADER,
 } from "@baser-edge/auth-kernel";
 import { D1AuthStore } from "@baser-edge/cloudflare-adapters";
 import {
@@ -90,6 +88,8 @@ import {
   resolveActorContext,
 } from "./auth-routes.js";
 import { resolveConsoleCapabilities } from "./platform-capabilities.js";
+import { createCorsContext, applyCors } from "./http/cors.js";
+import { buildInitialHomepageBlocks } from "./initial-homepage-blocks.js";
 
 export interface Env {
   DB?: D1DatabaseLike;
@@ -141,9 +141,6 @@ export interface ApiWorkerOptions {
   resolveAuth?: (env: Env, cms: CmsService) => AuthService;
 }
 
-let activeCorsRequest: Request | undefined;
-let activeCorsEnv: Env | undefined;
-
 /** Map public /console/* URL to wrangler assets path (dist root is not under /console). */
 export function mapConsoleUrlToAssetPath(pathname: string): string | null {
   if (pathname === "/console") return "/";
@@ -173,10 +170,7 @@ export async function createInitialHomepage(
 
   const document = createEmptyDocument();
   const body = document.root.slots.body ??= [];
-  body.push(
-    createBlock("heading", { level: 1, text: input.siteName }),
-    createBlock("richText", { paragraphs: ["baserEdgeへようこそ。管理画面からこのページを編集できます。"] }),
-  );
+  body.push(...buildInitialHomepageBlocks(input.siteName));
   const page = await cms.createPage(owner, {
     siteId,
     parentId: null,
@@ -210,9 +204,18 @@ async function ensureTrialHomepage(cms: CmsService, env: Env): Promise<void> {
 export function createApiWorker(resolveCms: (env: Env) => CmsService = defaultResolver, options: ApiWorkerOptions = {}) {
   return {
     async fetch(request: Request, env: Env): Promise<Response> {
-      activeCorsRequest = request;
-      activeCorsEnv = env;
-      try {
+      const corsContext = createCorsContext(request, env.BASER_AUTH_ORIGIN);
+      const withCors = (response: Response) => applyCors(response, corsContext);
+      const json = (value: unknown, status = 200) =>
+        withCors(new Response(JSON.stringify(value), { status, headers: { "content-type": "application/json; charset=utf-8" } }));
+      const errorResponse = (error: unknown): Response => {
+        if (error instanceof DomainError) {
+          return json({ error: { code: error.code, message: error.message, details: error.details ?? {} } }, error.status);
+        }
+        console.error(error);
+        return json({ error: { code: "INTERNAL_ERROR", message: "Internal server error" } }, 500);
+      };
+
       if (request.method === "OPTIONS") return withCors(new Response(null, { status: 204 }));
       const url = new URL(request.url);
       if (request.method === "GET" && url.pathname === "/") {
@@ -857,10 +860,6 @@ export function createApiWorker(resolveCms: (env: Env) => CmsService = defaultRe
       } catch (error) {
         return errorResponse(error);
       }
-      } finally {
-        activeCorsRequest = undefined;
-        activeCorsEnv = undefined;
-      }
     },
   };
 }
@@ -1003,30 +1002,5 @@ function isPrincipalType(value: unknown): value is PrincipalType { return value 
 function isRisk(value: unknown): value is "low" | "medium" | "high" | "critical" { return value === "low" || value === "medium" || value === "high" || value === "critical"; }
 function isRecord(value: unknown): value is Record<string, unknown> { return Boolean(value) && typeof value === "object" && !Array.isArray(value); }
 function invalid(message: string): never { throw new DomainError("INVALID_REQUEST", message, 422); }
-
-function errorResponse(error: unknown): Response {
-  if (error instanceof DomainError) return json({ error: { code: error.code, message: error.message, details: error.details ?? {} } }, error.status);
-  console.error(error);
-  return json({ error: { code: "INTERNAL_ERROR", message: "Internal server error" } }, 500);
-}
-
-function json(value: unknown, status = 200): Response {
-  return withCors(new Response(JSON.stringify(value), { status, headers: { "content-type": "application/json; charset=utf-8" } }));
-}
-function withCors(response: Response): Response {
-  const headers = new Headers(response.headers);
-  const origin = activeCorsRequest?.headers.get("Origin");
-  const authOrigin = activeCorsEnv?.BASER_AUTH_ORIGIN;
-  if (origin && (/^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin) || (authOrigin && origin === authOrigin))) {
-    headers.set("access-control-allow-origin", origin);
-    headers.set("vary", "Origin");
-  } else {
-    headers.set("access-control-allow-origin", "*");
-  }
-  headers.set("access-control-allow-headers", `content-type,x-baser-bootstrap-secret,x-baser-principal-id,x-baser-principal-type,x-baser-on-behalf-of,x-baser-delegation-id,x-request-id,${CSRF_HEADER}`);
-  headers.set("access-control-allow-credentials", "true");
-  headers.set("access-control-allow-methods", "GET,POST,PUT,DELETE,OPTIONS");
-  return new Response(response.body, { status: response.status, statusText: response.statusText, headers });
-}
 
 export default createApiWorker();

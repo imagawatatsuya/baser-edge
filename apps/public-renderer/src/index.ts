@@ -20,6 +20,13 @@ import { CustomContentService, MemoryCustomContentStore, type CustomEntrySnapsho
 import { MailFormService, MemoryMailFormStore, TurnstileBotVerifier, UnavailableBotVerifier, type MailFormDefinition } from "@baser-edge/mail-form-kernel";
 import { MemoryThemeStore, ThemeService, type ResolvedThemePresentation } from "@baser-edge/theme-kernel";
 import { injectAdminViewBanner, shouldShowPublishedAdminBanner } from "./admin-view-banner.js";
+import {
+  createPublicAssetUrlResolver,
+  serveBuiltinAssetByRawId,
+  serveBuiltinAssetRequest,
+} from "./builtin-assets.js";
+
+const defaultPublicAssetUrl = createPublicAssetUrlResolver("/assets");
 
 export interface Env {
   DB?: D1DatabaseLike;
@@ -65,6 +72,8 @@ export function createPublicWorker(
       try {
         if (request.method !== "GET" && request.method !== "HEAD" && request.method !== "POST") return new Response("Method Not Allowed", { status: 405 });
         const url = new URL(request.url);
+        const builtinAssetResponse = serveBuiltinAssetRequest(request, url.pathname);
+        if (builtinAssetResponse) return builtinAssetResponse;
         const cms = resolveCms(env);
         const assets = options.resolveAssets?.(env, cms) ?? createAssetService(env);
         const blog = options.resolveBlog?.(env, cms) ?? createBlogService(env, cms);
@@ -73,7 +82,11 @@ export function createPublicWorker(
         const themes = options.resolveThemes?.(env, cms) ?? createThemeService(env, cms);
 
         const assetMatch = url.pathname.match(/^\/assets\/([^/]+)$/);
-        if (assetMatch?.[1]) return serveAsset(request, assets, assetMatch[1]);
+        if (assetMatch?.[1]) {
+          const builtinById = serveBuiltinAssetByRawId(request, assetMatch[1]);
+          if (builtinById) return builtinById;
+          return serveAsset(request, assets, assetMatch[1]);
+        }
 
         const previewMatch = url.pathname.match(/^\/_preview\/(.+)$/);
         if (previewMatch?.[1]) {
@@ -83,7 +96,7 @@ export function createPublicWorker(
           const theme = await themes.resolveRelease(resolved.session.themeRelease, resolved.session.siteId);
           const previewSite = await cms.store.getSite(resolved.session.siteId);
           let html = renderPage(resolved.revision.document, {
-            assetUrl: (assetId) => `/assets/${encodeURIComponent(assetId)}`,
+            assetUrl: createPublicAssetUrlResolver("/assets"),
             contentUrl: (contentId) => `/content/${encodeURIComponent(contentId)}`,
           }, { title, revision: resolved.revision, preview: true, theme, siteName: previewSite?.name ?? "" });
           html = injectAdminViewBanner(html, "draft", resolved.revision.id);
@@ -212,8 +225,9 @@ export function createPublicWorker(
         }
         const title = typeof snapshot.publishedRevision.fields.title === "string" ? snapshot.publishedRevision.fields.title : "";
         const assetBase = (env.ASSET_BASE_URL ?? "/assets").replace(/\/$/, "");
+        const assetUrl = createPublicAssetUrlResolver(assetBase);
         let html = renderPage(snapshot.publishedRevision.document, {
-          assetUrl: (assetId) => `${assetBase}/${encodeURIComponent(assetId)}`,
+          assetUrl,
           contentUrl: (contentId) => `/content/${encodeURIComponent(contentId)}`,
         }, { title, revision: snapshot.publishedRevision, theme: activeTheme, siteName });
         if (shouldShowPublishedAdminBanner(url)) {
@@ -283,8 +297,9 @@ async function renderBlogResponse(
   if (!collection || !snapshot.publishedRevision) return new Response("Not Found", { status: 404 });
   const list = await blog.listPublishedArticles(collectionId, { limit: collection.pageSize, offset: (page - 1) * collection.pageSize, ...(termIds.length ? { termIds } : {}) });
   const assetBase = "/assets";
+  const assetUrl = createPublicAssetUrlResolver(assetBase);
   const baseTitle = typeof snapshot.publishedRevision.fields.title === "string" ? snapshot.publishedRevision.fields.title : "Blog";
-  const intro = renderPage(snapshot.publishedRevision.document, { assetUrl: (assetId) => `${assetBase}/${encodeURIComponent(assetId)}`, contentUrl: (contentId) => `/content/${encodeURIComponent(contentId)}` }, { title: baseTitle, revision: snapshot.publishedRevision, theme, siteName });
+  const intro = renderPage(snapshot.publishedRevision.document, { assetUrl, contentUrl: (contentId) => `/content/${encodeURIComponent(contentId)}` }, { title: baseTitle, revision: snapshot.publishedRevision, theme, siteName });
   const cards = list.items.map(renderArticleCard).join("");
   const totalPages = Math.max(1, Math.ceil(list.total / list.limit));
   const pagination = totalPages > 1 ? `<nav aria-label="ページ送り">${Array.from({ length: totalPages }, (_, index) => { const number = index + 1; const href = new URL(url); href.searchParams.set("page", String(number)); return number === page ? `<strong aria-current="page">${number}</strong>` : `<a href="${escapeHtml(href.pathname + href.search)}">${number}</a>`; }).join(" ")}</nav>` : "";
@@ -345,7 +360,7 @@ async function renderCustomContentList(
     ...(Object.keys(filters).length ? { filters } : {}),
   });
   const title = typeof snapshot.publishedRevision.fields.title === "string" ? snapshot.publishedRevision.fields.title : schema.table.name;
-  const intro = renderPage(snapshot.publishedRevision.document, { assetUrl: (id) => `/assets/${encodeURIComponent(id)}`, contentUrl: (id) => `/content/${encodeURIComponent(id)}` }, { title, revision: snapshot.publishedRevision, theme, siteName });
+  const intro = renderPage(snapshot.publishedRevision.document, { assetUrl: defaultPublicAssetUrl, contentUrl: (id) => `/content/${encodeURIComponent(id)}` }, { title, revision: snapshot.publishedRevision, theme, siteName });
   const cards = list.items.map((entry) => renderCustomEntryCard(entry, schema, snapshot.route.path)).join("");
   const totalPages = Math.max(1, Math.ceil(list.total / list.limit));
   const pagination = totalPages > 1 ? `<nav aria-label="ページ送り">${Array.from({length:totalPages},(_,index)=>{const number=index+1;const href=new URL(url);href.searchParams.set("page",String(number));return number===page?`<strong aria-current="page">${number}</strong>`:`<a href="${escapeHtml(href.pathname+href.search)}">${number}</a>`;}).join(" ")}</nav>` : "";
@@ -366,7 +381,7 @@ function renderCustomEntryDetail(request:Request,snapshot:Awaited<ReturnType<Cms
   const html=renderShell({title,siteName,theme,bodyHtml:`<main class="bc-page"><nav><a href="${escapeHtml(snapshot.route.path)}">一覧へ戻る</a></nav><h1>${escapeHtml(title)}</h1><dl>${fields}</dl></main>`,bodyAttributes:{"data-theme-release":theme.release.id}});
   return new Response(request.method==="HEAD"?null:html,{headers:{"content-type":"text/html; charset=utf-8","cache-control":"public, max-age=60, s-maxage=1800","cache-tag":`site:${snapshot.item.siteId},content:${snapshot.item.id},custom-entry:${entry.entry.id},custom-entry-revision:${revision.id}`}});
 }
-function renderCustomValue(value:unknown,type:string):string{if(value===null||value===undefined)return"";if(type==="boolean")return value?"はい":"いいえ";if(type==="asset"&&typeof value==="string")return `<img src="/assets/${encodeURIComponent(value)}" alt="">`;if(type==="richtext"&&value&&typeof value==="object"){try{return extractBody(renderPage(value as never,{assetUrl:(id)=>`/assets/${encodeURIComponent(id)}`,contentUrl:(id)=>`/content/${encodeURIComponent(id)}`},{title:""}));}catch{return"";}}if(Array.isArray(value))return value.map((item)=>escapeHtml(String(item))).join(", ");return escapeHtml(String(value));}
+function renderCustomValue(value:unknown,type:string):string{if(value===null||value===undefined)return"";if(type==="boolean")return value?"はい":"いいえ";if(type==="asset"&&typeof value==="string")return `<img src="${escapeHtml(defaultPublicAssetUrl(value))}" alt="">`;if(type==="richtext"&&value&&typeof value==="object"){try{return extractBody(renderPage(value as never,{assetUrl:defaultPublicAssetUrl,contentUrl:(id)=>`/content/${encodeURIComponent(id)}`},{title:""}));}catch{return"";}}if(Array.isArray(value))return value.map((item)=>escapeHtml(String(item))).join(", ");return escapeHtml(String(value));}
 function displayValue(value:unknown):string{return value===null||value===undefined?"":Array.isArray(value)?value.join(", "):String(value);}
 function parseFilterValue(type:string,value:string):unknown{if(type==="integer"||type==="decimal")return Number(value);if(type==="boolean")return value==="true"||value==="1";return value;}
 
@@ -390,7 +405,7 @@ function renderMailForm(
   turnstileSiteKey?: string,
 ): Response {
   const revision=snapshot.publishedRevision!;const title=typeof revision.fields.title==="string"?revision.fields.title:schema.table.name;
-  const intro=extractBody(renderPage(revision.document,{assetUrl:(id)=>`/assets/${encodeURIComponent(id)}`,contentUrl:(id)=>`/content/${encodeURIComponent(id)}`},{title,revision,theme,siteName}));
+  const intro=extractBody(renderPage(revision.document,{assetUrl:defaultPublicAssetUrl,contentUrl:(id)=>`/content/${encodeURIComponent(id)}`},{title,revision,theme,siteName}));
   const fields=schema.fields.map(({definition,relation})=>renderMailField(definition,relation.labelOverride??definition.name,relation.required)).join("");
   const turnstile=form.turnstileRequired?(turnstileSiteKey?`<div class="cf-turnstile" data-sitekey="${escapeHtml(turnstileSiteKey)}"></div><script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>`:`<p class="configuration-warning">Turnstile site key is not configured.</p>`):"";
   const html=renderShell({title,siteName,theme,headHtml:`<style>${mailCss}</style>`,bodyHtml:`${intro}<main class="bc-page"><h1>${escapeHtml(title)}</h1><form method="post" action="${escapeHtml(snapshot.route.path.replace(/\/$/,"")+"/confirm")}">${fields}<label class="honeypot">ウェブサイト<input name="website" tabindex="-1" autocomplete="off"></label>${turnstile}<button type="submit">入力内容を確認する</button></form></main>`,bodyAttributes:{"data-theme-release":theme.release.id}});

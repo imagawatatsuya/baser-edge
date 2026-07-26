@@ -12,9 +12,18 @@ import { CustomContentService, MemoryCustomContentStore } from "@baser-edge/cust
 import { MailFormService, MemoryMailFormStore, MemoryMailSender } from "@baser-edge/mail-form-kernel";
 import { MemoryThemeStore, ThemeService } from "@baser-edge/theme-kernel";
 import { seedLocalStack } from "./local-stack-seed.mjs";
+import {
+  resolveStackPorts,
+  STACK_DEFAULT_API_PORT,
+  STACK_DEFAULT_PUBLIC_PORT,
+} from "./stack-port-utils.mjs";
 
 const consoleRoot = fileURLToPath(new URL("../apps/admin-web/dist/", import.meta.url));
 const adminMime = { ".html": "text/html; charset=utf-8", ".css": "text/css; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".svg": "image/svg+xml" };
+
+const { apiPort, publicPort, apiPreferred, publicPreferred } = await resolveStackPorts();
+const apiOrigin = `http://localhost:${apiPort}`;
+const publicOrigin = `http://localhost:${publicPort}`;
 
 const cms = new CmsService(new MemoryCmsStore());
 const security = {
@@ -43,28 +52,44 @@ const api = createApiWorker(() => cms, { resolveAssets: () => assets, resolvePre
 const publicWorker = createPublicWorker(() => cms, { resolveAssets: () => assets, resolvePreview: () => previews, resolveBlog: () => blog, resolveCustomContent: () => customContent, resolveMailForms: () => mailForms, resolveThemes: () => themes });
 
 const hint = await seedLocalStack({ cms, themes });
+hint.apiUrl = apiOrigin;
+hint.publicUrl = publicOrigin;
 let defaultSiteId = hint.siteId;
 const instantOwnerHint = {
   workspaceId: hint.workspaceId,
   ownerPrincipalId: hint.ownerPrincipalId,
   siteId: hint.siteId,
   siteName: "ローカルサイト",
-  publicUrl: "http://localhost:8788",
+  publicUrl: publicOrigin,
 };
 const apiEnv = {
-  PUBLIC_BASE_URL: "http://localhost:8787",
-  PREVIEW_BASE_URL: "http://localhost:8788",
+  PUBLIC_BASE_URL: apiOrigin,
+  PREVIEW_BASE_URL: publicOrigin,
   LOCAL_DEV_LOGIN_HINT: JSON.stringify(hint),
   BASER_INSTANT_LOGIN: "true",
   BASER_INSTANT_OWNER_HINT: JSON.stringify(instantOwnerHint),
-  BASER_AUTH_ORIGIN: "http://localhost:8787",
+  BASER_AUTH_ORIGIN: apiOrigin,
   BASER_BOOTSTRAP_SECRET: "local-dev-bootstrap-passkey",
 };
 
-console.log("管理画面: http://localhost:8787/console/ （「管理をはじめる」でログイン）");
+if (apiPort !== apiPreferred || publicPort !== publicPreferred) {
+  console.log(
+    `ローカルポート: API=${apiPort} 公開=${publicPort}（希望 ${apiPreferred}/${publicPreferred} は使用中のため空きを割り当て）`,
+  );
+}
+console.log(`管理画面: ${apiOrigin}/console/ （「管理をはじめる」でログイン）`);
+console.log(`公開サイト: ${publicOrigin}/home`);
 console.log("（/admin/* は廃止済み → /console/ へリダイレクト）");
 
-serve(8787, async (request) => {
+let serversListening = 0;
+function markStackReady() {
+  serversListening += 1;
+  if (serversListening === 2) {
+    console.log(`BASER_STACK_READY api=${apiPort} public=${publicPort}`);
+  }
+}
+
+serve(apiPort, async (request) => {
   const url = new URL(request.url);
   if (url.pathname === "/console" || url.pathname.startsWith("/console/")) {
     return serveConsoleApp(url.pathname);
@@ -76,12 +101,12 @@ serve(8787, async (request) => {
     return redirectLegacyAdmin(url);
   }
   return api.fetch(request, apiEnv);
-}, "API + Admin");
-serve(8788, async (request) => {
+}, "API + Admin", markStackReady);
+serve(publicPort, async (request) => {
   const url = new URL(request.url);
   const siteId = url.searchParams.get("siteId") ?? defaultSiteId;
   return publicWorker.fetch(request, siteId ? { SITE_ID: siteId } : {});
-}, "Public / Preview");
+}, "Public / Preview", markStackReady);
 
 function redirectLegacyAdmin(url) {
   const dest = new URL("/console/", url.origin);
@@ -110,7 +135,7 @@ async function serveConsoleApp(pathname) {
   }
 }
 
-function serve(port, handler, label) {
+function serve(port, handler, label, onListen) {
   createServer(async (incoming, outgoing) => {
     try {
       const chunks = [];
@@ -134,5 +159,8 @@ function serve(port, handler, label) {
       outgoing.statusCode = 500;
       outgoing.end(String(error));
     }
-  }).listen(port, () => console.log(`baserEdge ${label}: http://localhost:${port}`));
+  }).listen(port, () => {
+    console.log(`baserEdge ${label}: http://localhost:${port}`);
+    onListen();
+  });
 }

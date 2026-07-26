@@ -335,6 +335,12 @@ export function createDefaultComponentRegistry(): ComponentRegistry {
   return registry;
 }
 
+export const BUILTIN_STARTER_HOME_HERO_ASSET_ID = "builtin:starter-home-hero";
+
+export function isEmbeddedBuiltinAssetId(assetId: string): boolean {
+  return assetId === BUILTIN_STARTER_HOME_HERO_ASSET_ID;
+}
+
 export interface DocumentAssetReference {
   assetId: string;
   blockId: string;
@@ -347,7 +353,9 @@ export function collectAssetReferences(document: StructuredDocument): DocumentAs
   walk(document.root, undefined, undefined, (block) => {
     if (block.type === "image" || block.type === "imageText") {
       const assetId = block.props.assetId;
-      if (typeof assetId === "string" && assetId.length > 0) references.push({ assetId, blockId: block.id, fieldPath: "props.assetId", usage: "image" });
+      if (typeof assetId === "string" && assetId.length > 0 && !isEmbeddedBuiltinAssetId(assetId)) {
+        references.push({ assetId, blockId: block.id, fieldPath: "props.assetId", usage: "image" });
+      }
     } else if (block.type === "gallery") {
       const assetIds = block.props.assetIds;
       if (Array.isArray(assetIds)) assetIds.forEach((assetId, index) => {
@@ -355,7 +363,9 @@ export function collectAssetReferences(document: StructuredDocument): DocumentAs
       });
     } else if (block.type === "fileDownload") {
       const assetId = block.props.assetId;
-      if (typeof assetId === "string" && assetId.length > 0) references.push({ assetId, blockId: block.id, fieldPath: "props.assetId", usage: "download" });
+      if (typeof assetId === "string" && assetId.length > 0 && !isEmbeddedBuiltinAssetId(assetId)) {
+        references.push({ assetId, blockId: block.id, fieldPath: "props.assetId", usage: "download" });
+      }
     }
   });
   return references;
