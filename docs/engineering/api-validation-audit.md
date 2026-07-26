@@ -46,7 +46,7 @@ Living inventory of **existing** `/v1/*` routes against [validation-policy.md](.
 | `/v1/principals` | POST | Y | Y | Partial | Partial | Happy path in flows only |
 | `/v1/grants` | POST | Y | Y | Y | OK | Closed `scope` keys; unknown fields → 422 |
 | `/v1/delegations` | POST | Y | Y | Partial | Partial | |
-| `/v1/audit` | GET | Y | Partial | Partial | Partial | `workspaceId` query required but not format-validated |
+| `/v1/audit` | GET | Y | Y | Y | OK | `workspaceId` query uses `ws_` prefixed id validation |
 
 ---
 
@@ -79,7 +79,7 @@ Living inventory of **existing** `/v1/*` routes against [validation-policy.md](.
 | `/v1/sites/:siteId/pending-approvals` | GET | Y | — | Partial | Partial | Console approvals inbox |
 | `/v1/approvals/:id/decide` | POST | Y | Y | Partial | Partial | |
 | `/v1/content/:id/publish` | POST | Y | Y | Y | OK | Golden path |
-| `/v1/content/:id/agent-proposals` | POST | Y | Y | Gap | Partial | Operations array cast; few rejection tests |
+| `/v1/content/:id/agent-proposals` | POST | Y | Y | Y | OK | `blockOperationsField`; rejection tests in `api-worker.test.mjs` |
 | `/v1/content/:id/move-impact` | POST | Y | Y | Gap | Partial | |
 | `/v1/content/:id/move` | POST | Y | Y | Gap | Partial | `expectedTreeVersion` required; few conflict tests |
 | `/v1/content/:id/copy` | POST | Y | Y | Partial | Partial | `api-worker.test.mjs` happy path |
@@ -173,7 +173,7 @@ Public mail submit (renderer, not api-worker) — see `tests/mail-form.test.mjs`
 | `/v1/workspaces/:id/plugin-activations` | GET, POST | Y | Y | Partial | Partial | |
 | `/v1/plugin-activations/:id` | DELETE | Y | — | Partial | Partial | |
 | `/v1/workspaces/:id/plugin-admin-extensions` | GET | Y | — | Partial | Partial | |
-| `/v1/plugin-routes/:key/*` | GET, POST | Y | Partial | Gap | Gap | Proxy invoke; loose query/body |
+| `/v1/plugin-routes/:key/*` | GET, POST | Y | Partial | Y | OK | Trust boundary: activated plugin only; POST body must be object; `workspaceId`/`siteId` validated |
 
 ---
 
@@ -188,9 +188,9 @@ Work in this order unless a feature touches a specific route.
 | P1 | Tree conflicts | move, copy, trash, restore | Tests for wrong `expectedTreeVersion` → 409 | Done (`api-worker.test.mjs`) |
 | P1 | Grants scope | `POST /v1/grants` | Schema for `scope`; reject unknown keys | Done |
 | P1 | Mail deliver limit | `POST /v1/mail-notifications/deliver` | `numberField` + max cap | Done |
-| P2 | Workspace query IDs | Many `GET ?workspaceId=` | Validate ID format before store |
-| P2 | Plugin route proxy | `/v1/plugin-routes/*` | Document trust boundary; tighten optional body |
-| P2 | Agent proposals | `agent-proposals` | Validate operation shapes; rejection tests |
+| P2 | Workspace query IDs | Many `GET ?workspaceId=` | Validate ID format before store | Done (`parsePrefixedId`) |
+| P2 | Plugin route proxy | `/v1/plugin-routes/*` | Document trust boundary; tighten optional body | Done |
+| P2 | Agent proposals | `agent-proposals` | Validate operation shapes; rejection tests | Done |
 
 ---
 
