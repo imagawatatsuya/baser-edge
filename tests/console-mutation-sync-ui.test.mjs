@@ -44,6 +44,20 @@ test("useContentTree exposes context for child routes", () => {
   assert.match(hook, /invalidateContentTreeCache/);
 });
 
+test("siteViewSync invalidates content tree and media asset caches", () => {
+  const source = readAdmin("lib/siteViewSync.ts");
+  assert.match(source, /invalidateContentTreeCache/);
+  assert.match(source, /invalidateMediaAssetsCache/);
+});
+
+test("AssetPickerModal loads assets via shared workspace media cache", () => {
+  const modal = readAdmin("components/AssetPickerModal.tsx");
+  assert.match(modal, /useWorkspaceMediaAssets/);
+  const hook = readAdmin("hooks/useMediaAssets.ts");
+  assert.match(hook, /fetchWorkspaceMediaAssets/);
+  assert.match(hook, /invalidateMediaAssetsCache/);
+});
+
 test("contentTrash invalidates site content views after trash and restore", () => {
   const source = readAdmin("lib/contentTrash.ts");
   assert.match(source, /invalidateSiteContentViews/);

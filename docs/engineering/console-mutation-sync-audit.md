@@ -15,6 +15,7 @@ Update this table when adding or changing admin mutations.
 | Approvals | Approve / reject (+ publish) | inbox decide | `invalidateSiteContentViews` + `reload()` | API inbox test |
 | Media library | Upload | upload session | `MediaLayout` provider; upload page `reload()` | Static (media layout) |
 | Media library | Delete asset | `deleteAsset` | `useMediaAssetsContext().reload()` on library page | format-asset-delete; static |
+| Content editor | Pick image | — | `AssetPickerModal` → `useWorkspaceMediaAssets` (shared `mediaAssetsCache`) | Static |
 | Custom entries | Create entry | `POST …/entries` | `CustomEntriesLayout` + `reload()` before navigate | Static |
 | Custom entry editor | Save / publish / unpublish | custom-entry APIs | `setSnapshot` + `reloadEntries()` via context | Static; custom content kernel |
 | Plugins | Activate / deactivate | plugin-activations | `loadActivations()` after success | Static |
@@ -32,6 +33,7 @@ _No open P2 items._
 - `apps/admin-web/src/hooks/useContentTree.ts` — tree fetch cache; `ContentTreeProvider` for child routes
 - `apps/admin-web/src/hooks/useMediaAssets.ts` — `MediaAssetsProvider` on `MediaLayout`
 - `apps/admin-web/src/hooks/useCustomEntries.ts` — `CustomEntriesProvider` on `CustomEntriesLayout`
+- `apps/admin-web/src/lib/mediaAssetsCache.ts` — workspace asset list cache (media layout + asset picker)
 
 ## Regression tests
 
