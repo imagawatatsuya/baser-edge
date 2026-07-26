@@ -6,9 +6,10 @@ import { StatusMessage } from "../../components/ui/StatusMessage";
 import { useMediaAssets } from "../../hooks/useMediaAssets";
 import { assetLabel, deleteAsset, formatAssetDeleteError } from "../../lib/assets";
 import { canShowPublicImagePreview, publicAssetUrl } from "../../lib/assetUrl";
+import { resolvePublicSiteOrigin } from "../../lib/localDevUrls";
 
 function publicBaseFromSession(session: { publicUrl?: string } | null): string {
-  return session?.publicUrl ?? "http://localhost:8788";
+  return resolvePublicSiteOrigin(session);
 }
 
 export function MediaLibraryPage() {

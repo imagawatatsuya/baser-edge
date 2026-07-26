@@ -1,5 +1,6 @@
 import type { ApiError, ContentSnapshot, LocalLoginHint, SessionState } from "./types";
 import { buildTestAuthenticationResponse } from "./webauthn";
+import { cacheDevPublicUrl, devStackConsoleUrl } from "../lib/localDevUrls";
 
 const CSRF_HEADER = "x-baser-csrf-token";
 const SESSION_KEY = "baser-admin-session";
@@ -35,7 +36,7 @@ export function clearSession() {
 }
 
 const AUTH_REQUIRED_HINT =
-  "ログインが必要です。http://localhost:8787/console/ で npm run dev:stack を起動し、Passkey でログインしてください（スタック再起動後は毎回再ログイン）。";
+  `ログインが必要です。${devStackConsoleUrl()} で npm run dev:stack を起動し、Passkey でログインしてください（スタック再起動後は毎回再ログイン）。`;
 
 function authRequiredMessage(apiMessage?: string): string {
   if (apiMessage?.includes("valid session") || apiMessage?.includes("development principal")) {
@@ -109,7 +110,7 @@ export async function apiFetch<T>(path: string, options: RequestInit & { json?: 
       throw new Error(msg);
     }
     if (response.status === 404 && msg === "Route not found") {
-      throw new Error("APIルートが見つかりません。npm run dev:stack で起動し、http://localhost:8787/console/ を開いてください（dev:api のみでは不足です）。");
+      throw new Error(`APIルートが見つかりません。npm run dev:stack で起動し、${devStackConsoleUrl()} を開いてください（dev:api のみでは不足です）。`);
     }
     throw new Error(code ? `${code}: ${msg}` : msg);
   }
@@ -135,7 +136,7 @@ export async function logoutApi(): Promise<void> {
   }
 }
 
-export async function fetchInstantEntry(): Promise<{ available: boolean; siteName?: string; siteId?: string }> {
+export async function fetchInstantEntry(): Promise<{ available: boolean; siteName?: string; siteId?: string; publicUrl?: string }> {
   return apiFetch("/v1/auth/instant-entry");
 }
 
@@ -162,6 +163,7 @@ export async function loginInstant(): Promise<SessionState> {
     siteName: data.siteName,
     instantDemo: true,
   };
+  cacheDevPublicUrl(session.publicUrl);
   saveSession(session);
   const ok = await verifySession();
   if (!ok) throw new Error("セッションを確認できませんでした。");
@@ -202,9 +204,10 @@ export async function loginWithPasskey(hint: LocalLoginHint): Promise<SessionSta
   syncCsrfFromCookies();
   if (!readCsrf()) {
     throw new Error(
-      "ログイン応答の CSRF Cookie を取得できませんでした。http://localhost:8787/console/ を開き、dev:api 単体ではなく npm run dev:stack を使ってください。",
+      `ログイン応答の CSRF Cookie を取得できませんでした。${devStackConsoleUrl()} を開き、dev:api 単体ではなく npm run dev:stack を使ってください。`,
     );
   }
+  cacheDevPublicUrl(session.publicUrl);
   saveSession(session);
   const ok = await verifySession();
   if (!ok) throw new Error("ログインは完了しましたがセッションを確認できませんでした。ページを再読み込みして再度ログインしてください。");

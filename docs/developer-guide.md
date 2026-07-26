@@ -23,11 +23,15 @@ npm run check
 npm run dev:stack
 ```
 
-| URL | 用途 |
+起動ログの **管理画面** と **公開サイト** の URL を使います。8787 / 8788 が他プロセスで使用中の場合、空きポートへ自動でずれます（例: API `8789`、公開 `8791` → `http://localhost:8789/home`）。
+
+| 既定の希望ポート | 用途 |
 |---|---|
-| `http://localhost:8787/console/` | 管理画面 |
-| `http://localhost:8787` | API |
-| `http://localhost:8788` | 公開・プレビュー・アセット |
+| `8787`（API と同じポートの `/console/`） | 管理画面 |
+| `8787` | API |
+| `8788` | 公開・プレビュー・アセット |
+
+`npm run dev:console`（Vite）だけ使う場合は、直前に `dev:stack` を起動しておくと `.baser/stack-local-env.json` から API プロキシ先が自動で合います。手動指定は `BASER_STACK_API_PORT` / `BASER_STACK_PUBLIC_PORT`（希望の開始ポート）または `BASER_STACK_API_ORIGIN` です。
 
 自動のローカル実証は次のコマンドです。
 

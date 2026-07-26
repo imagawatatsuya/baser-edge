@@ -2,7 +2,7 @@ import { createServer } from "node:http";
 import { readFile } from "node:fs/promises";
 import { extname, join } from "node:path";
 import { fileURLToPath } from "node:url";
-import { createApiWorker } from "../apps/api-worker/dist/index.js";
+import { createApiWorker, createInitialHomepage } from "../apps/api-worker/dist/index.js";
 import { createPublicWorker } from "../apps/public-renderer/dist/index.js";
 import { CmsService, MemoryCmsStore } from "@baser-edge/content-kernel";
 import { AssetService, MemoryAssetMetadataStore, MemoryAssetObjectStore } from "@baser-edge/asset-kernel";
@@ -12,11 +12,8 @@ import { CustomContentService, MemoryCustomContentStore } from "@baser-edge/cust
 import { MailFormService, MemoryMailFormStore, MemoryMailSender } from "@baser-edge/mail-form-kernel";
 import { MemoryThemeStore, ThemeService } from "@baser-edge/theme-kernel";
 import { seedLocalStack } from "./local-stack-seed.mjs";
-import {
-  resolveStackPorts,
-  STACK_DEFAULT_API_PORT,
-  STACK_DEFAULT_PUBLIC_PORT,
-} from "./stack-port-utils.mjs";
+import { resolveStackPorts } from "./stack-port-utils.mjs";
+import { writeStackLocalEnv } from "./stack-local-env.mjs";
 
 const consoleRoot = fileURLToPath(new URL("../apps/admin-web/dist/", import.meta.url));
 const adminMime = { ".html": "text/html; charset=utf-8", ".css": "text/css; charset=utf-8", ".js": "text/javascript; charset=utf-8", ".svg": "image/svg+xml" };
@@ -52,6 +49,11 @@ const api = createApiWorker(() => cms, { resolveAssets: () => assets, resolvePre
 const publicWorker = createPublicWorker(() => cms, { resolveAssets: () => assets, resolvePreview: () => previews, resolveBlog: () => blog, resolveCustomContent: () => customContent, resolveMailForms: () => mailForms, resolveThemes: () => themes });
 
 const hint = await seedLocalStack({ cms, themes });
+await createInitialHomepage(cms, {
+  siteId: hint.siteId,
+  ownerPrincipalId: hint.ownerPrincipalId,
+  siteName: "ローカルサイト",
+});
 hint.apiUrl = apiOrigin;
 hint.publicUrl = publicOrigin;
 let defaultSiteId = hint.siteId;
@@ -85,6 +87,9 @@ let serversListening = 0;
 function markStackReady() {
   serversListening += 1;
   if (serversListening === 2) {
+    void writeStackLocalEnv({ apiPort, publicPort }).catch((error) => {
+      console.warn("stack-local-env の書き込みに失敗:", error);
+    });
     console.log(`BASER_STACK_READY api=${apiPort} public=${publicPort}`);
   }
 }

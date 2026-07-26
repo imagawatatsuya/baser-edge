@@ -112,6 +112,6 @@ function printPostDeploy(state) {
     console.log("\n初回のみ:");
     console.log("  推奨: npm run prove:cloudflare で自動実証");
   }
-  console.log("\n開発用ローカル:", "npm run dev:stack → http://localhost:8787/console/");
+  console.log("\n開発用ローカル:", "npm run dev:stack → 起動ログの管理画面 URL（/console/）");
   console.log("推奨シークレット例 (生成):", randomSecret());
 }

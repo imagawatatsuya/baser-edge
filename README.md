@@ -80,7 +80,7 @@ npm run check
 npm run dev:stack
 ```
 
-起動後に `http://localhost:8787/console/` を開きます。主要コマンド、ローカル構成、Cloudflareへの開発者向けデプロイは[開発者向けガイド](docs/developer-guide.md)にまとめています。
+起動後、ターミナルに表示される **管理画面 URL**（通常は `http://localhost:8787/console/`。8787/8788 が使用中なら別ポート）を開きます。公開サイトはログの `公開サイト:` 行（例: `http://localhost:8788/home`）を参照してください。主要コマンド、ローカル構成、Cloudflareへの開発者向けデプロイは[開発者向けガイド](docs/developer-guide.md)にまとめています。
 
 ## 製品の位置づけ
 

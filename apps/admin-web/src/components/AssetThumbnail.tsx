@@ -1,9 +1,10 @@
 import { useAuth } from "../auth/AuthProvider";
 import { canShowPublicImagePreview, publicAssetUrl } from "../lib/assetUrl";
+import { resolvePublicSiteOrigin } from "../lib/localDevUrls";
 
 export function AssetPreviewImage({ assetId, alt, className = "media-preview" }: { assetId: string; alt: string; className?: string }) {
   const { session } = useAuth();
-  const src = publicAssetUrl(session?.publicUrl ?? "http://localhost:8788", assetId);
+  const src = publicAssetUrl(resolvePublicSiteOrigin(session), assetId);
   return <img className={className} src={src} alt={alt || "アップロード済み画像"} loading="lazy" decoding="async" />;
 }
 
@@ -21,7 +22,7 @@ export function AssetThumbnail({
   className?: string;
 }) {
   const { session } = useAuth();
-  const publicBase = session?.publicUrl ?? "http://localhost:8788";
+  const publicBase = resolvePublicSiteOrigin(session);
   if (!canShowPublicImagePreview(mediaType, state)) {
     return <span className={`${className} asset-thumb-placeholder`} aria-hidden>—</span>;
   }

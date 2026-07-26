@@ -14,6 +14,7 @@ import {
   isAllowedImageMediaType,
   isPreviewableImageFile,
 } from "../../lib/imageUpload";
+import { resolvePublicSiteOrigin } from "../../lib/localDevUrls";
 
 type UploadSessionResponse = {
   uploadUrl: string;
@@ -23,7 +24,7 @@ type UploadSessionResponse = {
 type LastUploaded = Pick<AssetRow, "id" | "originalFilename" | "mediaType" | "state">;
 
 function publicBaseFromSession(session: { publicUrl?: string } | null): string {
-  return session?.publicUrl ?? "http://localhost:8788";
+  return resolvePublicSiteOrigin(session);
 }
 
 export function MediaUploadPage() {

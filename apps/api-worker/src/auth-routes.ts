@@ -115,6 +115,7 @@ export async function handleAuthRoute(
       available: true,
       siteName: hint.siteName ?? "マイサイト",
       siteId: hint.siteId,
+      publicUrl: hint.publicUrl ?? "",
     });
   }
   if (request.method === "POST" && url.pathname === "/v1/auth/instant-login") {

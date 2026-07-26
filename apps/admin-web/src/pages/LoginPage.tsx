@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { clearSession, fetchInstantEntry, getSession, loginInstant, loginWithPasskey, syncCsrfFromCookies, fetchLoginHint } from "../api/client";
+import { cacheDevPublicUrl } from "../lib/localDevUrls";
 import { useAuth } from "../auth/AuthProvider";
 
 export function LoginPage() {
@@ -16,6 +17,7 @@ export function LoginPage() {
       clearSession();
     }
     void fetchInstantEntry().then((entry) => {
+      if (entry.publicUrl) cacheDevPublicUrl(entry.publicUrl);
       if (entry.available && entry.siteName) {
         setInstant({ siteName: entry.siteName });
       }

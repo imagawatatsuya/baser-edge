@@ -23,7 +23,8 @@ _site/
 .dev.vars.*
 !.dev.vars.example
 
-# --- Env & secrets ---
+# --- Local dev stack (auto ports from serve-stack) ---
+.baser/
 .env
 .env.*
 !.env.example

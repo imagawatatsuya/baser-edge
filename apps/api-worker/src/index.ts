@@ -252,7 +252,7 @@ export function createApiWorker(resolveCms: (env: Env) => CmsService = defaultRe
             return json({
               error: {
                 code: "LOCAL_STACK_REQUIRED",
-                message: "ローカルログイン情報がありません。ルートで npm run dev:stack を起動し、http://localhost:8787/console/ を開いてください。",
+                message: "ローカルログイン情報がありません。ルートで npm run dev:stack を起動し、ログに表示された管理画面 URL（/console/）を開いてください。",
               },
             }, 503);
           }

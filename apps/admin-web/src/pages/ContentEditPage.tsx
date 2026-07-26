@@ -10,7 +10,7 @@ import { RevisionBadges } from "../components/ui/Badge";
 import { Button } from "../components/ui/Button";
 import { Field } from "../components/ui/Field";
 import { StatusMessage } from "../components/ui/StatusMessage";
-import type { BodyBlock } from "../lib/blocks";
+import { resolvePublicSiteOrigin } from "../lib/localDevUrls";
 import { isEditorDirty, readTitleAndBlocks, writeTitleAndBlocks } from "../lib/blocks";
 import { formatDateTime, parseDatetimeLocalValue, toDatetimeLocalValue } from "../lib/dates";
 import {
@@ -97,7 +97,7 @@ export function ContentEditPage() {
   function openLivePublic(data: ContentSnapshot) {
     if (!session?.siteId || !data.publishedRevision) return;
     const url = buildPublicLiveUrl(
-      session.publicUrl ?? "http://localhost:8788",
+      resolvePublicSiteOrigin(session),
       data.route.path,
       session.siteId,
       data.publishedRevision.id,
@@ -124,7 +124,7 @@ export function ContentEditPage() {
         method: "POST",
         json: {
           revisionId: current.workingRevision!.id,
-          previewBaseUrl: session.publicUrl ?? "http://localhost:8788",
+          previewBaseUrl: resolvePublicSiteOrigin(session),
         },
       });
       openNamedBrowserTab(result.previewUrl, PUBLIC_PREVIEW_TAB);
