@@ -1,16 +1,12 @@
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import { apiFetch, ensureStepUp, unpublishCustomEntry } from "../api/client";
 import { useAuth } from "../auth/AuthProvider";
+import type { CustomEntrySnapshot } from "../hooks/useCustomEntries";
+import { useCustomEntriesContext } from "../hooks/useCustomEntries";
 import { Button } from "../components/ui/Button";
 import { Field } from "../components/ui/Field";
 import { StatusMessage } from "../components/ui/StatusMessage";
-
-type EntrySnapshot = {
-  entry: { id: string; lockVersion: number; slug: string | null };
-  workingRevision: { id: string; values: Record<string, unknown> };
-  publishedRevision: { id: string } | null;
-};
 
 type SchemaField = { definition: { key: string; name: string; type: string }; required: boolean };
 
@@ -18,16 +14,12 @@ export function CustomContentEntriesPage() {
   const { definitionId = "" } = useParams();
   const { session } = useAuth();
   const navigate = useNavigate();
-  const [entries, setEntries] = useState<EntrySnapshot[]>([]);
+  const { entries, error, reload } = useCustomEntriesContext();
   const [status, setStatus] = useState("");
 
-  const reload = useCallback(async () => {
-    if (!definitionId) return;
-    const list = await apiFetch<EntrySnapshot[]>(`/v1/custom-contents/${encodeURIComponent(definitionId)}/entries`);
-    setEntries(list);
-  }, [definitionId]);
-
-  useEffect(() => { void reload().catch((e) => setStatus(String(e))); }, [reload]);
+  useEffect(() => {
+    if (error) setStatus(error);
+  }, [error]);
 
   async function createEntry() {
     if (!session) return;
@@ -70,7 +62,8 @@ export function CustomContentEntriesPage() {
 export function CustomEntryEditPage() {
   const { definitionId = "", entryId = "" } = useParams();
   const { session } = useAuth();
-  const [snapshot, setSnapshot] = useState<EntrySnapshot | null>(null);
+  const { reload: reloadEntries } = useCustomEntriesContext();
+  const [snapshot, setSnapshot] = useState<CustomEntrySnapshot | null>(null);
   const [schema, setSchema] = useState<SchemaField[]>([]);
   const [values, setValues] = useState<Record<string, string>>({});
   const [status, setStatus] = useState("");
@@ -79,7 +72,7 @@ export function CustomEntryEditPage() {
   useEffect(() => {
     if (!entryId || !definitionId) return;
     void (async () => {
-      const snap = await apiFetch<EntrySnapshot>(`/v1/custom-entries/${encodeURIComponent(entryId)}`);
+      const snap = await apiFetch<CustomEntrySnapshot>(`/v1/custom-entries/${encodeURIComponent(entryId)}`);
       setSnapshot(snap);
       const list = await apiFetch<{ definition: { id: string }; schema: { fields: SchemaField[] } }[]>(`/v1/sites/${session!.siteId}/custom-contents`);
       const def = list.find((d) => d.definition.id === definitionId);
@@ -106,8 +99,9 @@ export function CustomEntryEditPage() {
           changeSummary: "管理画面から編集",
         },
       });
-      const fresh = await apiFetch<EntrySnapshot>(`/v1/custom-entries/${encodeURIComponent(entryId)}`);
+      const fresh = await apiFetch<CustomEntrySnapshot>(`/v1/custom-entries/${encodeURIComponent(entryId)}`);
       setSnapshot(fresh);
+      await reloadEntries();
       setStatus("保存しました。");
     } catch (e) {
       setStatus(e instanceof Error ? e.message : String(e));
@@ -130,7 +124,7 @@ export function CustomEntryEditPage() {
           changeSummary: "公開前の保存",
         },
       });
-      const fresh = await apiFetch<EntrySnapshot>(`/v1/custom-entries/${encodeURIComponent(entryId)}`);
+      const fresh = await apiFetch<CustomEntrySnapshot>(`/v1/custom-entries/${encodeURIComponent(entryId)}`);
       const approval = await apiFetch<{ id: string }>(`/v1/custom-entries/${encodeURIComponent(entryId)}/approvals`, {
         method: "POST",
         json: { revisionId: fresh.workingRevision.id },
@@ -144,7 +138,8 @@ export function CustomEntryEditPage() {
         method: "POST",
         json: { revisionId: fresh.workingRevision.id, approvalId: approval.id },
       });
-      setSnapshot(await apiFetch<EntrySnapshot>(`/v1/custom-entries/${encodeURIComponent(entryId)}`));
+      setSnapshot(await apiFetch<CustomEntrySnapshot>(`/v1/custom-entries/${encodeURIComponent(entryId)}`));
+      await reloadEntries();
       setStatus("公開しました。");
     } catch (e) {
       setStatus(e instanceof Error ? e.message : String(e));
@@ -160,7 +155,8 @@ export function CustomEntryEditPage() {
     setStatus("公開を取り下げています…");
     try {
       await unpublishCustomEntry(entryId, session.credentialId);
-      setSnapshot(await apiFetch<EntrySnapshot>(`/v1/custom-entries/${encodeURIComponent(entryId)}`));
+      setSnapshot(await apiFetch<CustomEntrySnapshot>(`/v1/custom-entries/${encodeURIComponent(entryId)}`));
+      await reloadEntries();
       setStatus("公開を取り下げました。");
     } catch (e) {
       setStatus(e instanceof Error ? e.message : String(e));

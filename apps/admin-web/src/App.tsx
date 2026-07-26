@@ -31,6 +31,7 @@ import { ActivationsPage } from "./pages/ActivationsPage";
 import { PluginsPage } from "./pages/PluginsPage";
 
 import { CustomContentEntriesPage, CustomEntryEditPage } from "./pages/CustomEntryPages";
+import { CustomEntriesLayout } from "./pages/CustomEntriesLayout";
 
 export function App() {
 
@@ -79,9 +80,10 @@ export function App() {
 
           <Route path="custom" element={<CustomContentPage />} />
 
-          <Route path="custom/:definitionId/entries" element={<CustomContentEntriesPage />} />
-
-          <Route path="custom/:definitionId/entries/:entryId" element={<CustomEntryEditPage />} />
+          <Route path="custom/:definitionId/entries" element={<CustomEntriesLayout />}>
+            <Route index element={<CustomContentEntriesPage />} />
+            <Route path=":entryId" element={<CustomEntryEditPage />} />
+          </Route>
 
           <Route path="mail" element={<MailPage />} />
 

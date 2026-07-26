@@ -21,6 +21,19 @@ export function PluginsPage() {
 
   useEffect(() => {
     if (!session) return;
+    void loadActivations();
+  }, [session]);
+
+  async function loadActivations() {
+    if (!session) return;
+    const list = await apiFetch<ActivationRow[]>(
+      `/v1/workspaces/${session.workspaceId}/plugin-activations?siteId=${session.siteId}`,
+    );
+    setActivations(list);
+  }
+
+  useEffect(() => {
+    if (!session) return;
     void apiFetch<PluginRow[]>(`/v1/workspaces/${session.workspaceId}/plugins`)
       .then((list) => { setPlugins(list); if (list[0]) setPluginId(list[0].id); })
       .catch((e) => setStatus(e instanceof Error ? e.message : String(e)));
@@ -30,13 +43,6 @@ export function PluginsPage() {
     if (!session || !pluginId) return;
     void apiFetch<ReleaseRow[]>(`/v1/plugins/${pluginId}/releases`).then(setReleases).catch(() => setReleases([]));
   }, [session, pluginId]);
-
-  useEffect(() => {
-    if (!session) return;
-    void apiFetch<ActivationRow[]>(`/v1/workspaces/${session.workspaceId}/plugin-activations?siteId=${session.siteId}`)
-      .then(setActivations)
-      .catch(() => setActivations([]));
-  }, [session]);
 
   async function activate(release: ReleaseRow) {
     if (!session) return;
@@ -53,6 +59,7 @@ export function PluginsPage() {
           allowedHosts: [],
         },
       });
+      await loadActivations();
       setStatus("有効化しました。");
     } catch (e) {
       setStatus(e instanceof Error ? e.message : String(e));
@@ -65,8 +72,7 @@ export function PluginsPage() {
     setStatus("無効化中…");
     try {
       await apiFetch(`/v1/plugin-activations/${encodeURIComponent(activationId)}`, { method: "DELETE" });
-      const list = await apiFetch<ActivationRow[]>(`/v1/workspaces/${session.workspaceId}/plugin-activations?siteId=${session.siteId}`);
-      setActivations(list);
+      await loadActivations();
       setStatus("無効化しました。");
     } catch (e) {
       setStatus(e instanceof Error ? e.message : String(e));

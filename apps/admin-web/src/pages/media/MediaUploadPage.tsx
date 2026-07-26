@@ -4,7 +4,7 @@ import { apiFetch } from "../../api/client";
 import { AssetThumbnail } from "../../components/AssetThumbnail";
 import { Field } from "../../components/ui/Field";
 import { StatusMessage } from "../../components/ui/StatusMessage";
-import { useMediaAssets } from "../../hooks/useMediaAssets";
+import { useMediaAssetsContext } from "../../hooks/useMediaAssets";
 import type { AssetRow } from "../../lib/assets";
 import { assetLabel } from "../../lib/assets";
 import { canShowPublicImagePreview, publicAssetUrl } from "../../lib/assetUrl";
@@ -28,7 +28,7 @@ function publicBaseFromSession(session: { publicUrl?: string } | null): string {
 }
 
 export function MediaUploadPage() {
-  const { session, reload } = useMediaAssets();
+  const { session, reload } = useMediaAssetsContext();
   const [file, setFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [status, setStatus] = useState("");

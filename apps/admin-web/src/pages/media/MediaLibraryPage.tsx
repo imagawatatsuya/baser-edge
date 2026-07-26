@@ -3,7 +3,7 @@ import { Link, useSearchParams } from "react-router-dom";
 import { AssetThumbnail } from "../../components/AssetThumbnail";
 import { Button } from "../../components/ui/Button";
 import { StatusMessage } from "../../components/ui/StatusMessage";
-import { useMediaAssets } from "../../hooks/useMediaAssets";
+import { useMediaAssetsContext } from "../../hooks/useMediaAssets";
 import { assetLabel, deleteAsset, formatAssetDeleteError } from "../../lib/assets";
 import { canShowPublicImagePreview, publicAssetUrl } from "../../lib/assetUrl";
 import { resolvePublicSiteOrigin } from "../../lib/localDevUrls";
@@ -13,7 +13,7 @@ function publicBaseFromSession(session: { publicUrl?: string } | null): string {
 }
 
 export function MediaLibraryPage() {
-  const { assets, error, session, reload } = useMediaAssets();
+  const { assets, error, session, reload } = useMediaAssetsContext();
   const [searchParams] = useSearchParams();
   const [status, setStatus] = useState("");
   const [deletingId, setDeletingId] = useState<string | null>(null);
