@@ -18,14 +18,23 @@ export function setContentEditorCache(contentId: string, payload: CachedEditorPa
 }
 
 export function invalidateContentEditorCache(contentId?: string) {
-  if (contentId) snapshotById.delete(contentId);
-  else snapshotById.clear();
+  if (contentId) {
+    snapshotById.delete(contentId);
+    inflightById.delete(contentId);
+  } else {
+    snapshotById.clear();
+    inflightById.clear();
+  }
 }
 
 export async function fetchContentEditorPayload(
   contentId: string,
-  options?: { isArticle?: boolean },
+  options?: { isArticle?: boolean; fresh?: boolean },
 ): Promise<CachedEditorPayload> {
+  if (options?.fresh) {
+    invalidateContentEditorCache(contentId);
+  }
+
   const inflight = inflightById.get(contentId);
   if (inflight) return inflight;
 

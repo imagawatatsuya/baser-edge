@@ -280,7 +280,7 @@ export async function publishContent(contentItemId: string, snapshot: { workingR
     method: "POST",
     json: { decision: "approved", comment: "管理画面から承認" },
   });
-  return apiFetch(`/v1/content/${encodeURIComponent(contentItemId)}/publish`, {
+  return apiFetch<ContentSnapshot>(`/v1/content/${encodeURIComponent(contentItemId)}/publish`, {
     method: "POST",
     json: { revisionId, approvalId: approval.id },
   });

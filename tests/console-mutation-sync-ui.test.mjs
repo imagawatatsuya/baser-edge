@@ -91,6 +91,8 @@ test("contentTrash invalidates site content views after trash and restore", () =
 
 test("ContentEditPage reloads content tree after save, publish, and unpublish", () => {
   const source = readAdmin("pages/ContentEditPage.tsx");
+  assert.match(source, /syncEditorFromSnapshot\(publishedSnap\)/);
+  assert.match(source, /syncEditorFromSnapshot\(unpublished\)/);
   assert.match(source, /await reloadContentTree\(\)/);
   const saveFn = source.indexOf("async function onSave()");
   const publishFn = source.indexOf("async function onPublish()");
@@ -98,6 +100,13 @@ test("ContentEditPage reloads content tree after save, publish, and unpublish", 
   assert.ok(source.indexOf("await reloadContentTree()", saveFn) > saveFn && source.indexOf("await reloadContentTree()", saveFn) < publishFn);
   assert.ok(source.indexOf("await reloadContentTree()", publishFn) > publishFn && source.indexOf("await reloadContentTree()", publishFn) < unpublishFn);
   assert.ok(source.indexOf("await reloadContentTree()", unpublishFn) > unpublishFn);
+  assert.doesNotMatch(source, /entries\.find/);
+});
+
+test("contentSnapshotCache invalidation clears inflight editor fetches", () => {
+  const source = readAdmin("lib/contentSnapshotCache.ts");
+  assert.match(source, /inflightById\.delete/);
+  assert.match(source, /fresh\?: boolean/);
 });
 
 test("ContentEditPage reloads content tree after article-meta PATCH", () => {

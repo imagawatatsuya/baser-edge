@@ -10,7 +10,7 @@ Update this table when adding or changing admin mutations.
 | Content tree | Move / reorder / copy | `treeMove`, `TreeModals` | `reload()` | Kernel / API worker |
 | Content tree | Trash (tree menu) | `trashContent` | `reload()` + `invalidateSiteContentViews` | Static + golden path |
 | Content tree | Trash (editor) | `trashContent` | `reloadContentTree()` + invalidate | Static |
-| Content tree | Save / publish / unpublish (editor) | revisions, `publishContent` | `reloadContentTree()` + invalidate on trash/restore | Static (editor) |
+| Content tree | Save / publish / unpublish (editor) | revisions, `publishContent` | API 応答で `syncEditorFromSnapshot` + `reloadContentTree()` | Static (editor) |
 | Content tree | Article postedAt (editor blur) | `PATCH …/article-meta` | 変更時のみ `reloadContentTree()` | Static (editor) |
 | Trash page | Restore | `restoreContent` | `reload()` trash list + `invalidateSiteContentViews` | Golden path restore; static |
 | Approvals | Approve / reject (+ publish) | inbox decide | `invalidateSiteContentViews` + `reload()` | API inbox test |
@@ -33,7 +33,7 @@ _No open P2 items._
 - `apps/admin-web/src/lib/siteViewSync.ts` — `invalidateSiteContentViews()` (tree + media; not used for editor-only tree reload)
 - `apps/admin-web/src/lib/contentTrash.ts` — trash/restore + invalidate
 - `apps/admin-web/src/hooks/useContentTree.ts` — tree fetch cache; `ContentTreeProvider` for child routes
-- `apps/admin-web/src/hooks/useMediaAssets.ts` — `MediaAssetsProvider` on `MediaLayout`
+- `apps/admin-web/src/lib/contentSnapshotCache.ts` — per-content editor snapshot cache (invalidate clears inflight; use `fresh` after mutations)
 - `apps/admin-web/src/hooks/useCustomEntries.ts` — `CustomEntriesProvider` on `CustomEntriesLayout`
 - `apps/admin-web/src/lib/mediaAssetsCache.ts` — workspace asset list cache (media layout + asset picker)
 

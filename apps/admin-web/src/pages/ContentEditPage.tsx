@@ -24,8 +24,8 @@ import { trashContent } from "../lib/contentTrash";
 import { useContentTreeContext } from "../hooks/useContentTree";
 import {
   fetchContentEditorPayload,
-  invalidateContentEditorCache,
   peekContentEditorCache,
+  setContentEditorCache,
 } from "../lib/contentSnapshotCache";
 
 function applyEditorPayload(
@@ -57,7 +57,7 @@ function applyEditorPayload(
 export function ContentEditPage() {
   const { contentId = "" } = useParams();
   const navigate = useNavigate();
-  const { reload: reloadContentTree, entries } = useContentTreeContext();
+  const { reload: reloadContentTree } = useContentTreeContext();
   const { session } = useAuth();
   const [snapshot, setSnapshot] = useState<ContentSnapshot | null>(null);
   const [title, setTitle] = useState("");
@@ -68,10 +68,10 @@ export function ContentEditPage() {
   const [articleMeta, setArticleMeta] = useState<ArticleMeta | null>(null);
   const [postedAtLocal, setPostedAtLocal] = useState("");
 
-  const load = useCallback(async (options?: { silent?: boolean }): Promise<ContentSnapshot | null> => {
+  const load = useCallback(async (options?: { silent?: boolean; fresh?: boolean }): Promise<ContentSnapshot | null> => {
     if (!session || !contentId) return null;
     const setters = { setSnapshot, setArticleMeta, setPostedAtLocal, setTitle, setBlocks };
-    const cached = peekContentEditorCache(contentId);
+    const cached = options?.fresh ? null : peekContentEditorCache(contentId);
     if (cached && !options?.silent) {
       applyEditorPayload(cached, setters);
       setStatus("");
@@ -79,10 +79,11 @@ export function ContentEditPage() {
       setStatus("読み込み中…");
     }
     try {
-      const treeEntry = entries.find((e) => e.snapshot.item.id === contentId);
-      const isArticle = treeEntry?.snapshot.item.contentTypeKey === "article";
+      const typeHint = cached?.snapshot.item.contentTypeKey ?? peekContentEditorCache(contentId)?.snapshot.item.contentTypeKey;
+      const isArticle = typeHint === "article" ? true : typeHint === "page" ? false : undefined;
       const payload = await fetchContentEditorPayload(contentId, {
-        isArticle: isArticle === true ? true : isArticle === false ? false : undefined,
+        isArticle,
+        fresh: options?.fresh,
       });
       applyEditorPayload(payload, setters);
       setStatus("");
@@ -91,17 +92,15 @@ export function ContentEditPage() {
       setStatus(error instanceof Error ? error.message : String(error));
       return null;
     }
-  }, [session, contentId, entries]);
+  }, [session, contentId]);
+
+  function syncEditorFromSnapshot(next: ContentSnapshot, meta: ArticleMeta | null = articleMeta) {
+    const payload = { snapshot: next, articleMeta: meta };
+    applyEditorPayload(payload, { setSnapshot, setArticleMeta, setPostedAtLocal, setTitle, setBlocks });
+    setContentEditorCache(contentId, payload);
+  }
 
   useEffect(() => { void load(); }, [load]);
-
-  useEffect(() => {
-    if (!contentId) return;
-    const cached = peekContentEditorCache(contentId);
-    if (cached) {
-      applyEditorPayload(cached, { setSnapshot, setArticleMeta, setPostedAtLocal, setTitle, setBlocks });
-    }
-  }, [contentId]);
 
   async function commitEditorState(changeSummary: string): Promise<ContentSnapshot | null> {
     if (!session || !snapshot?.workingRevision) return null;
@@ -116,7 +115,7 @@ export function ContentEditPage() {
         changeSummary,
       },
     });
-    return load({ silent: true });
+    return load({ silent: true, fresh: true });
   }
 
   async function onSave() {
@@ -181,9 +180,8 @@ export function ContentEditPage() {
         await commitEditorState("管理画面から編集（公開前）");
       }
       const fresh = await apiFetch<ContentSnapshot>(`/v1/content/${encodeURIComponent(contentId)}`);
-      await publishContent(contentId, fresh, session.credentialId);
-      invalidateContentEditorCache(contentId);
-      await load({ silent: true });
+      const publishedSnap = await publishContent(contentId, fresh, session.credentialId);
+      syncEditorFromSnapshot(publishedSnap);
       await reloadContentTree();
       setStatus("公開しました。");
     } catch (error) {
@@ -216,8 +214,8 @@ export function ContentEditPage() {
     setBusy(true);
     setStatus("公開を取り下げています…");
     try {
-      await unpublishContent(contentId, session.credentialId);
-      await load();
+      const unpublished = await unpublishContent(contentId, session.credentialId);
+      syncEditorFromSnapshot(unpublished);
       await reloadContentTree();
       setStatus("公開を取り下げました。下書きは編集画面に残っています。");
     } catch (error) {
