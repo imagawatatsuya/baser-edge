@@ -44,6 +44,18 @@ test("useContentTree exposes context for child routes", () => {
   assert.match(hook, /invalidateContentTreeCache/);
 });
 
+test("useContentTree reload invalidates tree cache only, not siteViewSync", () => {
+  const hook = readAdmin("hooks/useContentTree.ts");
+  assert.match(hook, /invalidateContentTreeCache/);
+  assert.doesNotMatch(hook, /invalidateSiteContentViews/);
+});
+
+test("MailPage exposes manual submission reload", () => {
+  const source = readAdmin("pages/MailPage.tsx");
+  assert.match(source, /reloadSubmissions/);
+  assert.match(source, /更新/);
+});
+
 test("siteViewSync invalidates content tree and media asset caches", () => {
   const source = readAdmin("lib/siteViewSync.ts");
   assert.match(source, /invalidateContentTreeCache/);

@@ -15,6 +15,7 @@ Principle: **read-your-writes** — after a successful write (POST/PATCH/DELETE)
 3. **Prefer pessimistic refetch** unless the patch is trivial and local; optimistic updates must reconcile on API error.
 4. **Navigation alone is not sync** — `navigate()` without reloading shared state leaves split layouts (tree + editor) stale.
 5. **Logout / site switch** — clear client caches scoped by site/workspace (`contentTreeCache.ts`, `mediaAssetsCache.ts` via `invalidateSiteContentViews()`).
+6. **Editor tree reload** — `useContentTree().reload({ force: true })` invalidates only the content tree cache; do not call `invalidateSiteContentViews()` unless media lists may be stale too.
 
 ## Checklist for new console features
 
