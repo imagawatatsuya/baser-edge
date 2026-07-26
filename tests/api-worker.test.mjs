@@ -464,13 +464,63 @@ test("API tree mutations return 409 for stale expectedTreeVersion", async () => 
     body: JSON.stringify({ siteId: boot.siteId, slug: "docs", title: "Docs" }),
   }), {});
   const folder = await folderResponse.json();
-  const stale = await localWorker.fetch(new Request(`https://api.test/v1/content/${folder.item.id}/trash`, {
+  const staleTrash = await localWorker.fetch(new Request(`https://api.test/v1/content/${folder.item.id}/trash`, {
     method: "POST",
     headers,
     body: JSON.stringify({ expectedTreeVersion: folder.node.treeVersion - 1 }),
   }), {});
-  assert.equal(stale.status, 409);
-  assert.equal((await stale.json()).error?.code, "TREE_CONFLICT");
+  assert.equal(staleTrash.status, 409);
+  assert.equal((await staleTrash.json()).error?.code, "TREE_CONFLICT");
+
+  const staleCopy = await localWorker.fetch(new Request(`https://api.test/v1/content/${folder.item.id}/copy`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ newSlug: "docs-copy", expectedTreeVersion: folder.node.treeVersion - 1 }),
+  }), {});
+  assert.equal(staleCopy.status, 409);
+  assert.equal((await staleCopy.json()).error?.code, "TREE_CONFLICT");
+
+  const pageResponse = await localWorker.fetch(new Request("https://api.test/v1/pages", {
+    method: "POST",
+    headers,
+    body: JSON.stringify({
+      siteId: boot.siteId,
+      slug: "tree-move",
+      title: "Move",
+      document: {
+        formatVersion: 1,
+        root: { id: "root", type: "page", componentVersion: 1, props: {}, slots: { body: [] } },
+      },
+    }),
+  }), {});
+  const page = await pageResponse.json();
+  const staleMove = await localWorker.fetch(new Request(`https://api.test/v1/content/${page.item.id}/move`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({
+      targetParentId: null,
+      newSlug: "tree-moved",
+      expectedTreeVersion: page.node.treeVersion - 1,
+    }),
+  }), {});
+  assert.equal(staleMove.status, 409);
+  assert.equal((await staleMove.json()).error?.code, "TREE_CONFLICT");
+
+  const trashed = await localWorker.fetch(new Request(`https://api.test/v1/content/${page.item.id}/trash`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ expectedTreeVersion: page.node.treeVersion }),
+  }), {});
+  assert.equal(trashed.status, 200);
+  const trashedSnapshot = await localWorker.fetch(new Request(`https://api.test/v1/content/${page.item.id}`, { headers }), {});
+  const snapshot = await trashedSnapshot.json();
+  const staleRestore = await localWorker.fetch(new Request(`https://api.test/v1/content/${page.item.id}/restore`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ expectedTreeVersion: snapshot.node.treeVersion - 1 }),
+  }), {});
+  assert.equal(staleRestore.status, 409);
+  assert.equal((await staleRestore.json()).error?.code, "TREE_CONFLICT");
 });
 
 test("API rejects invalid workspaceId query on asset list", async () => {

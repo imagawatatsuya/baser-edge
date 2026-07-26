@@ -99,6 +99,43 @@ test("POST /v1/content/:id/move rejects non-ASCII newSlug with INVALID_SLUG", as
   assert.equal((await rejected.json()).error?.code, "INVALID_SLUG");
 });
 
+test("POST /v1/content/:id/copy rejects non-ASCII newSlug with INVALID_SLUG", async () => {
+  const { boot, headers } = await bootSession("slug-copy.test");
+  const folderResponse = await worker.fetch(new Request("https://api.test/v1/folders", {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ siteId: boot.siteId, slug: "copy-src", title: "Src" }),
+  }), {});
+  const folder = await folderResponse.json();
+  const rejected = await worker.fetch(new Request(`https://api.test/v1/content/${folder.item.id}/copy`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({
+      newSlug: "コピー",
+      expectedTreeVersion: folder.node.treeVersion,
+    }),
+  }), {});
+  assert.equal(rejected.status, 422);
+  assert.equal((await rejected.json()).error?.code, "INVALID_SLUG");
+});
+
+test("POST /v1/content/:id/move-impact rejects non-ASCII newSlug with INVALID_SLUG", async () => {
+  const { boot, headers } = await bootSession("slug-impact.test");
+  const pageResponse = await worker.fetch(new Request("https://api.test/v1/pages", {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ siteId: boot.siteId, slug: "impact-me", title: "Impact", document: emptyDocument }),
+  }), {});
+  const page = await pageResponse.json();
+  const rejected = await worker.fetch(new Request(`https://api.test/v1/content/${page.item.id}/move-impact`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ targetParentId: null, newSlug: "影響" }),
+  }), {});
+  assert.equal(rejected.status, 422);
+  assert.equal((await rejected.json()).error?.code, "INVALID_SLUG");
+});
+
 test("POST /v1/blogs rejects out-of-range pageSize", async () => {
   const { boot, headers } = await bootSession("blog-size.test");
   const rejected = await worker.fetch(new Request("https://api.test/v1/blogs", {

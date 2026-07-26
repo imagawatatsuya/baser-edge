@@ -81,11 +81,11 @@ Living inventory of **existing** `/v1/*` routes against [validation-policy.md](.
 | `/v1/approvals/:id/decide` | POST | Y | Y | Partial | Partial | |
 | `/v1/content/:id/publish` | POST | Y | Y | Y | OK | Golden path |
 | `/v1/content/:id/agent-proposals` | POST | Y | Y | Y | OK | `blockOperationsField`; rejection tests in `api-worker.test.mjs` |
-| `/v1/content/:id/move-impact` | POST | Y | Y | Gap | Partial | |
-| `/v1/content/:id/move` | POST | Y | Y | Gap | Partial | `expectedTreeVersion` required; few conflict tests |
-| `/v1/content/:id/copy` | POST | Y | Y | Partial | Partial | `api-worker.test.mjs` happy path |
-| `/v1/content/:id/trash` | POST | Y | Y | Partial | Partial | |
-| `/v1/content/:id/restore` | POST | Y | Y | Gap | Partial | |
+| `/v1/content/:id/move-impact` | POST | Y | Y | Y | OK | `newSlug` via domain; INVALID_SLUG in `api-validation.test.mjs` |
+| `/v1/content/:id/move` | POST | Y | Y | Y | OK | `expectedTreeVersion`; stale → 409 in `api-worker.test.mjs` |
+| `/v1/content/:id/copy` | POST | Y | Y | Y | OK | Happy path + INVALID_SLUG + stale tree in tests |
+| `/v1/content/:id/trash` | POST | Y | Y | Y | OK | Stale tree → 409; ALREADY_TRASHED in `api-worker.test.mjs` |
+| `/v1/content/:id/restore` | POST | Y | Y | Y | OK | Stale tree → 409 in `api-worker.test.mjs` |
 | `/v1/content/:id/previews` | POST | Y | Y | Partial | Partial | Preview tests in `assets-preview.test.mjs` |
 | `/v1/previews/:id/revoke` | POST | Y | — | Partial | Partial | |
 
