@@ -14,7 +14,7 @@ Principle: **read-your-writes** — after a successful write (POST/PATCH/DELETE)
 2. **After every successful mutation** that affects visible data: **invalidate cache** (if any) and **refetch or apply an optimistic patch** to all affected views on the current screen.
 3. **Prefer pessimistic refetch** unless the patch is trivial and local; optimistic updates must reconcile on API error.
 4. **Navigation alone is not sync** — `navigate()` without reloading shared state leaves split layouts (tree + editor) stale.
-5. **Logout / site switch** — clear client caches that are scoped by `siteId` (see `contentTreeCache.ts`).
+5. **Logout / site switch** — clear client caches scoped by site/workspace (`contentTreeCache.ts`, `mediaAssetsCache.ts` via `invalidateSiteContentViews()`).
 
 ## Checklist for new console features
 
@@ -31,5 +31,6 @@ Principle: **read-your-writes** — after a successful write (POST/PATCH/DELETE)
 ## References
 
 - Tree: `apps/admin-web/src/hooks/useContentTree.ts`, `lib/contentTreeCache.ts`, `lib/siteViewSync.ts`
+- Media: `lib/mediaAssetsCache.ts`, `hooks/useMediaAssets.ts` (`MediaAssetsProvider`, `useWorkspaceMediaAssets` for pickers)
 - Audit: `docs/engineering/console-mutation-sync-audit.md`
 - Example fix: trash from editor → `await reloadContentTree()` before `navigate("/content")`

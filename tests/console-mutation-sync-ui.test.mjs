@@ -79,6 +79,15 @@ test("ContentEditPage reloads content tree after save, publish, and unpublish", 
   assert.ok(source.indexOf("await reloadContentTree()", unpublishFn) > unpublishFn);
 });
 
+test("ContentEditPage reloads content tree after article-meta PATCH", () => {
+  const source = readAdmin("pages/ContentEditPage.tsx");
+  const metaUrl = source.indexOf("/article-meta");
+  assert.ok(metaUrl > 0, "article-meta PATCH expected");
+  const metaBlock = source.slice(metaUrl, source.indexOf("<Field label=\"タイトル\""));
+  assert.match(metaBlock, /method: "PATCH"/);
+  assert.match(metaBlock, /await reloadContentTree\(\)/);
+});
+
 test("TrashPage reloads trash list after restore", () => {
   const source = readAdmin("pages/TrashPage.tsx");
   assert.match(source, /await restoreContent\(entry\.snapshot\)/);

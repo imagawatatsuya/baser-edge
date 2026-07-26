@@ -11,6 +11,7 @@ Update this table when adding or changing admin mutations.
 | Content tree | Trash (tree menu) | `trashContent` | `reload()` + `invalidateSiteContentViews` | Static + golden path |
 | Content tree | Trash (editor) | `trashContent` | `reloadContentTree()` + invalidate | Static |
 | Content tree | Save / publish / unpublish (editor) | revisions, `publishContent` | `reloadContentTree()` + invalidate on trash/restore | Static (editor) |
+| Content tree | Article postedAt (editor blur) | `PATCH …/article-meta` | `reloadContentTree()` | Static (editor) |
 | Trash page | Restore | `restoreContent` | `reload()` trash list + `invalidateSiteContentViews` | Golden path restore; static |
 | Approvals | Approve / reject (+ publish) | inbox decide | `invalidateSiteContentViews` + `reload()` | API inbox test |
 | Media library | Upload | upload session | `MediaLayout` provider; upload page `reload()` | Static (media layout) |
@@ -20,6 +21,7 @@ Update this table when adding or changing admin mutations.
 | Custom entry editor | Save / publish / unpublish | custom-entry APIs | `setSnapshot` + `reloadEntries()` via context | Static; custom content kernel |
 | Plugins | Activate / deactivate | plugin-activations | `loadActivations()` after success | Static |
 | Themes | Activate release | `POST …/theme-activations` | `loadActiveTheme()` + active badge from `GET …/theme` | Static |
+| Mail forms | (public submit) | — | 送信一覧は手動「更新」（`reloadSubmissions`） | — |
 | Auth | Logout / site switch | session | `invalidateSiteContentViews` | — |
 
 ## P2 (optional)
