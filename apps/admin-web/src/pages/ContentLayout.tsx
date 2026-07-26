@@ -3,6 +3,7 @@ import { Outlet, useNavigate, useParams } from "react-router-dom";
 import { displayTitle } from "../lib/document";
 import { useContentTree } from "../hooks/useContentTree";
 import { ContentPageToolbar } from "./ContentPage";
+import { PublicSiteLink } from "../components/PublicSiteLink";
 import type { ContentTreeEntry } from "../api/types";
 import { Button } from "../components/ui/Button";
 import {
@@ -208,6 +209,7 @@ export function ContentLayout() {
           <p>ドラッグで並べ替え・フォルダ／ブログへ移動（フォルダへドロップ＝末尾、項目へドロップ＝直後）。⋯ メニューまたは編集画面から削除（ゴミ箱へ）。</p>
         </div>
         <div className="toolbar">
+          <PublicSiteLink className="btn">公開サイト（ホーム）</PublicSiteLink>
           <Button onClick={() => { setCreateParentId(null); setCreateKind("page"); }}>ページ</Button>
           <Button onClick={() => { setCreateParentId(null); setCreateKind("folder"); }}>フォルダ</Button>
           <ContentPageToolbar onRefresh={() => void reload()} />
@@ -243,10 +245,15 @@ export function ContentLayout() {
   );
 }
 
+import { PublicSiteLink } from "../components/PublicSiteLink";
+
 export function ContentIndexPlaceholder() {
   return (
     <div className="editor-empty">
       <p>左のツリーからページまたは記事を選択してください。</p>
+      <p>
+        <PublicSiteLink className="btn btn-primary">公開サイトのホームを見る</PublicSiteLink>
+      </p>
     </div>
   );
 }

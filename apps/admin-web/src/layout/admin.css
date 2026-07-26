@@ -37,6 +37,15 @@ a { color: var(--accent); }
 }
 .admin-nav a:hover { background: rgba(255,255,255,0.08); }
 .admin-nav a.active { background: rgba(37, 99, 235, 0.35); font-weight: 600; }
+.admin-nav-external {
+  padding: 0.55rem 0.75rem;
+  border-radius: 8px;
+  text-decoration: none;
+  color: var(--sidebar-text);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  margin-top: 0.5rem;
+}
+.admin-nav-external:hover { background: rgba(255, 255, 255, 0.08); }
 .admin-nav-disabled { color: var(--sidebar-muted); cursor: not-allowed; }
 .admin-sidebar-foot { border-top: 1px solid rgba(255,255,255,0.1); padding-top: 1rem; display: flex; flex-direction: column; gap: 0.5rem; }
 .admin-site-id { color: var(--sidebar-muted); }

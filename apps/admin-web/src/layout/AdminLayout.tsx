@@ -6,6 +6,7 @@ import { useAuth } from "../auth/AuthProvider";
 
 import { ConsoleCapabilitiesBanner } from "../components/ConsoleCapabilitiesBanner";
 import { ConsoleScopeBanner } from "../components/ConsoleScopeBanner";
+import { PublicSiteLink } from "../components/PublicSiteLink";
 
 import "./admin.css";
 
@@ -57,6 +58,7 @@ export function AdminLayout() {
 
           <NavLink to="/themes" className={({ isActive }) => isActive ? "active" : undefined}>テーマ</NavLink>
           <NavLink to="/plugins" className={({ isActive }) => isActive ? "active" : undefined}>プラグイン</NavLink>
+          <PublicSiteLink className="admin-nav-external">公開サイト（ホーム）</PublicSiteLink>
 
         </nav>
 
