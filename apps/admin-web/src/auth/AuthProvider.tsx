@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import type { SessionState } from "../api/types";
 import { AUTH_EXPIRED_EVENT, clearSession, getSession, saveSession, syncCsrfFromCookies } from "../api/client";
+import { invalidateContentTreeCache } from "../lib/contentTreeCache";
 
 type AuthContextValue = {
   session: SessionState | null;
@@ -17,7 +18,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   });
 
   useEffect(() => {
-    const onExpired = () => setSessionState(null);
+    const onExpired = () => {
+      invalidateContentTreeCache();
+      setSessionState(null);
+    };
     window.addEventListener(AUTH_EXPIRED_EVENT, onExpired);
     return () => window.removeEventListener(AUTH_EXPIRED_EVENT, onExpired);
   }, []);
@@ -25,11 +29,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const value = useMemo<AuthContextValue>(() => ({
     session,
     setSession: (next) => {
+      const prev = getSession();
+      if (!next || (prev?.siteId && next.siteId !== prev.siteId)) {
+        invalidateContentTreeCache();
+      }
       if (next) saveSession(next);
       else clearSession();
       setSessionState(next);
     },
     logout: () => {
+      invalidateContentTreeCache();
       clearSession();
       setSessionState(null);
     },

@@ -17,7 +17,7 @@ import {
   type WorkspaceId,
 } from "@baser-edge/core-types";
 import { buildSortKey, childPath, compareSortKeys, normalizePath, normalizeSlug } from "@baser-edge/baser-domain";
-import { collectAssetReferences } from "@baser-edge/structured-document";
+import { collectAssetReferences, createEmptyDocument } from "@baser-edge/structured-document";
 import type {
   AgentRun,
   ApprovalRequest,
@@ -544,7 +544,7 @@ export class MemoryCmsStore implements CmsStore {
   async listContentTree(siteId: SiteId): Promise<ContentManagerEntry[]> {
     return [...this.items.values()]
       .filter((item) => item.siteId === siteId && item.state === "active")
-      .map((item) => this.managerEntry(item.id))
+      .map((item) => this.managerEntryForTree(item.id))
       .sort((a, b) => compareSortKeys(a.snapshot.node.sortKey, b.snapshot.node.sortKey)
         || a.snapshot.node.cachedPath.localeCompare(b.snapshot.node.cachedPath));
   }
@@ -552,7 +552,7 @@ export class MemoryCmsStore implements CmsStore {
   async listTrash(siteId: SiteId): Promise<ContentManagerEntry[]> {
     return [...this.items.values()]
       .filter((item) => item.siteId === siteId && item.state === "trashed")
-      .map((item) => this.managerEntry(item.id))
+      .map((item) => this.managerEntryForTree(item.id))
       .sort((a, b) => (a.trash?.previousPath ?? "").localeCompare(b.trash?.previousPath ?? ""));
   }
 
@@ -802,6 +802,26 @@ export class MemoryCmsStore implements CmsStore {
       snapshot: this.snapshot(contentItemId),
       aliasTargetContentItemId: this.aliases.get(contentItemId)?.targetContentItemId ?? null,
       trash: clone(this.trashEntries.get(contentItemId) ?? null),
+    };
+  }
+
+  private managerEntryForTree(contentItemId: ContentItemId): ContentManagerEntry {
+    const entry = this.managerEntry(contentItemId);
+    return {
+      ...entry,
+      snapshot: this.snapshotForTreeListing(entry.snapshot),
+    };
+  }
+
+  private snapshotForTreeListing(snapshot: ContentSnapshot): ContentSnapshot {
+    return {
+      ...snapshot,
+      workingRevision: snapshot.workingRevision
+        ? { ...snapshot.workingRevision, document: createEmptyDocument() }
+        : null,
+      publishedRevision: snapshot.publishedRevision
+        ? { ...snapshot.publishedRevision, document: createEmptyDocument() }
+        : null,
     };
   }
 

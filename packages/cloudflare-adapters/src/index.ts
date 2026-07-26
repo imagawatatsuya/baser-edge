@@ -80,7 +80,7 @@ import type {
   Taxonomy,
   Term,
 } from "@baser-edge/blog-kernel";
-import { collectAssetReferences, type StructuredDocument } from "@baser-edge/structured-document";
+import { collectAssetReferences, createEmptyDocument, type StructuredDocument } from "@baser-edge/structured-document";
 import type {
   Asset,
   AssetMetadataStore,
@@ -456,15 +456,17 @@ export class D1CmsStore implements CmsStore {
   }
 
   async listContentTree(siteId: SiteId): Promise<ContentManagerEntry[]> {
-    const ids = (await this.#db.prepare("SELECT id FROM content_items WHERE site_id=? AND state='active'").bind(siteId).all<{id:string}>()).results;
-    const entries = await Promise.all(ids.map((row) => this.#managerEntry(asContentItemId(row.id))));
+    const itemRows = (await this.#db.prepare("SELECT * FROM content_items WHERE site_id=? AND state='active'").bind(siteId).all<ItemRow>()).results;
+    if (!itemRows.length) return [];
+    const entries = await this.#contentManagerEntriesForItemRows(siteId, itemRows, false);
     return entries.sort((a, b) => compareSortKeys(a.snapshot.node.sortKey, b.snapshot.node.sortKey)
       || a.snapshot.node.cachedPath.localeCompare(b.snapshot.node.cachedPath));
   }
 
   async listTrash(siteId: SiteId): Promise<ContentManagerEntry[]> {
-    const ids = (await this.#db.prepare("SELECT id FROM content_items WHERE site_id=? AND state='trashed'").bind(siteId).all<{id:string}>()).results;
-    const entries = await Promise.all(ids.map((row) => this.#managerEntry(asContentItemId(row.id))));
+    const itemRows = (await this.#db.prepare("SELECT * FROM content_items WHERE site_id=? AND state='trashed'").bind(siteId).all<ItemRow>()).results;
+    if (!itemRows.length) return [];
+    const entries = await this.#contentManagerEntriesForItemRows(siteId, itemRows, true);
     return entries.sort((a, b) => (a.trash?.previousPath ?? "").localeCompare(b.trash?.previousPath ?? ""));
   }
 
@@ -648,6 +650,77 @@ export class D1CmsStore implements CmsStore {
     return { snapshot, aliasTargetContentItemId: alias ? asContentItemId(alias.target_content_item_id) : null, trash: trash ? mapTrash(trash) : null };
   }
 
+  async #contentManagerEntriesForItemRows(siteId: SiteId, itemRows: ItemRow[], includeTrash: boolean): Promise<ContentManagerEntry[]> {
+    const [nodeResult, routeResult, aliasResult, trashResult] = await Promise.all([
+      this.#db.prepare("SELECT * FROM content_nodes WHERE site_id=?").bind(siteId).all<NodeRow>(),
+      this.#db.prepare("SELECT * FROM routes WHERE site_id=? AND active=1 AND is_canonical=1").bind(siteId).all<RouteRow>(),
+      this.#db.prepare(
+        "SELECT ca.* FROM content_aliases ca INNER JOIN content_items ci ON ci.id=ca.alias_content_item_id WHERE ci.site_id=?",
+      ).bind(siteId).all<AliasRow>(),
+      includeTrash
+        ? this.#db.prepare(
+          "SELECT te.* FROM trash_entries te INNER JOIN content_items ci ON ci.id=te.content_item_id WHERE ci.site_id=? AND ci.state='trashed'",
+        ).bind(siteId).all<TrashRow>()
+        : Promise.resolve({ results: [] as TrashRow[] }),
+    ]);
+    const nodeRows = nodeResult.results;
+    const routeRows = routeResult.results;
+    const aliasRows = aliasResult.results;
+    const trashRows = trashResult.results;
+
+    const revisionIds: RevisionId[] = [];
+    for (const row of itemRows) {
+      if (row.working_revision_id) revisionIds.push(asRevisionId(row.working_revision_id));
+      if (row.published_revision_id) revisionIds.push(asRevisionId(row.published_revision_id));
+    }
+    const revisions = await this.#loadRevisionSummariesForTree(revisionIds);
+
+    const nodeByContentId = new Map(nodeRows.map((row) => [row.content_item_id, row]));
+    const routeByContentId = pickLatestCanonicalRouteByContentItem(routeRows);
+    const aliasByContentId = new Map(aliasRows.map((row) => [row.alias_content_item_id, row]));
+    const trashByContentId = new Map(trashRows.map((row) => [row.content_item_id, row]));
+
+    const entries: ContentManagerEntry[] = [];
+    for (const itemRow of itemRows) {
+      const nodeRow = nodeByContentId.get(itemRow.id);
+      const routeRow = routeByContentId.get(itemRow.id);
+      assertDomain(nodeRow && routeRow, "CONTENT_PROJECTION_MISSING", "Content node or route is missing", 500);
+      const item = mapItem(itemRow);
+      entries.push({
+        snapshot: {
+          item,
+          node: mapNode(nodeRow),
+          route: mapRoute(routeRow),
+          workingRevision: item.workingRevisionId ? revisions.get(item.workingRevisionId) ?? null : null,
+          publishedRevision: item.publishedRevisionId ? revisions.get(item.publishedRevisionId) ?? null : null,
+        },
+        aliasTargetContentItemId: aliasByContentId.has(itemRow.id)
+          ? asContentItemId(aliasByContentId.get(itemRow.id)!.target_content_item_id)
+          : null,
+        trash: trashByContentId.has(itemRow.id) ? mapTrash(trashByContentId.get(itemRow.id)!) : null,
+      });
+    }
+    return entries;
+  }
+
+  async #loadRevisionSummariesForTree(ids: RevisionId[]): Promise<Map<RevisionId, ContentRevision>> {
+    const map = new Map<RevisionId, ContentRevision>();
+    const unique = [...new Set(ids)];
+    if (!unique.length) return map;
+    const chunkSize = 80;
+    for (let offset = 0; offset < unique.length; offset += chunkSize) {
+      const chunk = unique.slice(offset, offset + chunkSize);
+      const placeholders = chunk.map(() => "?").join(",");
+      const rows = (await this.#db.prepare(
+        `SELECT id,content_item_id,revision_number,based_on_revision_id,fields_json,content_hash,created_by,agent_run_id,change_summary,created_at FROM content_revisions WHERE id IN (${placeholders})`,
+      ).bind(...chunk).all<RevisionFieldsRow>()).results;
+      for (const row of rows) {
+        map.set(asRevisionId(row.id), mapRevisionFieldsOnly(row));
+      }
+    }
+    return map;
+  }
+
   async #requireFolderParent(id: ContentNodeId, siteId: SiteId): Promise<StoredContentNode> {
     return this.#requireParentForType(id, siteId, "page");
   }
@@ -754,6 +827,18 @@ function createAudit(actor: ActorContext, workspaceId: WorkspaceId, siteId: Site
 }
 function json<T>(value: string): T { return JSON.parse(value) as T; }
 
+/** Matches getContentSnapshot: newest active canonical route per content item. */
+function pickLatestCanonicalRouteByContentItem(routeRows: RouteRow[]): Map<string, RouteRow> {
+  const map = new Map<string, RouteRow>();
+  for (const row of routeRows) {
+    const existing = map.get(row.content_item_id);
+    if (!existing || row.activated_at > existing.activated_at) {
+      map.set(row.content_item_id, row);
+    }
+  }
+  return map;
+}
+
 type WorkspaceRow={id:string;name:string;created_at:number};
 type SiteRow={id:string;workspace_id:string;name:string;hostname:string;locale:string;state:Site["state"];created_at:number;updated_at:number};
 type PrincipalRow={id:string;workspace_id:string;principal_type:Principal["type"];display_name:string;state:Principal["state"];created_at:number};
@@ -761,6 +846,7 @@ type GrantRow={id:string;principal_id:string;capability:string;scope_json:string
 type DelegationRow={id:string;human_principal_id:string;agent_principal_id:string;capabilities_json:string;scope_json:string;maximum_risk:StoredDelegationGrant["maximumRisk"];expires_at:number;revoked_at:number|null};
 type ItemRow={id:string;workspace_id:string;site_id:string;content_type_key:string;working_revision_id:string|null;published_revision_id:string|null;lock_version:number;state:ContentItem["state"];created_by:string;created_at:number;updated_at:number};
 type RevisionRow={id:string;content_item_id:string;revision_number:number;based_on_revision_id:string|null;fields_json:string;content_hash:string;created_by:string;agent_run_id:string|null;change_summary:string;created_at:number;document_json:string};
+type RevisionFieldsRow={id:string;content_item_id:string;revision_number:number;based_on_revision_id:string|null;fields_json:string;content_hash:string;created_by:string;agent_run_id:string|null;change_summary:string;created_at:number};
 type RevisionWithDocumentRow=RevisionRow&{format_version:number;byte_size:number;document_hash:string};
 type NodeRow={id:string;site_id:string;content_item_id:string;parent_id:string|null;slug:string;sort_key:string;cached_path:string;tree_version:number;created_at:number;updated_at:number};
 type NodeWithTypeRow=NodeRow&{content_type_key:string};
@@ -780,6 +866,21 @@ function mapGrant(r:GrantRow):StoredCapabilityGrant{const g:StoredCapabilityGran
 function mapDelegation(r:DelegationRow):StoredDelegationGrant{const g:StoredDelegationGrant={id:r.id as StoredDelegationGrant["id"],humanPrincipalId:asPrincipalId(r.human_principal_id),agentPrincipalId:asPrincipalId(r.agent_principal_id),capabilities:json(r.capabilities_json),scope:json(r.scope_json),maximumRisk:r.maximum_risk,expiresAt:r.expires_at};if(r.revoked_at!==null)g.revokedAt=r.revoked_at;return g;}
 function mapItem(r:ItemRow):ContentItem{return{id:asContentItemId(r.id),workspaceId:r.workspace_id as WorkspaceId,siteId:asSiteId(r.site_id),contentTypeKey:r.content_type_key,workingRevisionId:r.working_revision_id?asRevisionId(r.working_revision_id):null,publishedRevisionId:r.published_revision_id?asRevisionId(r.published_revision_id):null,lockVersion:r.lock_version,state:r.state,createdBy:asPrincipalId(r.created_by),createdAt:r.created_at,updatedAt:r.updated_at};}
 function mapRevision(r:RevisionRow):ContentRevision{return{id:asRevisionId(r.id),contentItemId:asContentItemId(r.content_item_id),revisionNumber:r.revision_number,basedOnRevisionId:r.based_on_revision_id?asRevisionId(r.based_on_revision_id):null,fields:json(r.fields_json),document:json(r.document_json),contentHash:r.content_hash,createdBy:asPrincipalId(r.created_by),agentRunId:r.agent_run_id as ContentRevision["agentRunId"],changeSummary:r.change_summary,createdAt:r.created_at};}
+function mapRevisionFieldsOnly(r: RevisionFieldsRow): ContentRevision {
+  return {
+    id: asRevisionId(r.id),
+    contentItemId: asContentItemId(r.content_item_id),
+    revisionNumber: r.revision_number,
+    basedOnRevisionId: r.based_on_revision_id ? asRevisionId(r.based_on_revision_id) : null,
+    fields: json(r.fields_json),
+    document: createEmptyDocument(),
+    contentHash: r.content_hash,
+    createdBy: asPrincipalId(r.created_by),
+    agentRunId: r.agent_run_id as ContentRevision["agentRunId"],
+    changeSummary: r.change_summary,
+    createdAt: r.created_at,
+  };
+}
 function mapNode(r:NodeRow):StoredContentNode{return{id:asContentNodeId(r.id),siteId:asSiteId(r.site_id),contentItemId:asContentItemId(r.content_item_id),parentId:r.parent_id?asContentNodeId(r.parent_id):null,slug:r.slug,sortKey:r.sort_key,cachedPath:r.cached_path,treeVersion:r.tree_version,createdAt:r.created_at,updatedAt:r.updated_at};}
 function mapRoute(r:RouteRow):StoredRoute{return{id:r.id as StoredRoute["id"],siteId:asSiteId(r.site_id),contentItemId:asContentItemId(r.content_item_id),hostname:r.hostname,path:r.path,routeType:r.route_type,isCanonical:r.is_canonical===1,active:r.active===1,activatedAt:r.activated_at,deactivatedAt:r.deactivated_at};}
 function mapTrash(r:TrashRow):TrashEntry{return{contentItemId:asContentItemId(r.content_item_id),rootContentItemId:asContentItemId(r.root_content_item_id),previousParentId:r.previous_parent_id?asContentNodeId(r.previous_parent_id):null,previousSlug:r.previous_slug,previousPath:r.previous_path,trashedBy:asPrincipalId(r.trashed_by),trashedAt:r.trashed_at};}

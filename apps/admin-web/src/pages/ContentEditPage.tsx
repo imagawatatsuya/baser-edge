@@ -34,9 +34,9 @@ export function ContentEditPage() {
   const [articleMeta, setArticleMeta] = useState<ArticleMeta | null>(null);
   const [postedAtLocal, setPostedAtLocal] = useState("");
 
-  const load = useCallback(async (): Promise<ContentSnapshot | null> => {
+  const load = useCallback(async (options?: { silent?: boolean }): Promise<ContentSnapshot | null> => {
     if (!session || !contentId) return null;
-    setStatus("読み込み中…");
+    if (!options?.silent) setStatus("読み込み中…");
     try {
       const data = await apiFetch<ContentSnapshot>(`/v1/content/${encodeURIComponent(contentId)}`);
       setSnapshot(data);
@@ -76,7 +76,7 @@ export function ContentEditPage() {
         changeSummary,
       },
     });
-    return load();
+    return load({ silent: true });
   }
 
   async function onSave() {
@@ -278,10 +278,15 @@ export function ContentEditPage() {
                 onChange={(e) => setPostedAtLocal(e.target.value)}
                 onBlur={() => {
                   if (!postedAtLocal) return;
-                  void apiFetch(`/v1/content/${encodeURIComponent(contentId)}/article-meta`, {
+                  void apiFetch<ArticleMeta>(`/v1/content/${encodeURIComponent(contentId)}/article-meta`, {
                     method: "PATCH",
                     json: { postedAt: parseDatetimeLocalValue(postedAtLocal) },
-                  }).then(() => load()).catch((e) => setStatus(String(e)));
+                  })
+                    .then((meta) => {
+                      setArticleMeta(meta);
+                      setPostedAtLocal(toDatetimeLocalValue(meta.postedAt));
+                    })
+                    .catch((e) => setStatus(e instanceof Error ? e.message : String(e)));
                 }}
               />
             </Field>

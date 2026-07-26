@@ -256,6 +256,7 @@ export interface TrashEntry {
 }
 
 export interface ContentManagerEntry {
+  /** Full snapshot; for listContentTree/listTrash, revision `document` is a placeholder (use getContent for bodies). */
   snapshot: ContentSnapshot;
   aliasTargetContentItemId: ContentItemId | null;
   trash: TrashEntry | null;

@@ -22,6 +22,7 @@
     "@baser-edge/mail-form-kernel": "0.8.0",
     "@baser-edge/theme-kernel": "0.8.0",
     "@baser-edge/plugin-kernel": "0.8.0",
-    "@baser-edge/auth-kernel": "0.9.0"
+    "@baser-edge/auth-kernel": "0.9.0",
+    "@baser-edge/structured-document": "0.8.0"
   }
 }

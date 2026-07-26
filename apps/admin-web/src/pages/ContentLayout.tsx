@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Outlet, useNavigate, useParams } from "react-router-dom";
 import { displayTitle } from "../lib/document";
 import { useContentTree } from "../hooks/useContentTree";
@@ -38,7 +38,7 @@ function typeIcon(key: string) {
 type DropTarget = ContentTreeEntry | "root";
 
 export function ContentLayout() {
-  const { entries, error, reload } = useContentTree();
+  const { entries, error, isReloading, reload } = useContentTree();
   const { contentId } = useParams();
   const navigate = useNavigate();
   const [createParentId, setCreateParentId] = useState<string | null>(null);
@@ -48,17 +48,19 @@ export function ContentLayout() {
   const [dragEntry, setDragEntry] = useState<ContentTreeEntry | null>(null);
   const [dropHighlight, setDropHighlight] = useState<string | null>(null);
 
-  const byParent = new Map<string | "root", ContentTreeEntry[]>();
-  for (const entry of entries) {
-    const key = entry.snapshot.node.parentId ?? "root";
-    if (!byParent.has(key)) byParent.set(key, []);
-    byParent.get(key)!.push(entry);
-  }
-  for (const list of byParent.values()) {
-    list.sort(compareTreeEntries);
-  }
-
-  const entryById = new Map(entries.map((e) => [e.snapshot.item.id, e]));
+  const { byParent, entryById } = useMemo(() => {
+    const byParent = new Map<string | "root", ContentTreeEntry[]>();
+    for (const entry of entries) {
+      const key = entry.snapshot.node.parentId ?? "root";
+      if (!byParent.has(key)) byParent.set(key, []);
+      byParent.get(key)!.push(entry);
+    }
+    for (const list of byParent.values()) {
+      list.sort(compareTreeEntries);
+    }
+    const entryById = new Map(entries.map((e) => [e.snapshot.item.id, e]));
+    return { byParent, entryById };
+  }, [entries]);
 
   async function onTrash(entry: ContentTreeEntry) {
     if (!window.confirm(`「${displayTitle(entry)}」を削除（ゴミ箱へ移動）しますか？`)) return;
@@ -224,6 +226,7 @@ export function ContentLayout() {
             onDrop={(e) => { e.preventDefault(); void performDrop("root"); }}
           >
             サイトツリー（ルートへドロップ可）
+            {isReloading ? <span className="tree-reload-indicator">更新中…</span> : null}
           </div>
           <ul className="tree-list">{renderNodes("root", 0)}</ul>
         </div>
@@ -244,8 +247,6 @@ export function ContentLayout() {
     </div>
   );
 }
-
-import { PublicSiteLink } from "../components/PublicSiteLink";
 
 export function ContentIndexPlaceholder() {
   return (

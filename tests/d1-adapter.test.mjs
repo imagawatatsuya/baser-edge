@@ -82,6 +82,24 @@ test("D1 adapter executes the same approval-first publication flow", async () =>
   db.close();
 });
 
+test("D1 listContentTree omits revision document bodies", async () => {
+  const db = new DatabaseSync(":memory:");
+  migrate(db);
+  const cms = new CmsService(new D1CmsStore(new D1Shim(db)));
+  const boot = await cms.bootstrap({ workspaceName: "Tree", siteName: "Tree", hostname: "tree-list.test", ownerName: "Owner" });
+  const owner = actor(boot.ownerPrincipalId, "human");
+  const document = createEmptyDocument();
+  document.root.slots.body.push(createBlock("heading", { level: 1, text: "Unique body marker" }));
+  const page = await cms.createPage(owner, { siteId: boot.siteId, parentId: null, slug: "tree-page", title: "Tree page", document });
+  const full = await cms.getContent(owner, page.item.id);
+  const listed = (await cms.listContentTree(owner, boot.siteId)).find((entry) => entry.snapshot.item.id === page.item.id);
+  assert.ok(listed);
+  assert.equal(listed.snapshot.workingRevision?.fields.title, "Tree page");
+  assert.deepEqual(listed.snapshot.workingRevision?.document, createEmptyDocument());
+  assert.notDeepEqual(full.workingRevision?.document, createEmptyDocument());
+  db.close();
+});
+
 
 test("D1 trigger rejects stale revisions with a domain conflict", async () => {
   const db = new DatabaseSync(":memory:");
