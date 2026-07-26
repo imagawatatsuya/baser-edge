@@ -18,13 +18,12 @@ Update this table when adding or changing admin mutations.
 | Custom entries | Create entry | `POST …/entries` | `CustomEntriesLayout` + `reload()` before navigate | Static |
 | Custom entry editor | Save / publish / unpublish | custom-entry APIs | `setSnapshot` + `reloadEntries()` via context | Static; custom content kernel |
 | Plugins | Activate / deactivate | plugin-activations | `loadActivations()` after success | Static |
+| Themes | Activate release | `POST …/theme-activations` | `loadActiveTheme()` + active badge from `GET …/theme` | Static |
 | Auth | Logout / site switch | session | `invalidateSiteContentViews` | — |
 
 ## P2 (optional)
 
-| Surface | Gap | Notes |
-|---------|-----|-------|
-| Themes (`ActivationsPage`) | Theme activation list | Reload when user returns from activate flow if stale reports appear |
+_No open P2 items._
 
 ## Shared helpers
 

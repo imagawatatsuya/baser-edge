@@ -105,3 +105,12 @@ test("PluginsPage reloads activations after activate and deactivate", () => {
   assert.ok(source.indexOf("await loadActivations()", activateFn) > activateFn);
   assert.ok(source.indexOf("await loadActivations()", deactivateFn) > deactivateFn);
 });
+
+test("ActivationsPage reloads active theme after activate", () => {
+  const source = readAdmin("pages/ActivationsPage.tsx");
+  assert.match(source, /loadActiveTheme/);
+  assert.match(source, /\/v1\/sites\/\$\{session\.siteId\}\/theme/);
+  const activateFn = source.indexOf("async function activate(");
+  assert.ok(source.indexOf("await loadActiveTheme()", activateFn) > activateFn);
+  assert.match(source, /activeReleaseId/);
+});
