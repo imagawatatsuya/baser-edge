@@ -144,3 +144,51 @@ test("Public Renderer redirects the site root to a published initial home page",
   assert.equal(response.headers.get("location"), "/home");
   assert.equal(response.headers.get("cache-control"), "public, max-age=60");
 });
+
+test("Public Renderer serves robots.txt and sitemap.xml", async () => {
+  const cms = new CmsService(new MemoryCmsStore());
+  const boot = await cms.bootstrap({
+    workspaceName: "Renderer",
+    siteName: "Site",
+    hostname: "renderer.test",
+    ownerName: "Owner",
+  });
+  const owner = actor(boot.ownerPrincipalId, "human");
+  const document = createEmptyDocument();
+  document.root.slots.body.push(createBlock("richText", { paragraphs: ["公開"] }));
+  const page = await cms.createPage(owner, {
+    siteId: boot.siteId,
+    parentId: null,
+    slug: "home",
+    title: "ホーム",
+    document,
+  });
+  const approval = await cms.requestApproval(owner, {
+    contentItemId: page.item.id,
+    revisionId: page.workingRevision.id,
+  });
+  await cms.decideApproval(owner, { approvalId: approval.id, decision: "approved" });
+  await cms.publish(owner, {
+    contentItemId: page.item.id,
+    revisionId: page.workingRevision.id,
+    approvalId: approval.id,
+  });
+
+  const worker = createPublicWorker(() => cms);
+  const robots = await worker.fetch(new Request("https://renderer.test/robots.txt"), { SITE_ID: boot.siteId });
+  const robotsBody = await robots.text();
+  assert.equal(robots.status, 200);
+  assert.match(robotsBody, /Disallow: \/console\//);
+  assert.match(robotsBody, /Sitemap: https:\/\/renderer\.test\/sitemap\.xml/);
+
+  const sitemap = await worker.fetch(new Request("https://renderer.test/sitemap.xml"), { SITE_ID: boot.siteId });
+  const xml = await sitemap.text();
+  assert.equal(sitemap.status, 200);
+  assert.match(xml, /<loc>https:\/\/renderer\.test\/home<\/loc>/);
+  assert.ok(!xml.includes("<loc>https://renderer.test/</loc>"));
+
+  const home = await worker.fetch(new Request("https://renderer.test/home"), { SITE_ID: boot.siteId });
+  const homeHtml = await home.text();
+  assert.match(homeHtml, /rel="canonical" href="https:\/\/renderer\.test\/home"/);
+  assert.match(homeHtml, /meta name="description"/);
+});

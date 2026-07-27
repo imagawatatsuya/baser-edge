@@ -1,6 +1,20 @@
 import type { BlockNode, StructuredDocument } from "@baser-edge/structured-document";
 import type { ContentRevision } from "@baser-edge/content-kernel";
 import { builtinTheme, compileThemeCss, type ResolvedThemePresentation } from "@baser-edge/theme-kernel";
+import { escapeAttribute, escapeAttributeName, escapeComment, escapeHtml } from "./escape.js";
+import { extractTitleForSeo, renderSeoHeadHtml, type PageSeoInput } from "./seo.js";
+
+export type { PageSeoInput };
+export {
+  buildAbsoluteCanonicalUrl,
+  descriptionFromDocument,
+  extractTitleForSeo,
+  normalizePublicPath,
+  renderSeoHeadHtml,
+  serializeJsonLd,
+  trimMetaDescription,
+} from "./seo.js";
+export { escapeHtml } from "./escape.js";
 
 export interface RenderResolver {
   assetUrl(assetId: string): string | null;
@@ -16,6 +30,7 @@ export interface RenderOptions {
   siteName?: string;
   lang?: string;
   headHtml?: string;
+  seo?: PageSeoInput;
   bodyAttributes?: Record<string, string>;
 }
 
@@ -26,7 +41,12 @@ export interface RenderShellOptions {
   siteName?: string;
   lang?: string;
   headHtml?: string;
+  seo?: PageSeoInput;
   bodyAttributes?: Record<string, string>;
+}
+
+interface ImageLoadState {
+  firstContentImageSeen: boolean;
 }
 
 const defaultResolver: RenderResolver = {
@@ -40,9 +60,10 @@ export function renderDocument(
   options: RenderOptions = {},
 ): string {
   const now = options.now ?? new Date();
+  const imageState: ImageLoadState = { firstContentImageSeen: false };
   return Object.values(document.root.slots)
     .flat()
-    .map((block) => renderBlock(block, resolver, now, options.preview ?? false))
+    .map((block) => renderBlock(block, resolver, now, options.preview ?? false, imageState))
     .join("\n");
 }
 
@@ -56,13 +77,16 @@ export function renderPage(
   const mainClass = theme.layoutRevision.layout.mainClass;
   const body = `<main class="${escapeAttribute(mainClass)}">${renderDocument(document, resolver, options)}</main>`;
   const bodyAttributes = { "data-content-revision": revision, "data-theme-release": theme.release.id, ...(options.bodyAttributes ?? {}) };
+  const siteName = options.siteName ?? "";
+  const lang = options.lang ?? "ja";
   return renderShell({
     title: options.title ?? "",
     bodyHtml: body,
     theme,
-    ...(options.siteName !== undefined ? { siteName: options.siteName } : {}),
-    ...(options.lang !== undefined ? { lang: options.lang } : {}),
+    ...(options.siteName !== undefined ? { siteName } : {}),
+    lang,
     ...(options.headHtml !== undefined ? { headHtml: options.headHtml } : {}),
+    ...(options.seo !== undefined ? { seo: options.seo } : {}),
     bodyAttributes,
   });
 }
@@ -73,16 +97,20 @@ export function renderShell(options: RenderShellOptions): string {
   const siteName = options.siteName ?? "";
   const title = escapeHtml(options.title);
   const pageTitle = siteName && options.title && siteName !== options.title ? `${title} | ${escapeHtml(siteName)}` : title || escapeHtml(siteName);
+  const pageTitlePlain = extractTitleForSeo(options.title, siteName);
+  const lang = options.lang ?? "ja";
+  const seoHead = options.seo ? renderSeoHeadHtml(pageTitlePlain, { ...options.seo, locale: options.seo.locale || lang }) : "";
   const header = layout.header === "none" ? "" : `<header class="bc-site-header"><div class="bc-shell">${layout.showSiteName && siteName ? `<a class="bc-site-brand" href="/">${escapeHtml(siteName)}</a>` : ""}</div></header>`;
   const footerText = layout.footerText || siteName;
   const footer = layout.footer === "none" ? "" : `<footer class="bc-site-footer"><div class="bc-shell">${escapeHtml(footerText)}</div></footer>`;
-  const attrs = Object.entries(options.bodyAttributes ?? {}).map(([key,value])=>` ${escapeAttributeName(key)}="${escapeAttribute(value)}"`).join("");
+  const attrs = Object.entries(options.bodyAttributes ?? {}).map(([key, value]) => ` ${escapeAttributeName(key)}="${escapeAttribute(value)}"`).join("");
   return `<!doctype html>
-<html lang="${escapeAttribute(options.lang ?? "ja")}">
+<html lang="${escapeAttribute(lang)}">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>${pageTitle}</title>
+${seoHead}
 <style>${baseCss}\n${compileThemeCss(theme)}</style>
 ${options.headHtml ?? ""}
 </head>
@@ -94,7 +122,7 @@ ${footer}
 </html>`;
 }
 
-function renderBlock(block: BlockNode, resolver: RenderResolver, now: Date, preview: boolean): string {
+function renderBlock(block: BlockNode, resolver: RenderResolver, now: Date, preview: boolean, imageState: ImageLoadState): string {
   if (!isVisible(block, now)) return "";
   const id = escapeAttribute(block.id);
   switch (block.type) {
@@ -111,19 +139,23 @@ function renderBlock(block: BlockNode, resolver: RenderResolver, now: Date, prev
       const src = resolver.assetUrl(assetId);
       if (!src) return preview ? unsupported(block, "Asset is unavailable") : "";
       const heroClass = block.id === "starter-home-hero" ? " bc-starter-hero" : "";
-      return `<figure data-block-id="${id}" class="bc-figure-image${heroClass}"><img src="${escapeAttribute(src)}" alt="${escapeAttribute(asString(block.props.alt))}" loading="lazy" decoding="async"></figure>`;
+      const loading = imageLoadingAttr(block, imageState, preview);
+      return `<figure data-block-id="${id}" class="bc-figure-image${heroClass}"><img src="${escapeAttribute(src)}" alt="${escapeAttribute(asString(block.props.alt))}"${loading} decoding="async"></figure>`;
     }
     case "imageText": {
       const assetId = asString(block.props.assetId);
       const src = resolver.assetUrl(assetId);
       if (!src) return preview ? unsupported(block, "Asset is unavailable") : "";
-      return `<section data-block-id="${id}" class="bc-image-text"><img src="${escapeAttribute(src)}" alt="${escapeAttribute(asString(block.props.alt))}" loading="lazy"><p>${escapeHtml(asString(block.props.text))}</p></section>`;
+      const loading = imageLoadingAttr(block, imageState, preview);
+      return `<section data-block-id="${id}" class="bc-image-text"><img src="${escapeAttribute(src)}" alt="${escapeAttribute(asString(block.props.alt))}"${loading}><p>${escapeHtml(asString(block.props.text))}</p></section>`;
     }
     case "gallery": {
       const ids = Array.isArray(block.props.assetIds) ? block.props.assetIds.map(String) : [];
       return `<section data-block-id="${id}" class="bc-gallery">${ids.map((assetId) => {
         const src = resolver.assetUrl(assetId);
-        return src ? `<img src="${escapeAttribute(src)}" alt="" loading="lazy">` : "";
+        if (!src) return "";
+        const loading = imageLoadingAttr(block, imageState, preview);
+        return `<img src="${escapeAttribute(src)}" alt=""${loading}>`;
       }).join("")}</section>`;
     }
     case "callToAction": {
@@ -150,6 +182,13 @@ function renderBlock(block: BlockNode, resolver: RenderResolver, now: Date, prev
     default:
       return preview ? unsupported(block, `Unsupported component: ${block.type}@${block.componentVersion}`) : `<!-- unsupported component ${escapeComment(block.type)} -->`;
   }
+}
+
+function imageLoadingAttr(block: BlockNode, imageState: ImageLoadState, preview: boolean): string {
+  const eager = block.id === "starter-home-hero" || !imageState.firstContentImageSeen;
+  imageState.firstContentImageSeen = true;
+  if (preview || eager) return "";
+  return ` loading="lazy"`;
 }
 
 function isVisible(block: BlockNode, now: Date): boolean {
@@ -182,13 +221,6 @@ function asString(value: unknown): string { return typeof value === "string" ? v
 function asInt(value: unknown, fallback: number, min: number, max: number): number {
   return typeof value === "number" && Number.isInteger(value) && value >= min && value <= max ? value : fallback;
 }
-
-export function escapeHtml(value: string): string {
-  return value.replace(/[&<>"']/g, (character) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[character] ?? character);
-}
-function escapeAttribute(value: string): string { return escapeHtml(value).replace(/`/g, "&#96;"); }
-function escapeAttributeName(value:string):string{return /^[a-zA-Z_:][a-zA-Z0-9:_.-]*$/.test(value)?value:"data-invalid";}
-function escapeComment(value: string): string { return value.replace(/--/g, "—"); }
 
 const baseCss = `
 *{box-sizing:border-box}

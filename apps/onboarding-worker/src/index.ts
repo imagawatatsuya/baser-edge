@@ -674,9 +674,9 @@ async function handleApi(req: Request, env: Env, url: URL): Promise<Response> {
       return redirect(`${ui}/start/?oauth_error=${encodeURIComponent(msg)}`);
     }
     const target = new URL(`${relay.siteOrigin.replace(/\/$/, "")}/v1/auth/cloudflare/callback`);
-    for (const [key, value] of url.searchParams) {
+    url.searchParams.forEach((value, key) => {
       target.searchParams.set(key, value);
-    }
+    });
     if (err && !target.searchParams.has("error")) {
       target.searchParams.set("error", err);
       const desc = url.searchParams.get("error_description");
