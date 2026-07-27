@@ -12,6 +12,7 @@ import {
   type AssetManifestEntry,
 } from "./deploy-worker.js";
 import type { ProgressEvent } from "./cloudflare-builds.js";
+import { trialApiWorkerVars, trialPublicWorkerVars } from "./trial-worker-vars.js";
 
 export type TrialReleaseManifest = {
   version: string;
@@ -189,25 +190,17 @@ export async function runTrialProvisionRelease(
   await putWorkerScript(token, accountId, manifest.publicWorkerName, "index.js", publicModule, {
     d1DatabaseId: databaseId,
     workersDev: true,
-    vars: {
-      SITE_ID: "pending",
-      ASSET_BASE_URL: "/assets",
-      TURNSTILE_SITE_KEY: "",
-    },
+    vars: trialPublicWorkerVars({ siteId: "pending" }),
   }, budget);
 
   await putWorkerScript(token, accountId, manifest.apiWorkerName, "index.js", apiModule, {
     d1DatabaseId: databaseId,
     assetsJwt,
     workersDev: true,
-    vars: {
-      BASER_ENV: "preview",
-      PUBLIC_BASE_URL: apiUrlGuess,
-      PREVIEW_BASE_URL: publicUrlGuess,
-      PLUGIN_OUTBOUND_POLICY_ENFORCED: "false",
-      BASER_INSTANT_LOGIN: "false",
-      BASER_INSTANT_OWNER_HINT: "",
-    },
+    vars: trialApiWorkerVars({
+      apiUrl: apiUrlGuess,
+      publicUrl: publicUrlGuess,
+    }),
   }, budget);
 
   const healthUrl = `${apiUrlGuess.replace(/\/$/, "")}/health`;
@@ -239,25 +232,19 @@ export async function runTrialProvisionRelease(
   await putWorkerScript(token, accountId, manifest.publicWorkerName, "index.js", publicModule, {
     d1DatabaseId: databaseId,
     workersDev: true,
-    vars: {
-      SITE_ID: siteId,
-      ASSET_BASE_URL: "/assets",
-      TURNSTILE_SITE_KEY: "",
-    },
+    vars: trialPublicWorkerVars({ siteId }),
   }, budget);
 
   await putWorkerScript(token, accountId, manifest.apiWorkerName, "index.js", apiModule, {
     d1DatabaseId: databaseId,
     keepAssets: true,
     workersDev: true,
-    vars: {
-      BASER_ENV: "preview",
-      PUBLIC_BASE_URL: apiUrlGuess,
-      PREVIEW_BASE_URL: publicUrlGuess,
-      PLUGIN_OUTBOUND_POLICY_ENFORCED: "false",
-      BASER_INSTANT_LOGIN: boot ? "true" : "false",
-      BASER_INSTANT_OWNER_HINT: ownerHint,
-    },
+    vars: trialApiWorkerVars({
+      apiUrl: apiUrlGuess,
+      publicUrl: publicUrlGuess,
+      instantLogin: boot ? "true" : "false",
+      ownerHint,
+    }),
   }, budget);
 
   await publishWorkerToWorkersDev(token, accountId, manifest.publicWorkerName, budget);

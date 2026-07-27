@@ -45,7 +45,6 @@ import {
 } from "@baser-edge/structured-document";
 import { AgentOperations } from "@baser-edge/agent-tools";
 import {
-  D1AssetMetadataStore,
   D1BlogStore,
   D1CustomContentStore,
   D1MailFormStore,
@@ -57,14 +56,12 @@ import {
   MemoryCfOAuthChallengeStore,
   WorkersForPlatformsPluginRuntime,
   type DispatchNamespaceLike,
-  R2AssetObjectStore,
+  resolveAssetBindings,
   type D1DatabaseLike,
   type R2BucketLike,
 } from "@baser-edge/cloudflare-adapters";
 import {
   AssetService,
-  MemoryAssetMetadataStore,
-  MemoryAssetObjectStore,
 } from "@baser-edge/asset-kernel";
 import { MemoryPreviewStore, PreviewService } from "@baser-edge/preview-kernel";
 import { BlogService, MemoryBlogStore } from "@baser-edge/blog-kernel";
@@ -128,12 +125,12 @@ export interface Env {
   BASER_CF_OAUTH_CLIENT_ID?: string;
   BASER_CF_OAUTH_CLIENT_SECRET?: string;
   BASER_CF_OAUTH_REDIRECT_URI?: string;
+  /** Trial-only: store asset bytes in D1 when R2 is absent. Ignored when R2 is bound. */
+  BASER_ASSET_STORAGE?: string;
 }
 
 const memoryStore = new MemoryCmsStore();
 const memoryCms = new CmsService(memoryStore);
-const memoryAssetMetadata = new MemoryAssetMetadataStore();
-const memoryAssetObjects = new MemoryAssetObjectStore();
 const memoryPreviewStore = new MemoryPreviewStore();
 const memoryBlogStore = new MemoryBlogStore();
 const memoryCustomContentStore = new MemoryCustomContentStore();
@@ -952,12 +949,14 @@ function securityGateway(cms: CmsService) {
 }
 
 function createAssetService(env: Env, cms: CmsService): AssetService {
+  const bindings = resolveAssetBindings(env);
   return new AssetService({
-    metadata: env.DB ? new D1AssetMetadataStore(env.DB) : memoryAssetMetadata,
-    objects: env.R2 ? new R2AssetObjectStore(env.R2) : memoryAssetObjects,
+    metadata: bindings.metadata,
+    objects: bindings.objects,
     security: securityGateway(cms),
     signingSecret: env.ASSET_UPLOAD_SECRET ?? "development-upload-secret-change-me",
     usageInspector: { listPublishedReferences: cms.store.listPublishedAssetReferences.bind(cms.store) },
+    ...(bindings.trialInline ? { trialInline: bindings.trialInline } : {}),
   });
 }
 

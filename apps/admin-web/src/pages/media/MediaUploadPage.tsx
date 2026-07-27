@@ -4,10 +4,12 @@ import { apiFetch } from "../../api/client";
 import { AssetThumbnail } from "../../components/AssetThumbnail";
 import { Field } from "../../components/ui/Field";
 import { StatusMessage } from "../../components/ui/StatusMessage";
+import { useConsoleCapabilities } from "../../hooks/useConsoleCapabilities";
 import { useMediaAssetsContext } from "../../hooks/useMediaAssets";
 import type { AssetRow } from "../../lib/assets";
 import { assetLabel } from "../../lib/assets";
 import { canShowPublicImagePreview, publicAssetUrl } from "../../lib/assetUrl";
+import { compressImageForTrialUpload, TrialImageCompressError } from "../../lib/clientImageCompress";
 import {
   ALLOWED_IMAGE_MEDIA_TYPES,
   DEFAULT_MAX_IMAGE_BYTES,
@@ -15,6 +17,7 @@ import {
   isPreviewableImageFile,
 } from "../../lib/imageUpload";
 import { resolvePublicSiteOrigin } from "../../lib/localDevUrls";
+import { TRIAL_INLINE_MAX_ASSETS } from "../../lib/trialInlineMedia";
 
 type UploadSessionResponse = {
   uploadUrl: string;
@@ -28,7 +31,10 @@ function publicBaseFromSession(session: { publicUrl?: string } | null): string {
 }
 
 export function MediaUploadPage() {
-  const { session, reload } = useMediaAssetsContext();
+  const { capabilities } = useConsoleCapabilities();
+  const { assets, session, reload } = useMediaAssetsContext();
+  const trialInline = capabilities?.assetStorage === "d1-inline";
+  const maxAssets = capabilities?.trialInlineMedia?.maxAssets ?? TRIAL_INLINE_MAX_ASSETS;
   const [file, setFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [status, setStatus] = useState("");
@@ -37,15 +43,23 @@ export function MediaUploadPage() {
   const [copyHint, setCopyHint] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  const activeCount = assets.length;
+  const atTrialLimit = trialInline && activeCount >= maxAssets;
+
   useEffect(() => {
-    if (!file || !isPreviewableImageFile(file)) {
+    if (!file) {
+      setPreviewUrl(null);
+      return;
+    }
+    const previewMax = trialInline ? 15 * 1024 * 1024 : DEFAULT_MAX_IMAGE_BYTES;
+    if (!isAllowedImageMediaType(file.type) || file.size <= 0 || file.size > previewMax) {
       setPreviewUrl(null);
       return;
     }
     const url = URL.createObjectURL(file);
     setPreviewUrl(url);
     return () => URL.revokeObjectURL(url);
-  }, [file]);
+  }, [file, trialInline]);
 
   function onFileChange(next: File | null) {
     setFile(next);
@@ -64,39 +78,57 @@ export function MediaUploadPage() {
 
   async function onUpload(e: React.FormEvent) {
     e.preventDefault();
-    if (!session || !file) return;
-    if (!isAllowedImageMediaType(file.type)) {
-      setStatus("この形式の画像はアップロードできません（JPEG / PNG / WebP / GIF のみ）。");
-      return;
-    }
-    if (file.size <= 0 || file.size > DEFAULT_MAX_IMAGE_BYTES) {
-      setStatus(`ファイルサイズは 1 バイト以上 ${DEFAULT_MAX_IMAGE_BYTES / (1024 * 1024)}MB 以下にしてください。`);
-      return;
-    }
+    if (!session || !file || atTrialLimit) return;
+
     setBusy(true);
-    setStatus("アップロード中…");
+    setStatus(trialInline ? "画像を最適化しています…" : "アップロード中…");
     setCopyHint("");
     try {
+      let uploadBody: Blob = file;
+      let filename = file.name;
+      let mediaType = file.type;
+
+      if (trialInline) {
+        if (!isAllowedImageMediaType(file.type)) {
+          setStatus("この形式の画像はアップロードできません（JPEG / PNG / WebP / GIF のみ）。");
+          return;
+        }
+        const compressed = await compressImageForTrialUpload(file);
+        uploadBody = compressed.blob;
+        filename = compressed.filename;
+        mediaType = compressed.mediaType;
+      } else {
+        if (!isAllowedImageMediaType(file.type)) {
+          setStatus("この形式の画像はアップロードできません（JPEG / PNG / WebP / GIF のみ）。");
+          return;
+        }
+        if (file.size <= 0 || file.size > DEFAULT_MAX_IMAGE_BYTES) {
+          setStatus(`ファイルサイズは 1 バイト以上 ${DEFAULT_MAX_IMAGE_BYTES / (1024 * 1024)}MB 以下にしてください。`);
+          return;
+        }
+      }
+
+      setStatus("アップロード中…");
       const sessionRes = await apiFetch<UploadSessionResponse>("/v1/assets/upload-sessions", {
         method: "POST",
         json: {
           workspaceId: session.workspaceId,
-          filename: file.name,
-          mediaType: file.type,
-          maximumBytes: file.size,
+          filename,
+          mediaType,
+          ...(trialInline ? {} : { maximumBytes: uploadBody.size }),
         },
       });
       const put = await fetch(sessionRes.uploadUrl, {
         method: "PUT",
-        headers: { "content-type": file.type },
-        body: file,
+        headers: { "content-type": mediaType },
+        body: uploadBody,
       });
       if (!put.ok) throw new Error(`アップロード失敗 (${put.status})`);
       const uploaded = (await put.json()) as AssetRow;
       const confirmed: LastUploaded = {
         id: uploaded.id ?? sessionRes.asset.id,
-        originalFilename: uploaded.originalFilename ?? sessionRes.asset.originalFilename ?? file.name,
-        mediaType: uploaded.mediaType ?? file.type,
+        originalFilename: uploaded.originalFilename ?? sessionRes.asset.originalFilename ?? filename,
+        mediaType: uploaded.mediaType ?? mediaType,
         state: uploaded.state ?? "ready",
       };
       setLastUploaded(confirmed);
@@ -105,15 +137,23 @@ export function MediaUploadPage() {
       if (fileInputRef.current) fileInputRef.current.value = "";
       setStatus("");
     } catch (err) {
-      setStatus(err instanceof Error ? err.message : String(err));
+      if (err instanceof TrialImageCompressError) {
+        setStatus(err.message);
+      } else {
+        setStatus(err instanceof Error ? err.message : String(err));
+      }
     } finally {
       setBusy(false);
     }
   }
 
+  const maxBytes = trialInline
+    ? (capabilities?.trialInlineMedia?.maxBytesPerObject ?? 2 * 1024 * 1024)
+    : DEFAULT_MAX_IMAGE_BYTES;
   const showPreview = Boolean(file && previewUrl);
   const previewBlocked =
     file &&
+    !trialInline &&
     !isPreviewableImageFile(file) &&
     (file.size > DEFAULT_MAX_IMAGE_BYTES
       ? "プレビューできません（サイズ上限を超えています）。"
@@ -128,12 +168,17 @@ export function MediaUploadPage() {
     <>
       <form className="panel panel-pad" onSubmit={(e) => void onUpload(e)}>
         <h2 className="panel-title">ファイルをアップロード</h2>
-        <p className="panel-lead">登録後はライブラリと公開 URL から利用できます。</p>
+        <p className="panel-lead">
+          {trialInline
+            ? `お試し環境では画像を最大 ${maxAssets} 枚まで（1 枚あたり約 ${Math.round(maxBytes / (1024 * 1024))}MB、スマホ向けに自動圧縮）。現在 ${activeCount}/${maxAssets} 枚。`
+            : "登録後はライブラリと公開 URL から利用できます。"}
+        </p>
         <Field label="ファイル">
           <input
             ref={fileInputRef}
             type="file"
             accept={ALLOWED_IMAGE_MEDIA_TYPES.join(",")}
+            disabled={atTrialLimit}
             onChange={(e) => onFileChange(e.target.files?.[0] ?? null)}
           />
           {showPreview ? (
@@ -142,11 +187,16 @@ export function MediaUploadPage() {
             </div>
           ) : null}
           {previewBlocked ? <p className="media-preview-hint">{previewBlocked}</p> : null}
+          {atTrialLimit ? (
+            <p className="media-preview-hint">
+              上限に達しました。不要な画像をライブラリから削除するか、本番用に R2 を有効化してください。
+            </p>
+          ) : null}
         </Field>
         <button
           type="submit"
           className="btn btn-primary"
-          disabled={busy || !file || !isPreviewableImageFile(file)}
+          disabled={busy || !file || atTrialLimit || (!trialInline && !isPreviewableImageFile(file))}
         >
           アップロード
         </button>

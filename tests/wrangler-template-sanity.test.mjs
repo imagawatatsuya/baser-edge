@@ -25,6 +25,13 @@ for (const rel of WRANGLER_FILES) {
     /"database_id":\s*"REPLACE_ME"/,
     `${rel} database_id must be REPLACE_ME in git`,
   );
+  if (rel.includes("trial")) {
+    assert.match(
+      text,
+      /"BASER_ASSET_STORAGE":\s*"d1-inline"/,
+      `${rel} must enable trial D1 inline asset storage`,
+    );
+  }
 }
 
 const abs = join(root, "deploy", "cloudflare-state.json");

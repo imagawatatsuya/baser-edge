@@ -20,11 +20,13 @@ export function ensureWranglerR2Bindings({ log } = {}) {
     let text = readFileSync(file, "utf8");
     if (/"r2_buckets"/.test(text)) {
       text = text.replace(/"bucket_name":\s*"[^"]*"/, `"bucket_name": "${bucket}"`);
+      text = text.replace(/\n\s*"BASER_ASSET_STORAGE":\s*"d1-inline",?/g, "");
       writeFileSync(file, text, "utf8");
       continue;
     }
     if (!/"d1_databases"/.test(text)) continue;
     text = text.replace(/("d1_databases":\s*\[[\s\S]*?\]\s*,)/, `$1\n${block}\n`);
+    text = text.replace(/\n\s*"BASER_ASSET_STORAGE":\s*"d1-inline",?/g, "");
     writeFileSync(file, text, "utf8");
     log?.(`Added R2 binding to ${rel}`);
   }

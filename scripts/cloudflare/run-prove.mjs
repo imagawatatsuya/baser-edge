@@ -14,6 +14,7 @@ import { runProvision } from "./run-provision.mjs";
 import { applyD1MigrationsRemote } from "./apply-d1-migrations.mjs";
 import { syncInstantLoginDeploy } from "./sync-instant-login.mjs";
 import { upgradeTrialMediaStack } from "./upgrade-trial-media.mjs";
+import { ensureTrialInlineWranglerVars } from "./ensure-trial-inline-wrangler.mjs";
 
 /**
  * @param {{ onProgress?: (event: { step: string, message?: string, consoleUrl?: string, publicUrl?: string }) => void, log?: (...args: unknown[]) => void, runSmoke?: boolean }} options
@@ -50,6 +51,7 @@ export async function runProve(options = {}) {
 
   patchWranglerBindings({ databaseId: state.d1DatabaseId });
   if (state.siteId) patchPublicSiteId(state.siteId);
+  if (isTrialNoR2()) ensureTrialInlineWranglerVars({ log });
 
   onProgress({ step: "build", message: "管理画面をビルドしています…" });
   log("Building…");
@@ -133,7 +135,7 @@ export async function runProve(options = {}) {
   onProgress({ step: "verify", message: "管理画面を確認しています…", consoleUrl });
 
   if (boot) {
-    syncInstantLoginDeploy(state, boot, log);
+    await syncInstantLoginDeploy(state, boot, log);
   }
 
   const health = await fetch(`${state.apiUrl.replace(/\/$/, "")}/health`);
@@ -144,7 +146,10 @@ export async function runProve(options = {}) {
   let published = null;
   if (runSmoke && boot) {
     onProgress({ step: "smoke", message: "公開ページを確認しています…" });
-    published = await smokeLoginAndPublish(boot, state.publicUrl);
+    published = await smokeLoginAndPublish(boot, state.publicUrl, { log });
+    if (!published) {
+      log("Publish smoke skipped or incomplete (non-fatal).");
+    }
   }
 
   onProgress({

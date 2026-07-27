@@ -27,6 +27,7 @@ import {
 } from "./run-trial-provision-release.js";
 import { fetchTrialProvisionerIdentity } from "./cf-provisioner-identity.js";
 import { assertTrialHostCmsOAuth, verifyTrialCmsLoginReady } from "./trial-cms-login.js";
+import { trialApiWorkerVars, trialPublicWorkerVars } from "./trial-worker-vars.js";
 
 export const TRIAL_PROVISION_STEP_API_BUDGET = 35;
 export const TRIAL_PROVISION_ROUTE_PROBE_ATTEMPTS = 12;
@@ -292,11 +293,7 @@ export async function runTrialProvisionReleaseStep(
       await putWorkerScript(token, accountId, manifest.publicWorkerName, "index.js", publicModule, {
         d1DatabaseId: databaseId,
         workersDev: true,
-        vars: {
-          SITE_ID: "pending",
-          ASSET_BASE_URL: "/assets",
-          TURNSTILE_SITE_KEY: "",
-        },
+        vars: trialPublicWorkerVars({ siteId: "pending" }),
       }, budget);
       await publishWorkerToWorkersDev(token, accountId, manifest.publicWorkerName, budget);
       return {
@@ -330,14 +327,7 @@ export async function runTrialProvisionReleaseStep(
         d1DatabaseId: databaseId,
         assetsJwt,
         workersDev: true,
-        vars: {
-          BASER_ENV: "preview",
-          PUBLIC_BASE_URL: apiUrl,
-          PREVIEW_BASE_URL: publicUrl,
-          PLUGIN_OUTBOUND_POLICY_ENFORCED: "false",
-          BASER_INSTANT_LOGIN: "false",
-          BASER_INSTANT_OWNER_HINT: "",
-        },
+        vars: trialApiWorkerVars({ apiUrl, publicUrl }),
       }, budget);
       await publishWorkerToWorkersDev(token, accountId, manifest.apiWorkerName, budget, {
         httpProbeUrl: `${apiUrl.replace(/\/$/, "")}/console/`,
@@ -421,11 +411,7 @@ export async function runTrialProvisionReleaseStep(
       await putWorkerScript(token, accountId, manifest.publicWorkerName, "index.js", publicModule, {
         d1DatabaseId: databaseId,
         workersDev: true,
-        vars: {
-          SITE_ID: state.bootstrap?.siteId ?? "demo",
-          ASSET_BASE_URL: "/assets",
-          TURNSTILE_SITE_KEY: "",
-        },
+        vars: trialPublicWorkerVars({ siteId: state.bootstrap?.siteId ?? "demo" }),
       }, budget);
       await publishWorkerToWorkersDev(token, accountId, manifest.publicWorkerName, budget);
       return {
@@ -446,14 +432,7 @@ export async function runTrialProvisionReleaseStep(
         d1DatabaseId: databaseId,
         keepAssets: true,
         workersDev: true,
-        vars: {
-          BASER_ENV: "preview",
-          PUBLIC_BASE_URL: apiUrl,
-          PREVIEW_BASE_URL: publicUrl,
-          PLUGIN_OUTBOUND_POLICY_ENFORCED: "false",
-          BASER_INSTANT_LOGIN: "false",
-          BASER_INSTANT_OWNER_HINT: "",
-        },
+        vars: trialApiWorkerVars({ apiUrl, publicUrl }),
       }, budget);
       await publishWorkerToWorkersDev(token, accountId, manifest.apiWorkerName, budget, {
         httpProbeUrl: `${apiUrl.replace(/\/$/, "")}/console/`,

@@ -17,6 +17,19 @@ test("GET /v1/console/capabilities without R2 reports memory storage", async () 
   assert.equal(body.publicSiteUrl, null);
 });
 
+test("GET /v1/console/capabilities with D1 inline storage enables public delivery", async () => {
+  const response = await worker.fetch(
+    new Request("https://api.test/v1/console/capabilities"),
+    { DB: {}, BASER_ASSET_STORAGE: "d1-inline" },
+  );
+  assert.equal(response.status, 200);
+  const body = await response.json();
+  assert.equal(body.assetPublicDelivery, true);
+  assert.equal(body.assetStorage, "d1-inline");
+  assert.equal(body.trialInlineMedia?.maxAssets, 3);
+  assert.equal(body.trialInlineMedia?.maxBytesPerObject, 2 * 1024 * 1024);
+});
+
 test("GET /v1/console/capabilities with R2 binding enables public delivery flag", async () => {
   const response = await worker.fetch(
     new Request("https://api.test/v1/console/capabilities"),

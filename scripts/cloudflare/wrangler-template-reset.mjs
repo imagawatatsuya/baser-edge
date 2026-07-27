@@ -33,6 +33,17 @@ function stripTrialR2Block(text) {
   return text.replace(/\n\s*"r2_buckets":\s*\[[\s\S]*?\]\s*,/g, "");
 }
 
+export function ensureTrialInlineVarInText(text) {
+  if (!/"vars":\s*\{/.test(text)) return text;
+  if (/"r2_buckets"/.test(text)) {
+    return text.replace(/\n\s*"BASER_ASSET_STORAGE":\s*"[^"]*",?/g, "");
+  }
+  if (/"BASER_ASSET_STORAGE"/.test(text)) {
+    return text.replace(/"BASER_ASSET_STORAGE":\s*"[^"]*"/, '"BASER_ASSET_STORAGE": "d1-inline"');
+  }
+  return text.replace(/("vars":\s*\{)/, `$1\n    "BASER_ASSET_STORAGE": "d1-inline",`);
+}
+
 /**
  * Revert tracked wrangler configs after local prove/destroy so git never needs
  * account-specific workers.dev URLs, D1 ids, or bootstrap hints.
@@ -55,6 +66,9 @@ export function resetWranglerConfigsToTemplate({ trialStripR2 = true } = {}) {
     }
     if (trialStripR2 && rel === "wrangler.public.trial.jsonc") {
       text = stripTrialR2Block(text);
+    }
+    if (rel === "wrangler.trial.jsonc" || rel === "wrangler.public.trial.jsonc") {
+      text = ensureTrialInlineVarInText(text);
     }
     writeFileSync(file, text, "utf8");
   }

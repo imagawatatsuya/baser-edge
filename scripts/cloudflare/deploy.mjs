@@ -26,10 +26,13 @@ import {
   wranglerDeployPublicArgs,
   requireProveConsent,
   d1DatabaseName,
+  isTrialNoR2,
 } from "./stack.mjs";
 import { applyD1MigrationsRemote } from "./apply-d1-migrations.mjs";
 import { getBootstrapSecret } from "./secrets-store.mjs";
 import { TRIAL_ONBOARDING_START_URL } from "./trial-start-url.mjs";
+import { resetWranglerConfigsToTemplate } from "./wrangler-template-reset.mjs";
+import { ensureTrialInlineWranglerVars } from "./ensure-trial-inline-wrangler.mjs";
 
 const args = new Set(process.argv.slice(2));
 const doBootstrap = args.has("--bootstrap");
@@ -48,8 +51,9 @@ if (!state?.d1DatabaseId) {
 }
 patchWranglerBindings({ databaseId: state.d1DatabaseId });
 if (state.siteId) patchPublicSiteId(state.siteId);
+if (isTrialNoR2()) ensureTrialInlineWranglerVars({ log: console.log });
 
-console.log("Building packages and admin console…");
+try {
 run("npm", ["run", "build"]);
 run("npm", ["run", "build:admin-web"]);
 
@@ -75,6 +79,10 @@ if (doBootstrap && !state.bootstrapped) {
 }
 
 printPostDeploy(state);
+} finally {
+  resetWranglerConfigsToTemplate({ trialStripR2: true });
+  console.log("(ローカル wrangler*.jsonc をテンプレに戻しました。)");
+}
 
 async function bootstrapSite(state) {
   const apiUrl = state.apiUrl;

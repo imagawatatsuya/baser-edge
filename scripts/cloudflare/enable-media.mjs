@@ -50,7 +50,7 @@ wrangler(wranglerDeployApiArgs(), { silent: true });
 wrangler(wranglerDeployPublicArgs(), { silent: true });
 
 if (state.demoHint || state.bootstrap) {
-  syncInstantLoginDeploy(state, state.demoHint ?? state.bootstrap, console.log);
+  await syncInstantLoginDeploy(state, state.demoHint ?? state.bootstrap, console.log);
 }
 
 console.log(`

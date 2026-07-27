@@ -1,8 +1,9 @@
 import { wrangler } from "./shared.mjs";
 import { patchInstantLogin } from "./wrangler-vars.mjs";
 import { wranglerDeployApiArgs } from "./stack.mjs";
+import { waitForInstantLogin } from "./wait-instant-login.mjs";
 
-export function syncInstantLoginDeploy(state, boot, log = console.log) {
+export async function syncInstantLoginDeploy(state, boot, log = console.log) {
   const payload = boot ?? state.demoHint ?? state.bootstrap;
   if (!payload?.workspaceId) return;
   const ownerHint = {
@@ -15,4 +16,11 @@ export function syncInstantLoginDeploy(state, boot, log = console.log) {
   patchInstantLogin(ownerHint);
   log("Redeploying API worker (instant login)…");
   wrangler(wranglerDeployApiArgs(), { silent: true });
+  const apiUrl = state.apiUrl ?? payload.apiUrl;
+  if (apiUrl) {
+    const ready = await waitForInstantLogin(apiUrl, { log });
+    if (!ready) {
+      log("Warning: instant login still returns 404 after redeploy; publish smoke may be skipped.");
+    }
+  }
 }

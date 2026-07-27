@@ -33,7 +33,7 @@ Living inventory of **existing** `/v1/*` routes against [validation-policy.md](.
 | Route | Methods | Domain | API | −T | Status | Notes |
 |-------|---------|--------|-----|-----|--------|-------|
 | `/health` | GET | — | — | — | OK | No body |
-| `/v1/console/capabilities` | GET | — | — | Y | OK | R2 binding → `assetPublicDelivery`; UI: `PublicMediaDeliveryGuide` on media / image edit |
+| `/v1/console/capabilities` | GET | — | — | Y | OK | R2 → `r2`; `d1-inline` → `trialInlineMedia` |
 | `/v1/dev/local-login-hint` | GET | — | — | — | Partial | Dev-only; no abuse tests |
 
 ---
@@ -148,7 +148,7 @@ Public mail submit (renderer, not api-worker) — see `tests/mail-form.test.mjs`
 
 | Route | Methods | Domain | API | −T | Status | Notes |
 |-------|---------|--------|-----|-----|--------|-------|
-| `/v1/assets/upload-sessions` | POST | Y | Y | Partial | Partial | MIME/size in kernel |
+| `/v1/assets/upload-sessions` | POST | Y | Y | Partial | OK | MIME/size; trial `TRIAL_INLINE_ASSET_LIMIT` |
 | `/v1/assets/uploads/:id` | PUT | Y | Partial | Partial | Partial | Token query required |
 | `/v1/assets` | GET | Y | Partial | Partial | Partial | |
 | `/v1/assets/:id` | GET, DELETE | Y | — | Partial | Partial | DELETE mirrored in `MediaLibraryPage` (`ASSET_IN_USE` UI) |

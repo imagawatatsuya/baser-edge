@@ -11,7 +11,7 @@ baserCMSとBurgerEditorは、本文へファイルパスを保存し、ログイ
 
 1. コンテンツはObject Keyや公開URLではなくAsset IDを参照する。
 2. Upload開始時にAssetとUploadSessionを作り、HMAC署名付き短時間URLを発行する。
-3. v0.3では署名付きAPI Worker endpointがR2 Bindingへ保存する。
+3. v0.3では署名付きAPI Worker endpointがR2 Bindingへ保存する（**trial の `BASER_ASSET_STORAGE=d1-inline` 時は D1 BLOB・最大3枚・画像 sniff**）。
 4. UploadSessionは一回の成功で閉じ、再利用を拒否する。
 5. Revision保存時にAssetReferenceを抽出する。
 6. 公開中Revisionから参照されるAssetの削除を拒否する。

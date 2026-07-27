@@ -12,6 +12,7 @@
       "migrations_dir": "migrations"
     }
   ],
+
   "assets": {
     "directory": "./apps/admin-web/dist",
     "binding": "STATIC_ASSETS",
@@ -20,7 +21,8 @@
     "run_worker_first": true
   },
   "vars": {
-    "BASER_ENV": "preview",
+    "BASER_ASSET_STORAGE": "d1-inline",
+    "BASER_ENV": "preview",
     "PUBLIC_BASE_URL": "https://api.example.invalid",
     "PREVIEW_BASE_URL": "https://preview.example.invalid",
     "PLUGIN_OUTBOUND_POLICY_ENFORCED": "false",

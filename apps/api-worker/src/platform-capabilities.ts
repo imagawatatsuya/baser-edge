@@ -1,27 +1,58 @@
+import { isD1InlineAssetStorageEnabled } from "@baser-edge/cloudflare-adapters";
+import { TRIAL_INLINE_MAX_ASSETS, TRIAL_INLINE_MAX_BYTES_PER_OBJECT } from "@baser-edge/asset-kernel";
 import { cloudflareOAuthConfigured } from "./cloudflare-auth-routes.js";
 import { instantLoginEnabled, isProductionEnv, type AuthEnv } from "./auth-routes.js";
 
 export type ConsoleCapabilities = {
   assetPublicDelivery: boolean;
-  assetStorage: "r2" | "memory";
+  assetStorage: "r2" | "memory" | "d1-inline";
   environment: "production" | "preview";
   instantLogin: boolean;
   cloudflareLogin: boolean;
   publicSiteUrl: string | null;
+  trialInlineMedia?: {
+    maxAssets: number;
+    maxBytesPerObject: number;
+  };
 };
 
 export type PlatformEnv = AuthEnv & {
   R2?: unknown;
+  DB?: unknown;
+  BASER_ASSET_STORAGE?: string;
   PUBLIC_BASE_URL?: string;
   PREVIEW_BASE_URL?: string;
 };
 
-/** Whether uploaded assets can be served on the public site (`/assets/…`). Requires API Worker R2 binding (deploy scripts set public worker too). */
+/** Whether uploaded assets can be served on the public site (`/assets/…`). */
 export function resolveConsoleCapabilities(env: PlatformEnv): ConsoleCapabilities {
-  const assetPublicDelivery = Boolean(env.R2);
+  if (env.R2) {
+    return {
+      assetPublicDelivery: true,
+      assetStorage: "r2",
+      environment: isProductionEnv(env) ? "production" : "preview",
+      instantLogin: instantLoginEnabled(env),
+      cloudflareLogin: cloudflareOAuthConfigured(env),
+      publicSiteUrl: pickPublicSiteUrl(env),
+    };
+  }
+  if (isD1InlineAssetStorageEnabled(env)) {
+    return {
+      assetPublicDelivery: true,
+      assetStorage: "d1-inline",
+      environment: isProductionEnv(env) ? "production" : "preview",
+      instantLogin: instantLoginEnabled(env),
+      cloudflareLogin: cloudflareOAuthConfigured(env),
+      publicSiteUrl: pickPublicSiteUrl(env),
+      trialInlineMedia: {
+        maxAssets: TRIAL_INLINE_MAX_ASSETS,
+        maxBytesPerObject: TRIAL_INLINE_MAX_BYTES_PER_OBJECT,
+      },
+    };
+  }
   return {
-    assetPublicDelivery,
-    assetStorage: assetPublicDelivery ? "r2" : "memory",
+    assetPublicDelivery: false,
+    assetStorage: "memory",
     environment: isProductionEnv(env) ? "production" : "preview",
     instantLogin: instantLoginEnabled(env),
     cloudflareLogin: cloudflareOAuthConfigured(env),

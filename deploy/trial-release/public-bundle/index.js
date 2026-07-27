@@ -2005,6 +2005,458 @@ class CmsService {
     });
   }
 }
+const TRIAL_INLINE_MAX_ASSETS = 3;
+const TRIAL_INLINE_MAX_BYTES_PER_OBJECT = 2 * 1024 * 1024;
+const TRIAL_INLINE_IMAGE_MEDIA_TYPES = [
+  "image/jpeg",
+  "image/png",
+  "image/webp",
+  "image/gif"
+];
+const TRIAL_INLINE_MEDIA_POLICY = {
+  mode: "trial-inline-d1",
+  maxAssets: TRIAL_INLINE_MAX_ASSETS,
+  maxBytesPerObject: TRIAL_INLINE_MAX_BYTES_PER_OBJECT
+};
+function trialInlineImageMediaTypeSet() {
+  return new Set(TRIAL_INLINE_IMAGE_MEDIA_TYPES);
+}
+function sniffImageMediaType(bytes) {
+  if (bytes.length >= 3 && bytes[0] === 255 && bytes[1] === 216 && bytes[2] === 255) {
+    return "image/jpeg";
+  }
+  if (bytes.length >= 8 && bytes[0] === 137 && bytes[1] === 80 && bytes[2] === 78 && bytes[3] === 71 && bytes[4] === 13 && bytes[5] === 10 && bytes[6] === 26 && bytes[7] === 10) {
+    return "image/png";
+  }
+  if (bytes.length >= 12 && bytes[0] === 82 && bytes[1] === 73 && bytes[2] === 70 && bytes[3] === 70 && bytes[8] === 87 && bytes[9] === 69 && bytes[10] === 66 && bytes[11] === 80) {
+    return "image/webp";
+  }
+  if (bytes.length >= 6 && bytes[0] === 71 && bytes[1] === 73 && bytes[2] === 70 && bytes[3] === 56 && (bytes[4] === 55 || bytes[4] === 57) && bytes[5] === 97) {
+    return "image/gif";
+  }
+  return null;
+}
+function normalizeDeclaredImageMediaType(value) {
+  return value.split(";", 1)[0]?.trim().toLowerCase() ?? "";
+}
+function isSniffedTrialInlineImage(bytes, declaredMediaType) {
+  const sniffed = sniffImageMediaType(bytes);
+  if (!sniffed)
+    return false;
+  const declared = normalizeDeclaredImageMediaType(declaredMediaType);
+  if (declared !== sniffed)
+    return false;
+  return TRIAL_INLINE_IMAGE_MEDIA_TYPES.includes(sniffed);
+}
+const defaultAllowedMediaTypes = /* @__PURE__ */ new Set([
+  "image/jpeg",
+  "image/png",
+  "image/webp",
+  "image/gif",
+  "application/pdf",
+  "text/plain",
+  "text/csv",
+  "application/zip"
+]);
+class AssetService {
+  #metadata;
+  #objects;
+  #security;
+  #secret;
+  #clock;
+  #allowedMediaTypes;
+  #defaultMaximumBytes;
+  #usageInspector;
+  #trialInline;
+  constructor(input) {
+    assertDomain(input.signingSecret.length >= 16, "WEAK_UPLOAD_SECRET", "Upload signing secret must be at least 16 characters", 500);
+    this.#metadata = input.metadata;
+    this.#objects = input.objects;
+    this.#security = input.security;
+    this.#secret = input.signingSecret;
+    this.#clock = input.clock ?? systemClock;
+    this.#trialInline = input.trialInline;
+    this.#allowedMediaTypes = input.trialInline ? trialInlineImageMediaTypeSet() : input.allowedMediaTypes ?? defaultAllowedMediaTypes;
+    this.#defaultMaximumBytes = input.trialInline ? input.trialInline.maxBytesPerObject : input.defaultMaximumBytes ?? 25 * 1024 * 1024;
+    this.#usageInspector = input.usageInspector;
+  }
+  async createUploadSession(actor, input) {
+    const filename = sanitizeFilename(input.filename);
+    const mediaType = normalizeMediaType(input.mediaType);
+    assertDomain(this.#allowedMediaTypes.has(mediaType), "MEDIA_TYPE_NOT_ALLOWED", `Media type ${mediaType} is not allowed`, 422);
+    let maximumBytes = input.maximumBytes ?? this.#defaultMaximumBytes;
+    if (this.#trialInline) {
+      maximumBytes = Math.min(maximumBytes, this.#trialInline.maxBytesPerObject);
+    }
+    assertDomain(Number.isInteger(maximumBytes) && maximumBytes > 0 && maximumBytes <= 5 * 1024 * 1024 * 1024, "INVALID_MAXIMUM_BYTES", "Invalid upload size limit", 422);
+    await this.#security.authorize(actor, Capabilities.AssetUpload, { workspaceId: input.workspaceId, risk: "medium" }, "asset.upload-session.create", "workspace", input.workspaceId);
+    const now = this.#clock.now();
+    await this.#metadata.expireStalePendingUploads(input.workspaceId, now);
+    if (this.#trialInline) {
+      const active = await this.#metadata.countActiveAssets(input.workspaceId, now);
+      assertDomain(active < this.#trialInline.maxAssets, "TRIAL_INLINE_ASSET_LIMIT", `Trial allows at most ${this.#trialInline.maxAssets} images`, 422);
+    }
+    const assetId = asAssetId(newId("asset"));
+    const sessionId = asUploadSessionId(newId("upload"));
+    const expiresAt = now + Math.max(60, Math.min(input.expiresInSeconds ?? 900, 3600)) * 1e3;
+    const objectKey = `workspaces/${input.workspaceId}/assets/${assetId}/${filename}`;
+    const asset = {
+      id: assetId,
+      workspaceId: input.workspaceId,
+      objectKey,
+      originalFilename: filename,
+      mediaType,
+      byteSize: null,
+      checksum: null,
+      width: null,
+      height: null,
+      state: "pending",
+      ownerPrincipalId: actor.actorId,
+      createdAt: now,
+      updatedAt: now,
+      deletedAt: null
+    };
+    const session = {
+      id: sessionId,
+      assetId,
+      workspaceId: input.workspaceId,
+      objectKey,
+      mediaType,
+      maximumBytes,
+      state: "pending",
+      createdBy: actor.actorId,
+      createdAt: now,
+      expiresAt,
+      completedAt: null,
+      failureReason: null
+    };
+    await this.#metadata.createPendingAsset(asset, session);
+    const token = await signCompactToken({
+      typ: "asset-upload",
+      sessionId,
+      assetId,
+      objectKey,
+      mediaType,
+      maximumBytes,
+      expiresAt
+    }, this.#secret);
+    const base = input.uploadBaseUrl.replace(/\/$/, "");
+    const uploadUrl = `${base}/v1/assets/uploads/${encodeURIComponent(sessionId)}?token=${encodeURIComponent(token)}`;
+    await this.#security.success(actor, {
+      workspaceId: input.workspaceId,
+      action: "asset.upload-session.create",
+      resourceType: "asset",
+      resourceId: assetId,
+      capability: Capabilities.AssetUpload,
+      details: { mediaType, maximumBytes, expiresAt }
+    });
+    return { asset, session, uploadUrl, method: "PUT", requiredHeaders: { "content-type": mediaType } };
+  }
+  async uploadWithToken(input) {
+    const payload = await verifyCompactToken(input.token, this.#secret);
+    assertDomain(payload?.typ === "asset-upload", "INVALID_UPLOAD_TOKEN", "Upload token is invalid", 403);
+    assertDomain(payload.sessionId === input.sessionId, "UPLOAD_SESSION_MISMATCH", "Upload token does not match session", 403);
+    const now = this.#clock.now();
+    assertDomain(typeof payload.expiresAt === "number" && payload.expiresAt > now, "UPLOAD_TOKEN_EXPIRED", "Upload token has expired", 410);
+    const session = await this.#metadata.getUploadSession(input.sessionId);
+    assertDomain(session, "UPLOAD_SESSION_NOT_FOUND", "Upload session not found", 404);
+    assertDomain(session.state === "pending", "UPLOAD_SESSION_CLOSED", "Upload session is not pending", 409);
+    assertDomain(session.expiresAt > now, "UPLOAD_SESSION_EXPIRED", "Upload session has expired", 410);
+    const mediaType = normalizeMediaType(input.mediaType);
+    assertDomain(mediaType === session.mediaType && mediaType === payload.mediaType, "UPLOAD_MEDIA_TYPE_MISMATCH", "Content-Type does not match signed upload", 422);
+    if (input.contentLength !== void 0) {
+      assertDomain(input.contentLength >= 0 && input.contentLength <= session.maximumBytes, "UPLOAD_TOO_LARGE", "Upload exceeds the signed size limit", 413);
+    }
+    try {
+      const bodyForStore = this.#trialInline ? await this.#prepareTrialInlineBody(input.body, mediaType, session.maximumBytes) : input.body;
+      const object = await this.#objects.put(session.objectKey, bodyForStore, {
+        mediaType,
+        customMetadata: { assetId: session.assetId, uploadSessionId: session.id }
+      });
+      if (object.size > session.maximumBytes) {
+        await this.#objects.delete(session.objectKey);
+        await this.#metadata.failUpload({ sessionId: session.id, reason: "size_limit_exceeded", now });
+        throw new DomainError("UPLOAD_TOO_LARGE", "Upload exceeds the signed size limit", 413);
+      }
+      return this.#metadata.completeUpload({ sessionId: session.id, byteSize: object.size, checksum: object.etag, now });
+    } catch (error) {
+      if (!(error instanceof DomainError))
+        await this.#metadata.failUpload({ sessionId: session.id, reason: "object_store_failure", now });
+      throw error;
+    }
+  }
+  async getAsset(actor, assetId) {
+    const asset = await this.#requireAsset(assetId);
+    await this.#security.authorize(actor, Capabilities.AssetRead, { workspaceId: asset.workspaceId, risk: "low" }, "asset.read", "asset", asset.id);
+    return asset;
+  }
+  async listAssets(actor, workspaceId) {
+    await this.#security.authorize(actor, Capabilities.AssetRead, { workspaceId, risk: "low" }, "asset.list", "workspace", workspaceId);
+    return this.#metadata.listAssets(workspaceId);
+  }
+  async getPublicAsset(assetId) {
+    const asset = await this.#metadata.getAsset(assetId);
+    if (!asset || asset.state !== "ready" || asset.deletedAt !== null)
+      return null;
+    const object = await this.#objects.get(asset.objectKey);
+    return object ? { asset, object } : null;
+  }
+  async deleteAsset(actor, assetId) {
+    const asset = await this.#requireAsset(assetId);
+    await this.#security.authorize(actor, Capabilities.AssetDelete, { workspaceId: asset.workspaceId, risk: "high" }, "asset.delete", "asset", asset.id);
+    const references = this.#usageInspector ? await this.#usageInspector.listPublishedReferences(asset.id) : [];
+    assertDomain(references.length === 0, "ASSET_IN_USE", "Asset is used by published content", 409, { references });
+    const deleted = await this.#metadata.softDeleteAsset({ assetId, now: this.#clock.now() });
+    try {
+      await this.#objects.delete(asset.objectKey);
+    } catch {
+    }
+    await this.#security.success(actor, {
+      workspaceId: asset.workspaceId,
+      action: "asset.delete",
+      resourceType: "asset",
+      resourceId: asset.id,
+      capability: Capabilities.AssetDelete
+    });
+    return deleted;
+  }
+  async #requireAsset(id) {
+    const asset = await this.#metadata.getAsset(id);
+    assertDomain(asset, "ASSET_NOT_FOUND", "Asset not found", 404);
+    return asset;
+  }
+  async #prepareTrialInlineBody(body, mediaType, maximumBytes) {
+    const bytes = await toBytes$1(body);
+    assertDomain(bytes.byteLength > 0, "UPLOAD_EMPTY", "Upload body is empty", 422);
+    assertDomain(bytes.byteLength <= maximumBytes, "UPLOAD_TOO_LARGE", "Upload exceeds the signed size limit", 413);
+    assertDomain(isSniffedTrialInlineImage(bytes, mediaType), "UPLOAD_CONTENT_MISMATCH", "File content does not match declared image type", 422);
+    return bytes;
+  }
+}
+class MemoryAssetMetadataStore {
+  assets = /* @__PURE__ */ new Map();
+  sessions = /* @__PURE__ */ new Map();
+  async createPendingAsset(asset, session) {
+    if (this.assets.has(asset.id) || this.sessions.has(session.id))
+      throw new DomainError("ASSET_EXISTS", "Asset or upload session already exists", 409);
+    this.assets.set(asset.id, structuredClone(asset));
+    this.sessions.set(session.id, structuredClone(session));
+  }
+  async getAsset(id) {
+    return clone$4(this.assets.get(id) ?? null);
+  }
+  async getUploadSession(id) {
+    return clone$4(this.sessions.get(id) ?? null);
+  }
+  async completeUpload(input) {
+    const session = requireValue(this.sessions.get(input.sessionId), "UPLOAD_SESSION_NOT_FOUND", "Upload session not found");
+    assertDomain(session.state === "pending", "UPLOAD_SESSION_CLOSED", "Upload session is not pending", 409);
+    session.state = "completed";
+    session.completedAt = input.now;
+    const asset = requireValue(this.assets.get(session.assetId), "ASSET_NOT_FOUND", "Asset not found");
+    asset.byteSize = input.byteSize;
+    asset.checksum = input.checksum;
+    asset.state = "ready";
+    asset.updatedAt = input.now;
+    return structuredClone(asset);
+  }
+  async failUpload(input) {
+    const session = this.sessions.get(input.sessionId);
+    if (!session || session.state !== "pending")
+      return;
+    session.state = "failed";
+    session.failureReason = input.reason;
+    session.completedAt = input.now;
+    const asset = this.assets.get(session.assetId);
+    if (asset) {
+      asset.state = "quarantined";
+      asset.updatedAt = input.now;
+    }
+  }
+  async listAssets(workspaceId) {
+    return [...this.assets.values()].filter((asset) => asset.workspaceId === workspaceId && asset.deletedAt === null).map((asset) => structuredClone(asset));
+  }
+  async softDeleteAsset(input) {
+    const asset = requireValue(this.assets.get(input.assetId), "ASSET_NOT_FOUND", "Asset not found");
+    asset.state = "deleted";
+    asset.deletedAt = input.now;
+    asset.updatedAt = input.now;
+    return structuredClone(asset);
+  }
+  async countActiveAssets(workspaceId, now) {
+    let count = 0;
+    for (const asset of this.assets.values()) {
+      if (asset.workspaceId !== workspaceId || asset.deletedAt !== null)
+        continue;
+      if (asset.state === "ready") {
+        count += 1;
+        continue;
+      }
+      if (asset.state !== "pending")
+        continue;
+      const session = [...this.sessions.values()].find((entry) => entry.assetId === asset.id && entry.state === "pending");
+      if (session && session.expiresAt > now)
+        count += 1;
+    }
+    return count;
+  }
+  async expireStalePendingUploads(workspaceId, now) {
+    for (const session of this.sessions.values()) {
+      if (session.workspaceId !== workspaceId || session.state !== "pending" || session.expiresAt > now)
+        continue;
+      session.state = "expired";
+      session.completedAt = now;
+      session.failureReason = "expired";
+      const asset = this.assets.get(session.assetId);
+      if (asset && asset.state === "pending") {
+        asset.state = "quarantined";
+        asset.updatedAt = now;
+      }
+    }
+  }
+}
+class MemoryAssetObjectStore {
+  objects = /* @__PURE__ */ new Map();
+  async put(key2, body, options) {
+    const bytes = await toBytes$1(body);
+    const etag = await digest$1(bytes);
+    const metadata = { key: key2, size: bytes.byteLength, etag, uploadedAt: Date.now(), mediaType: options.mediaType };
+    this.objects.set(key2, { bytes, metadata, mediaType: options.mediaType });
+    return structuredClone(metadata);
+  }
+  async head(key2) {
+    return clone$4(this.objects.get(key2)?.metadata ?? null);
+  }
+  async get(key2) {
+    const entry = this.objects.get(key2);
+    if (!entry)
+      return null;
+    const bytes = entry.bytes.slice();
+    return { ...structuredClone(entry.metadata), body: new Blob([bytes]).stream() };
+  }
+  async delete(key2) {
+    this.objects.delete(key2);
+  }
+}
+function sanitizeFilename(value) {
+  const normalized = value.normalize("NFKC").trim().replace(/[\\/\0]/g, "-").replace(/\s+/g, "-");
+  const safe = normalized.replace(/[^\p{L}\p{N}._-]+/gu, "-").replace(/-+/g, "-").replace(/^[-.]+|[-.]+$/g, "");
+  assertDomain(safe.length > 0 && safe.length <= 180, "INVALID_FILENAME", "Filename is invalid", 422);
+  return safe;
+}
+function normalizeMediaType(value) {
+  return value.split(";", 1)[0]?.trim().toLowerCase() ?? "";
+}
+function clone$4(value) {
+  return value === null || value === void 0 ? value : structuredClone(value);
+}
+function requireValue(value, code, message) {
+  if (value === void 0)
+    throw new DomainError(code, message, 404);
+  return value;
+}
+async function toBytes$1(body) {
+  if (typeof body === "string")
+    return new TextEncoder().encode(body);
+  if (body instanceof Blob)
+    return new Uint8Array(await body.arrayBuffer());
+  if (body instanceof ArrayBuffer)
+    return new Uint8Array(body);
+  if (ArrayBuffer.isView(body))
+    return new Uint8Array(body.buffer.slice(body.byteOffset, body.byteOffset + body.byteLength));
+  return new Uint8Array(await new Response(body).arrayBuffer());
+}
+async function digest$1(bytes) {
+  const hash = await crypto.subtle.digest("SHA-256", bytes);
+  return [...new Uint8Array(hash)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+async function toBytes(body) {
+  if (typeof body === "string")
+    return new TextEncoder().encode(body);
+  if (body instanceof Blob)
+    return new Uint8Array(await body.arrayBuffer());
+  if (body instanceof ArrayBuffer)
+    return new Uint8Array(body);
+  if (ArrayBuffer.isView(body)) {
+    return new Uint8Array(body.buffer.slice(body.byteOffset, body.byteOffset + body.byteLength));
+  }
+  return new Uint8Array(await new Response(body).arrayBuffer());
+}
+async function digest(bytes) {
+  const hash = await crypto.subtle.digest("SHA-256", bytes);
+  return [...new Uint8Array(hash)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+function workspaceIdFromAssetObjectKey(objectKey) {
+  const match = /^workspaces\/([^/]+)\/assets\//.exec(objectKey);
+  assertDomain(match?.[1], "INVALID_OBJECT_KEY", "Asset object key is invalid", 500);
+  return match[1];
+}
+class D1AssetObjectStore {
+  #db;
+  #policy;
+  constructor(db, policy) {
+    this.#db = db;
+    this.#policy = policy;
+  }
+  async put(key2, body, options) {
+    const bytes = await toBytes(body);
+    assertDomain(bytes.byteLength > 0, "UPLOAD_EMPTY", "Upload body is empty", 422);
+    assertDomain(bytes.byteLength <= this.#policy.maxBytesPerObject, "UPLOAD_TOO_LARGE", "Upload exceeds the trial size limit", 413);
+    assertDomain(isSniffedTrialInlineImage(bytes, options.mediaType), "UPLOAD_CONTENT_MISMATCH", "File content does not match declared image type", 422);
+    const checksum = await digest(bytes);
+    const workspaceId = workspaceIdFromAssetObjectKey(key2);
+    const now = Date.now();
+    await this.#db.prepare(`INSERT INTO asset_object_blobs (object_key, workspace_id, media_type, byte_size, checksum, body, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT(object_key) DO UPDATE SET
+         media_type = excluded.media_type,
+         byte_size = excluded.byte_size,
+         checksum = excluded.checksum,
+         body = excluded.body,
+         created_at = excluded.created_at`).bind(key2, workspaceId, options.mediaType, bytes.byteLength, checksum, bytes, now).run();
+    return {
+      key: key2,
+      size: bytes.byteLength,
+      etag: checksum,
+      uploadedAt: now,
+      mediaType: options.mediaType
+    };
+  }
+  async head(key2) {
+    const row = await this.#db.prepare("SELECT media_type, byte_size, checksum, created_at FROM asset_object_blobs WHERE object_key = ?").bind(key2).first();
+    if (!row)
+      return null;
+    return {
+      key: key2,
+      size: row.byte_size,
+      etag: row.checksum,
+      uploadedAt: row.created_at,
+      mediaType: row.media_type
+    };
+  }
+  async get(key2) {
+    const row = await this.#db.prepare("SELECT media_type, byte_size, checksum, created_at, body FROM asset_object_blobs WHERE object_key = ?").bind(key2).first();
+    if (!row)
+      return null;
+    const bytes = row.body instanceof Uint8Array ? row.body : new Uint8Array(row.body);
+    return {
+      key: key2,
+      size: row.byte_size,
+      etag: row.checksum,
+      uploadedAt: row.created_at,
+      mediaType: row.media_type,
+      body: new Blob([bytes]).stream()
+    };
+  }
+  async delete(key2) {
+    await this.#db.prepare("DELETE FROM asset_object_blobs WHERE object_key = ?").bind(key2).run();
+  }
+}
+function isD1InlineAssetStorageEnabled(env) {
+  if (env.R2)
+    return false;
+  return env.DB !== void 0 && env.BASER_ASSET_STORAGE === "d1-inline";
+}
 class D1CustomContentStore {
   #db;
   constructor(db) {
@@ -2424,6 +2876,8 @@ function mapRelease(r) {
 function mapActivation(r) {
   return { id: asThemeActivationId(r.id), siteId: asSiteId(r.site_id), themeReleaseId: asThemeReleaseId(r.theme_release_id), activatedBy: asPrincipalId(r.activated_by), activatedAt: r.activated_at, deactivatedAt: r.deactivated_at };
 }
+const memoryMetadataSingleton = new MemoryAssetMetadataStore();
+const memoryObjectsSingleton = new MemoryAssetObjectStore();
 class D1CmsStore {
   #db;
   constructor(db) {
@@ -3327,6 +3781,34 @@ class D1AssetMetadataStore {
     assertDomain(asset, "ASSET_NOT_FOUND", "Asset not found", 404);
     return asset;
   }
+  async countActiveAssets(workspaceId, now) {
+    const row = await this.#db.prepare(`SELECT COUNT(*) AS count FROM assets a
+       WHERE a.workspace_id = ?
+         AND a.deleted_at IS NULL
+         AND (
+           a.state = 'ready'
+           OR (
+             a.state = 'pending'
+             AND EXISTS (
+               SELECT 1 FROM upload_sessions s
+               WHERE s.asset_id = a.id AND s.state = 'pending' AND s.expires_at > ?
+             )
+           )
+         )`).bind(workspaceId, now).first();
+    return row?.count ?? 0;
+  }
+  async expireStalePendingUploads(workspaceId, now) {
+    const stale = await this.#db.prepare(`SELECT id, asset_id FROM upload_sessions
+       WHERE workspace_id = ? AND state = 'pending' AND expires_at <= ?`).bind(workspaceId, now).all();
+    if (!stale.results.length)
+      return;
+    const statements = [];
+    for (const session of stale.results) {
+      statements.push(this.#db.prepare("UPDATE upload_sessions SET state='expired', completed_at=?, failure_reason='expired' WHERE id=? AND state='pending'").bind(now, session.id));
+      statements.push(this.#db.prepare("UPDATE assets SET state='quarantined', updated_at=? WHERE id=? AND state='pending'").bind(now, session.asset_id));
+    }
+    await this.#db.batch(statements);
+  }
 }
 class D1PreviewStore {
   #db;
@@ -3406,274 +3888,19 @@ function mapTaxonomy(row) {
 function mapTerm(row) {
   return { id: asTermId(row.id), taxonomyId: asTaxonomyId(row.taxonomy_id), parentId: row.parent_id ? asTermId(row.parent_id) : null, slug: row.slug, title: row.title, state: row.state, createdAt: row.created_at, updatedAt: row.updated_at };
 }
-const defaultAllowedMediaTypes = /* @__PURE__ */ new Set([
-  "image/jpeg",
-  "image/png",
-  "image/webp",
-  "image/gif",
-  "application/pdf",
-  "text/plain",
-  "text/csv",
-  "application/zip"
-]);
-class AssetService {
-  #metadata;
-  #objects;
-  #security;
-  #secret;
-  #clock;
-  #allowedMediaTypes;
-  #defaultMaximumBytes;
-  #usageInspector;
-  constructor(input) {
-    assertDomain(input.signingSecret.length >= 16, "WEAK_UPLOAD_SECRET", "Upload signing secret must be at least 16 characters", 500);
-    this.#metadata = input.metadata;
-    this.#objects = input.objects;
-    this.#security = input.security;
-    this.#secret = input.signingSecret;
-    this.#clock = input.clock ?? systemClock;
-    this.#allowedMediaTypes = input.allowedMediaTypes ?? defaultAllowedMediaTypes;
-    this.#defaultMaximumBytes = input.defaultMaximumBytes ?? 25 * 1024 * 1024;
-    this.#usageInspector = input.usageInspector;
+function resolveAssetBindings(env) {
+  const metadata = env.DB ? new D1AssetMetadataStore(env.DB) : memoryMetadataSingleton;
+  if (env.R2) {
+    return { metadata, objects: new R2AssetObjectStore(env.R2), trialInline: void 0 };
   }
-  async createUploadSession(actor, input) {
-    const filename = sanitizeFilename(input.filename);
-    const mediaType = normalizeMediaType(input.mediaType);
-    assertDomain(this.#allowedMediaTypes.has(mediaType), "MEDIA_TYPE_NOT_ALLOWED", `Media type ${mediaType} is not allowed`, 422);
-    const maximumBytes = input.maximumBytes ?? this.#defaultMaximumBytes;
-    assertDomain(Number.isInteger(maximumBytes) && maximumBytes > 0 && maximumBytes <= 5 * 1024 * 1024 * 1024, "INVALID_MAXIMUM_BYTES", "Invalid upload size limit", 422);
-    await this.#security.authorize(actor, Capabilities.AssetUpload, { workspaceId: input.workspaceId, risk: "medium" }, "asset.upload-session.create", "workspace", input.workspaceId);
-    const now = this.#clock.now();
-    const assetId = asAssetId(newId("asset"));
-    const sessionId = asUploadSessionId(newId("upload"));
-    const expiresAt = now + Math.max(60, Math.min(input.expiresInSeconds ?? 900, 3600)) * 1e3;
-    const objectKey = `workspaces/${input.workspaceId}/assets/${assetId}/${filename}`;
-    const asset = {
-      id: assetId,
-      workspaceId: input.workspaceId,
-      objectKey,
-      originalFilename: filename,
-      mediaType,
-      byteSize: null,
-      checksum: null,
-      width: null,
-      height: null,
-      state: "pending",
-      ownerPrincipalId: actor.actorId,
-      createdAt: now,
-      updatedAt: now,
-      deletedAt: null
+  if (isD1InlineAssetStorageEnabled(env) && env.DB) {
+    return {
+      metadata,
+      objects: new D1AssetObjectStore(env.DB, TRIAL_INLINE_MEDIA_POLICY),
+      trialInline: TRIAL_INLINE_MEDIA_POLICY
     };
-    const session = {
-      id: sessionId,
-      assetId,
-      workspaceId: input.workspaceId,
-      objectKey,
-      mediaType,
-      maximumBytes,
-      state: "pending",
-      createdBy: actor.actorId,
-      createdAt: now,
-      expiresAt,
-      completedAt: null,
-      failureReason: null
-    };
-    await this.#metadata.createPendingAsset(asset, session);
-    const token = await signCompactToken({
-      typ: "asset-upload",
-      sessionId,
-      assetId,
-      objectKey,
-      mediaType,
-      maximumBytes,
-      expiresAt
-    }, this.#secret);
-    const base = input.uploadBaseUrl.replace(/\/$/, "");
-    const uploadUrl = `${base}/v1/assets/uploads/${encodeURIComponent(sessionId)}?token=${encodeURIComponent(token)}`;
-    await this.#security.success(actor, {
-      workspaceId: input.workspaceId,
-      action: "asset.upload-session.create",
-      resourceType: "asset",
-      resourceId: assetId,
-      capability: Capabilities.AssetUpload,
-      details: { mediaType, maximumBytes, expiresAt }
-    });
-    return { asset, session, uploadUrl, method: "PUT", requiredHeaders: { "content-type": mediaType } };
   }
-  async uploadWithToken(input) {
-    const payload = await verifyCompactToken(input.token, this.#secret);
-    assertDomain(payload?.typ === "asset-upload", "INVALID_UPLOAD_TOKEN", "Upload token is invalid", 403);
-    assertDomain(payload.sessionId === input.sessionId, "UPLOAD_SESSION_MISMATCH", "Upload token does not match session", 403);
-    const now = this.#clock.now();
-    assertDomain(typeof payload.expiresAt === "number" && payload.expiresAt > now, "UPLOAD_TOKEN_EXPIRED", "Upload token has expired", 410);
-    const session = await this.#metadata.getUploadSession(input.sessionId);
-    assertDomain(session, "UPLOAD_SESSION_NOT_FOUND", "Upload session not found", 404);
-    assertDomain(session.state === "pending", "UPLOAD_SESSION_CLOSED", "Upload session is not pending", 409);
-    assertDomain(session.expiresAt > now, "UPLOAD_SESSION_EXPIRED", "Upload session has expired", 410);
-    const mediaType = normalizeMediaType(input.mediaType);
-    assertDomain(mediaType === session.mediaType && mediaType === payload.mediaType, "UPLOAD_MEDIA_TYPE_MISMATCH", "Content-Type does not match signed upload", 422);
-    if (input.contentLength !== void 0) {
-      assertDomain(input.contentLength >= 0 && input.contentLength <= session.maximumBytes, "UPLOAD_TOO_LARGE", "Upload exceeds the signed size limit", 413);
-    }
-    try {
-      const object = await this.#objects.put(session.objectKey, input.body, {
-        mediaType,
-        customMetadata: { assetId: session.assetId, uploadSessionId: session.id }
-      });
-      if (object.size > session.maximumBytes) {
-        await this.#objects.delete(session.objectKey);
-        await this.#metadata.failUpload({ sessionId: session.id, reason: "size_limit_exceeded", now });
-        throw new DomainError("UPLOAD_TOO_LARGE", "Upload exceeds the signed size limit", 413);
-      }
-      return this.#metadata.completeUpload({ sessionId: session.id, byteSize: object.size, checksum: object.etag, now });
-    } catch (error) {
-      if (!(error instanceof DomainError))
-        await this.#metadata.failUpload({ sessionId: session.id, reason: "object_store_failure", now });
-      throw error;
-    }
-  }
-  async getAsset(actor, assetId) {
-    const asset = await this.#requireAsset(assetId);
-    await this.#security.authorize(actor, Capabilities.AssetRead, { workspaceId: asset.workspaceId, risk: "low" }, "asset.read", "asset", asset.id);
-    return asset;
-  }
-  async listAssets(actor, workspaceId) {
-    await this.#security.authorize(actor, Capabilities.AssetRead, { workspaceId, risk: "low" }, "asset.list", "workspace", workspaceId);
-    return this.#metadata.listAssets(workspaceId);
-  }
-  async getPublicAsset(assetId) {
-    const asset = await this.#metadata.getAsset(assetId);
-    if (!asset || asset.state !== "ready" || asset.deletedAt !== null)
-      return null;
-    const object = await this.#objects.get(asset.objectKey);
-    return object ? { asset, object } : null;
-  }
-  async deleteAsset(actor, assetId) {
-    const asset = await this.#requireAsset(assetId);
-    await this.#security.authorize(actor, Capabilities.AssetDelete, { workspaceId: asset.workspaceId, risk: "high" }, "asset.delete", "asset", asset.id);
-    const references = this.#usageInspector ? await this.#usageInspector.listPublishedReferences(asset.id) : [];
-    assertDomain(references.length === 0, "ASSET_IN_USE", "Asset is used by published content", 409, { references });
-    const deleted = await this.#metadata.softDeleteAsset({ assetId, now: this.#clock.now() });
-    await this.#security.success(actor, {
-      workspaceId: asset.workspaceId,
-      action: "asset.delete",
-      resourceType: "asset",
-      resourceId: asset.id,
-      capability: Capabilities.AssetDelete
-    });
-    return deleted;
-  }
-  async #requireAsset(id) {
-    const asset = await this.#metadata.getAsset(id);
-    assertDomain(asset, "ASSET_NOT_FOUND", "Asset not found", 404);
-    return asset;
-  }
-}
-class MemoryAssetMetadataStore {
-  assets = /* @__PURE__ */ new Map();
-  sessions = /* @__PURE__ */ new Map();
-  async createPendingAsset(asset, session) {
-    if (this.assets.has(asset.id) || this.sessions.has(session.id))
-      throw new DomainError("ASSET_EXISTS", "Asset or upload session already exists", 409);
-    this.assets.set(asset.id, structuredClone(asset));
-    this.sessions.set(session.id, structuredClone(session));
-  }
-  async getAsset(id) {
-    return clone$4(this.assets.get(id) ?? null);
-  }
-  async getUploadSession(id) {
-    return clone$4(this.sessions.get(id) ?? null);
-  }
-  async completeUpload(input) {
-    const session = requireValue(this.sessions.get(input.sessionId), "UPLOAD_SESSION_NOT_FOUND", "Upload session not found");
-    assertDomain(session.state === "pending", "UPLOAD_SESSION_CLOSED", "Upload session is not pending", 409);
-    session.state = "completed";
-    session.completedAt = input.now;
-    const asset = requireValue(this.assets.get(session.assetId), "ASSET_NOT_FOUND", "Asset not found");
-    asset.byteSize = input.byteSize;
-    asset.checksum = input.checksum;
-    asset.state = "ready";
-    asset.updatedAt = input.now;
-    return structuredClone(asset);
-  }
-  async failUpload(input) {
-    const session = this.sessions.get(input.sessionId);
-    if (!session || session.state !== "pending")
-      return;
-    session.state = "failed";
-    session.failureReason = input.reason;
-    session.completedAt = input.now;
-    const asset = this.assets.get(session.assetId);
-    if (asset) {
-      asset.state = "quarantined";
-      asset.updatedAt = input.now;
-    }
-  }
-  async listAssets(workspaceId) {
-    return [...this.assets.values()].filter((asset) => asset.workspaceId === workspaceId && asset.deletedAt === null).map((asset) => structuredClone(asset));
-  }
-  async softDeleteAsset(input) {
-    const asset = requireValue(this.assets.get(input.assetId), "ASSET_NOT_FOUND", "Asset not found");
-    asset.state = "deleted";
-    asset.deletedAt = input.now;
-    asset.updatedAt = input.now;
-    return structuredClone(asset);
-  }
-}
-class MemoryAssetObjectStore {
-  objects = /* @__PURE__ */ new Map();
-  async put(key2, body, options) {
-    const bytes = await toBytes(body);
-    const etag = await digest(bytes);
-    const metadata = { key: key2, size: bytes.byteLength, etag, uploadedAt: Date.now(), mediaType: options.mediaType };
-    this.objects.set(key2, { bytes, metadata, mediaType: options.mediaType });
-    return structuredClone(metadata);
-  }
-  async head(key2) {
-    return clone$4(this.objects.get(key2)?.metadata ?? null);
-  }
-  async get(key2) {
-    const entry = this.objects.get(key2);
-    if (!entry)
-      return null;
-    const bytes = entry.bytes.slice();
-    return { ...structuredClone(entry.metadata), body: new Blob([bytes]).stream() };
-  }
-  async delete(key2) {
-    this.objects.delete(key2);
-  }
-}
-function sanitizeFilename(value) {
-  const normalized = value.normalize("NFKC").trim().replace(/[\\/\0]/g, "-").replace(/\s+/g, "-");
-  const safe = normalized.replace(/[^\p{L}\p{N}._-]+/gu, "-").replace(/-+/g, "-").replace(/^[-.]+|[-.]+$/g, "");
-  assertDomain(safe.length > 0 && safe.length <= 180, "INVALID_FILENAME", "Filename is invalid", 422);
-  return safe;
-}
-function normalizeMediaType(value) {
-  return value.split(";", 1)[0]?.trim().toLowerCase() ?? "";
-}
-function clone$4(value) {
-  return value === null || value === void 0 ? value : structuredClone(value);
-}
-function requireValue(value, code, message) {
-  if (value === void 0)
-    throw new DomainError(code, message, 404);
-  return value;
-}
-async function toBytes(body) {
-  if (typeof body === "string")
-    return new TextEncoder().encode(body);
-  if (body instanceof Blob)
-    return new Uint8Array(await body.arrayBuffer());
-  if (body instanceof ArrayBuffer)
-    return new Uint8Array(body);
-  if (ArrayBuffer.isView(body))
-    return new Uint8Array(body.buffer.slice(body.byteOffset, body.byteOffset + body.byteLength));
-  return new Uint8Array(await new Response(body).arrayBuffer());
-}
-async function digest(bytes) {
-  const hash = await crypto.subtle.digest("SHA-256", bytes);
-  return [...new Uint8Array(hash)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
+  return { metadata, objects: memoryObjectsSingleton, trialInline: void 0 };
 }
 class PreviewService {
   #store;
@@ -5928,8 +6155,6 @@ function serveBuiltinAssetByRawId(request, rawAssetId) {
 }
 const defaultPublicAssetUrl = createPublicAssetUrlResolver("/assets");
 const memoryCms = new CmsService(new MemoryCmsStore());
-const memoryAssets = new MemoryAssetMetadataStore();
-const memoryObjects = new MemoryAssetObjectStore();
 const memoryPreviews = new MemoryPreviewStore();
 const memoryBlog = new MemoryBlogStore();
 const memoryCustomContent = new MemoryCustomContentStore();
@@ -6189,11 +6414,13 @@ function createPublicWorker(resolveCms = (env) => env.DB ? new CmsService(new D1
   };
 }
 function createAssetService(env) {
+  const bindings = resolveAssetBindings(env);
   return new AssetService({
-    metadata: env.DB ? new D1AssetMetadataStore(env.DB) : memoryAssets,
-    objects: env.R2 ? new R2AssetObjectStore(env.R2) : memoryObjects,
+    metadata: bindings.metadata,
+    objects: bindings.objects,
     security: noopSecurity,
-    signingSecret: env.ASSET_UPLOAD_SECRET ?? "development-upload-secret-change-me"
+    signingSecret: env.ASSET_UPLOAD_SECRET ?? "development-upload-secret-change-me",
+    ...bindings.trialInline ? { trialInline: bindings.trialInline } : {}
   });
 }
 function createPreviewService(env, cms) {

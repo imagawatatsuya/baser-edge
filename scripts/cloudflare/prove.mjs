@@ -10,13 +10,27 @@ import { resolveProveMediaStorage } from "./resolve-prove-media.mjs";
 import { loadState } from "./shared.mjs";
 import { runProve } from "./run-prove.mjs";
 import { statePath, displayPath } from "./shared.mjs";
+import { resetWranglerConfigsToTemplate } from "./wrangler-template-reset.mjs";
 
 requireProveConsent();
 ensureLoggedIn();
 
 const media = resolveProveMediaStorage({ log: console.log, state: loadState() });
 
-const { consoleUrl, published, state } = await runProve({ log: console.log });
+let consoleUrl;
+let published;
+let state;
+try {
+  const result = await runProve({ log: console.log });
+  consoleUrl = result.consoleUrl;
+  published = result.published;
+  state = result.state;
+} finally {
+  resetWranglerConfigsToTemplate({ trialStripR2: true });
+  console.log("\n(ローカル wrangler*.jsonc をテンプレに戻しました。D1 ID は deploy/cloudflare-state.json にあります。)");
+}
+
+if (!state) process.exit(1);
 
 console.log("\n=== baserEdge Cloudflare proof OK ===\n");
 console.log("管理コンソール:", consoleUrl);

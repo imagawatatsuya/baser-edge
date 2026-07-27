@@ -156,10 +156,28 @@ async function legacyPasskeyLogin(hint) {
   return { api, csrf, jar };
 }
 
-export async function smokeLoginAndPublish(hint, publicUrl) {
-  const { api, csrf } = hint.instantDemo
-    ? await instantLogin(hint)
-    : await legacyPasskeyLogin(hint);
+export async function smokeLoginAndPublish(hint, publicUrl, options = {}) {
+  const log = options.log ?? console.log;
+  let session;
+  if (hint.instantDemo) {
+    try {
+      session = await instantLogin(hint);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      if (hint.credentialId && hint.passkeyLabel) {
+        log("Instant login failed; falling back to demo passkey smoke.");
+        session = await legacyPasskeyLogin(hint);
+      } else if (message.includes("instant-login") && message.includes("404")) {
+        log(`Skipping publish smoke (instant login unavailable): ${message}`);
+        return null;
+      } else {
+        throw error;
+      }
+    }
+  } else {
+    session = await legacyPasskeyLogin(hint);
+  }
+  const { api, csrf } = session;
 
   const slug = `proof-${Date.now()}`;
   const page = await api("/v1/pages", {

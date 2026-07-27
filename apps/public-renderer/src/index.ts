@@ -1,18 +1,17 @@
 import { asAssetId, asMailConfirmationId, asSiteId, DomainError } from "@baser-edge/core-types";
 import { CmsService, MemoryCmsStore } from "@baser-edge/content-kernel";
 import {
-  D1AssetMetadataStore,
   D1BlogStore,
   D1CustomContentStore,
   D1MailFormStore,
   D1CmsStore,
   D1PreviewStore,
   D1ThemeStore,
-  R2AssetObjectStore,
+  resolveAssetBindings,
   type D1DatabaseLike,
   type R2BucketLike,
 } from "@baser-edge/cloudflare-adapters";
-import { AssetService, MemoryAssetMetadataStore, MemoryAssetObjectStore } from "@baser-edge/asset-kernel";
+import { AssetService } from "@baser-edge/asset-kernel";
 import { MemoryPreviewStore, PreviewService } from "@baser-edge/preview-kernel";
 import { renderPage, renderShell } from "@baser-edge/renderer";
 import { BlogService, MemoryBlogStore, type PublishedArticle } from "@baser-edge/blog-kernel";
@@ -41,6 +40,7 @@ export interface Env {
   MAIL_PRIVACY_SALT?: string;
   TURNSTILE_SECRET?: string;
   TURNSTILE_SITE_KEY?: string;
+  BASER_ASSET_STORAGE?: string;
 }
 
 export interface PublicWorkerOptions {
@@ -53,8 +53,6 @@ export interface PublicWorkerOptions {
 }
 
 const memoryCms = new CmsService(new MemoryCmsStore());
-const memoryAssets = new MemoryAssetMetadataStore();
-const memoryObjects = new MemoryAssetObjectStore();
 const memoryPreviews = new MemoryPreviewStore();
 const memoryBlog = new MemoryBlogStore();
 const memoryCustomContent = new MemoryCustomContentStore();
@@ -301,11 +299,13 @@ export function createPublicWorker(
 }
 
 function createAssetService(env: Env): AssetService {
+  const bindings = resolveAssetBindings(env);
   return new AssetService({
-    metadata: env.DB ? new D1AssetMetadataStore(env.DB) : memoryAssets,
-    objects: env.R2 ? new R2AssetObjectStore(env.R2) : memoryObjects,
+    metadata: bindings.metadata,
+    objects: bindings.objects,
     security: noopSecurity,
     signingSecret: env.ASSET_UPLOAD_SECRET ?? "development-upload-secret-change-me",
+    ...(bindings.trialInline ? { trialInline: bindings.trialInline } : {}),
   });
 }
 function createPreviewService(env: Env, cms: CmsService): PreviewService {

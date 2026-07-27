@@ -45,8 +45,8 @@ R2の有効化時に、CloudflareダッシュボードのBillingで請求プロ�
 
 | 形態 | いつ | R2 バケット | Worker `R2` | 公開 `/assets/…` | 主なコマンド / 条件 |
 |------|------|-------------|-------------|------------------|---------------------|
-| **ブラウザ向けOAuthお試し** | 一般ユーザー向け標準 | 作らない | なし | **不可** | 固定リリースはR2なし |
-| **開発者prove（メディアなし）** | R2未契約、または明示 | 作らない | なし | **不可** | `BASER_CF_TRIAL=1`付きprove |
+| **ブラウザ向けOAuthお試し** | 一般ユーザー向け標準 | 作らない | なし | **可（お試し上限あり）** | `wrangler.trial.jsonc` + `BASER_ASSET_STORAGE=d1-inline` |
+| **開発者prove（メディアなし）** | R2未契約、または明示 | 作らない | なし | **可（D1 inline・最大3枚）** | `BASER_CF_TRIAL=1` + trial wrangler |
 | **開発者prove + メディア** | R2 APIが使える | 作る | あり | **可** | `resolve-prove-media`が自動判定 |
 | **既存スタックのメディア追加** | R2 を後から有効化したあと | 作る | 追加 | **可**（**再アップロード**要） | `enable-media:cloudflare` または **Deploy / prove の再実行**（自動アップグレード） |
 | **フルスタック** | `wrangler.jsonc` 本番寄り | 作る | あり | **可** | `BASER_CF_FULL_STACK=1` + prove |
@@ -59,6 +59,7 @@ R2の有効化時に、CloudflareダッシュボードのBillingで請求プロ�
 | `BASER_CF_TRIAL=1` | **R2 を使わない**お試しを強制 |
 | `BASER_CF_FULL_STACK=1` | `wrangler.jsonc` / `wrangler.public.jsonc` でフル構成 |
 | `BASER_TRIAL_NO_R2=0` | スクリプト内部。R2 provision を有効化 |
+| `BASER_ASSET_STORAGE=d1-inline` | **R2 なし trial のみ**。画像実体を D1 `asset_object_blobs` に保存（最大3枚・2MiB/枚）。`R2` binding があるときは無視 |
 
 PowerShell 例:
 
@@ -76,10 +77,10 @@ npm run enable-media:cloudflare
 
 **ブラウザ向けOAuthお試し:** R2を有効にして開始ページから再開設しても、現在の固定リリースにはR2 bindingが追加されません。公開画像の確認には、開発者が`enable-media:cloudflare`またはR2を含むproveを実行する必要があります。
 
-### なぜ「アップロード成功」なのに表示されないことがあるか
+### メディアなしデプロイ（旧）と D1 inline（現 trial 既定）
 
-- **メディアなしデプロイ:** バイト列は API Worker の**メモリ**にのみ載り、公開 Worker は**別インスタンス**のため R2 もメモリも共有されない。D1 のメタデータだけ残る。
-- **R2 追加後:** 過去にアップロードしたオブジェクトは R2 に無いので **再アップロード**が必要。
+- **API Worker のメモリのみ（`assetStorage: memory`）:** バイト列は API のメモリにのみ載り、公開 Worker からは読めない。D1 にメタデータだけ残る。
+- **`BASER_ASSET_STORAGE=d1-inline`:** API・公開 Worker の両方が D1 BLOB から配信。お試しは **3 枚・2MiB/枚**（管理画面で自動圧縮）。R2 有効化後は **再アップロード**が必要。
 
 ---
 

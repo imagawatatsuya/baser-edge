@@ -91,7 +91,17 @@ import type {
   AssetObjectStore,
   UploadSession,
 } from "@baser-edge/asset-kernel";
+import {
+  MemoryAssetMetadataStore,
+  MemoryAssetObjectStore,
+  TRIAL_INLINE_MEDIA_POLICY,
+  type TrialInlineMediaPolicy,
+} from "@baser-edge/asset-kernel";
 import type { PreviewSession, PreviewStore } from "@baser-edge/preview-kernel";
+import { D1AssetObjectStore, isD1InlineAssetStorageEnabled } from "./d1-asset-object-store.js";
+
+const memoryMetadataSingleton = new MemoryAssetMetadataStore();
+const memoryObjectsSingleton = new MemoryAssetObjectStore();
 
 export interface D1PreparedStatementLike {
   bind(...values: unknown[]): D1PreparedStatementLike;
@@ -1090,6 +1100,45 @@ export class D1AssetMetadataStore implements AssetMetadataStore {
     assertDomain(asset, "ASSET_NOT_FOUND", "Asset not found", 404);
     return asset;
   }
+  async countActiveAssets(workspaceId: WorkspaceId, now: number): Promise<number> {
+    const row = await this.#db.prepare(
+      `SELECT COUNT(*) AS count FROM assets a
+       WHERE a.workspace_id = ?
+         AND a.deleted_at IS NULL
+         AND (
+           a.state = 'ready'
+           OR (
+             a.state = 'pending'
+             AND EXISTS (
+               SELECT 1 FROM upload_sessions s
+               WHERE s.asset_id = a.id AND s.state = 'pending' AND s.expires_at > ?
+             )
+           )
+         )`,
+    ).bind(workspaceId, now).first<{ count: number }>();
+    return row?.count ?? 0;
+  }
+  async expireStalePendingUploads(workspaceId: WorkspaceId, now: number): Promise<void> {
+    const stale = await this.#db.prepare(
+      `SELECT id, asset_id FROM upload_sessions
+       WHERE workspace_id = ? AND state = 'pending' AND expires_at <= ?`,
+    ).bind(workspaceId, now).all<{ id: string; asset_id: string }>();
+    if (!stale.results.length) return;
+    const statements = [];
+    for (const session of stale.results) {
+      statements.push(
+        this.#db.prepare(
+          "UPDATE upload_sessions SET state='expired', completed_at=?, failure_reason='expired' WHERE id=? AND state='pending'",
+        ).bind(now, session.id),
+      );
+      statements.push(
+        this.#db.prepare(
+          "UPDATE assets SET state='quarantined', updated_at=? WHERE id=? AND state='pending'",
+        ).bind(now, session.asset_id),
+      );
+    }
+    await this.#db.batch(statements);
+  }
 }
 
 export class D1PreviewStore implements PreviewStore {
@@ -1183,3 +1232,30 @@ export * from "./theme.js";
 export * from "./plugin.js";
 export * from "./auth.js";
 export * from "./cf-oauth-challenges.js";
+
+export { D1AssetObjectStore, isD1InlineAssetStorageEnabled } from "./d1-asset-object-store.js";
+
+export type AssetBindingEnv = {
+  DB?: D1DatabaseLike;
+  R2?: R2BucketLike;
+  BASER_ASSET_STORAGE?: string;
+};
+
+export function resolveAssetBindings(env: AssetBindingEnv): {
+  metadata: D1AssetMetadataStore | MemoryAssetMetadataStore;
+  objects: AssetObjectStore;
+  trialInline: TrialInlineMediaPolicy | undefined;
+} {
+  const metadata = env.DB ? new D1AssetMetadataStore(env.DB) : memoryMetadataSingleton;
+  if (env.R2) {
+    return { metadata, objects: new R2AssetObjectStore(env.R2), trialInline: undefined };
+  }
+  if (isD1InlineAssetStorageEnabled(env) && env.DB) {
+    return {
+      metadata,
+      objects: new D1AssetObjectStore(env.DB, TRIAL_INLINE_MEDIA_POLICY),
+      trialInline: TRIAL_INLINE_MEDIA_POLICY,
+    };
+  }
+  return { metadata, objects: memoryObjectsSingleton, trialInline: undefined };
+}

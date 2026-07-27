@@ -1,9 +1,14 @@
 export type ConsoleCapabilities = {
   assetPublicDelivery: boolean;
-  assetStorage: "r2" | "memory";
+  assetStorage: "r2" | "memory" | "d1-inline";
   environment: "production" | "preview";
   instantLogin: boolean;
+  cloudflareLogin: boolean;
   publicSiteUrl: string | null;
+  trialInlineMedia?: {
+    maxAssets: number;
+    maxBytesPerObject: number;
+  };
 };
 
 export type LocalLoginHint = {

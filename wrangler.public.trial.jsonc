@@ -12,9 +12,11 @@
       "migrations_dir": "migrations"
     }
   ],
+
   "vars": {
+    "BASER_ASSET_STORAGE": "d1-inline",
     "SITE_ID": "REPLACE_ME",
-    "ASSET_BASE_URL": "/assets",
+    "ASSET_BASE_URL": "/assets",
     "TURNSTILE_SITE_KEY": ""
   }
 }

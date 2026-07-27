@@ -8,7 +8,8 @@
 
 | 目的 | コマンド / 条件 |
 |------|-----------------|
-| R2 未契約でもページ・コンソールを試す | `BASER_CF_TRIAL=1` で prove（メディア公開は不可） |
+| R2 未契約でもページ・コンソールを試す（画像は D1 最大3枚） | 既定 trial + `BASER_ASSET_STORAGE=d1-inline`（prove/deploy 後は wrangler テンプレに戻る） |
+| R2 未契約でメディア公開も抑えたい | `BASER_CF_TRIAL=1` で prove |
 | R2 契約済み（`wrangler r2 bucket list` が成功） | 既定 `prove:cloudflare` が **自動でメディア込み** |
 | 一度お試しだけデプロイしたあとメディアを足す | `npm run enable-media:cloudflare` → 画像の再アップロード |
 | `wrangler.jsonc` フル構成 | `BASER_CF_FULL_STACK=1` |
@@ -36,7 +37,13 @@
 
 `prove:cloudflare` / `provision:cloudflare` / `deploy:cloudflare` は、**`BASER_CF_PROVE=1`（または `--yes`）がないと Cloudflare に接続しません**。誤実行防止用です。
 
-**ローカル固有の値をコミットしない:** prove は `deploy/cloudflare-state.json`（gitignore）と、必要に応じてルートの `wrangler*.jsonc` に D1 ID・`*.workers.dev` URL・instant login ヒントを書き込みます。リポジトリには `REPLACE_ME` / `example.invalid` のテンプレだけを残してください。片付け時は `destroy:cloudflare` が wrangler をプレースホルダに戻します。CLI のログは **リポジトリ相対パス**のみ（OS のユーザーディレクトリは出しません）。
+**ローカル固有の値をコミットしない:** 正本の D1 ID・Worker URL・`SITE_ID` は **`deploy/cloudflare-state.json`（gitignore）** にだけ保存します。prove / `deploy:cloudflare` は実行中だけ `wrangler*.jsonc` をパッチし、**終了時に自動でテンプレ**（`REPLACE_ME` / `example.invalid` / trial は `BASER_ASSET_STORAGE=d1-inline`）へ戻します。手動で戻すときは `npm run revert:wrangler`。CI と `npm run check` は `verify:wrangler` で追跡 wrangler の汚染を検知します。コミット前フック（任意）:
+
+```bash
+git config core.hooksPath .githooks
+```
+
+`destroy:cloudflare` も wrangler をリセットします。
 
 `BASER_CF_STACK` を変えると Worker / D1 の名前が分離され、本番用の `default`（`baser-edge-api` など）と混ざりにくくなります。状態は `deploy/cloudflare-state.<stack>.json` に保存されます。R2 を使う場合のみ `BASER_CF_FULL_STACK=1` でバケット名もスタックごとに分離されます。
 

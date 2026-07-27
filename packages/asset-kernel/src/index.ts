@@ -15,6 +15,25 @@ import {
   type WorkspaceId,
 } from "@baser-edge/core-types";
 import { Capabilities, type AuthorizationResource } from "@baser-edge/authorization";
+import { isSniffedTrialInlineImage } from "./image-sniff.js";
+import {
+  TRIAL_INLINE_MEDIA_POLICY,
+  type TrialInlineMediaPolicy,
+  trialInlineImageMediaTypeSet,
+} from "./trial-inline-media.js";
+
+export {
+  TRIAL_INLINE_CLIENT_MAX_SOURCE_BYTES,
+  TRIAL_INLINE_IMAGE_MEDIA_TYPES,
+  TRIAL_INLINE_MAX_ASSETS,
+  TRIAL_INLINE_MAX_BYTES_PER_OBJECT,
+  TRIAL_INLINE_MAX_EDGE_PX,
+  TRIAL_INLINE_MEDIA_POLICY,
+  trialInlineImageMediaTypeSet,
+  type TrialInlineImageMediaType,
+  type TrialInlineMediaPolicy,
+} from "./trial-inline-media.js";
+export { isSniffedTrialInlineImage, sniffImageMediaType } from "./image-sniff.js";
 
 export type AssetState = "pending" | "uploaded" | "ready" | "quarantined" | "deleted";
 export type UploadSessionState = "pending" | "completed" | "expired" | "failed";
@@ -81,6 +100,8 @@ export interface AssetMetadataStore {
   failUpload(input: { sessionId: UploadSessionId; reason: string; now: number }): Promise<void>;
   listAssets(workspaceId: WorkspaceId): Promise<Asset[]>;
   softDeleteAsset(input: { assetId: AssetId; now: number }): Promise<Asset>;
+  countActiveAssets(workspaceId: WorkspaceId, now: number): Promise<number>;
+  expireStalePendingUploads(workspaceId: WorkspaceId, now: number): Promise<void>;
 }
 
 
@@ -159,6 +180,7 @@ export class AssetService {
   readonly #allowedMediaTypes: ReadonlySet<string>;
   readonly #defaultMaximumBytes: number;
   readonly #usageInspector: AssetUsageInspector | undefined;
+  readonly #trialInline: TrialInlineMediaPolicy | undefined;
 
   constructor(input: {
     metadata: AssetMetadataStore;
@@ -169,6 +191,7 @@ export class AssetService {
     allowedMediaTypes?: ReadonlySet<string>;
     defaultMaximumBytes?: number;
     usageInspector?: AssetUsageInspector;
+    trialInline?: TrialInlineMediaPolicy;
   }) {
     assertDomain(input.signingSecret.length >= 16, "WEAK_UPLOAD_SECRET", "Upload signing secret must be at least 16 characters", 500);
     this.#metadata = input.metadata;
@@ -176,8 +199,13 @@ export class AssetService {
     this.#security = input.security;
     this.#secret = input.signingSecret;
     this.#clock = input.clock ?? systemClock;
-    this.#allowedMediaTypes = input.allowedMediaTypes ?? defaultAllowedMediaTypes;
-    this.#defaultMaximumBytes = input.defaultMaximumBytes ?? 25 * 1024 * 1024;
+    this.#trialInline = input.trialInline;
+    this.#allowedMediaTypes = input.trialInline
+      ? trialInlineImageMediaTypeSet()
+      : (input.allowedMediaTypes ?? defaultAllowedMediaTypes);
+    this.#defaultMaximumBytes = input.trialInline
+      ? input.trialInline.maxBytesPerObject
+      : (input.defaultMaximumBytes ?? 25 * 1024 * 1024);
     this.#usageInspector = input.usageInspector;
   }
 
@@ -185,11 +213,24 @@ export class AssetService {
     const filename = sanitizeFilename(input.filename);
     const mediaType = normalizeMediaType(input.mediaType);
     assertDomain(this.#allowedMediaTypes.has(mediaType), "MEDIA_TYPE_NOT_ALLOWED", `Media type ${mediaType} is not allowed`, 422);
-    const maximumBytes = input.maximumBytes ?? this.#defaultMaximumBytes;
+    let maximumBytes = input.maximumBytes ?? this.#defaultMaximumBytes;
+    if (this.#trialInline) {
+      maximumBytes = Math.min(maximumBytes, this.#trialInline.maxBytesPerObject);
+    }
     assertDomain(Number.isInteger(maximumBytes) && maximumBytes > 0 && maximumBytes <= 5 * 1024 * 1024 * 1024, "INVALID_MAXIMUM_BYTES", "Invalid upload size limit", 422);
     await this.#security.authorize(actor, Capabilities.AssetUpload, { workspaceId: input.workspaceId, risk: "medium" }, "asset.upload-session.create", "workspace", input.workspaceId);
 
     const now = this.#clock.now();
+    await this.#metadata.expireStalePendingUploads(input.workspaceId, now);
+    if (this.#trialInline) {
+      const active = await this.#metadata.countActiveAssets(input.workspaceId, now);
+      assertDomain(
+        active < this.#trialInline.maxAssets,
+        "TRIAL_INLINE_ASSET_LIMIT",
+        `Trial allows at most ${this.#trialInline.maxAssets} images`,
+        422,
+      );
+    }
     const assetId = asAssetId(newId("asset"));
     const sessionId = asUploadSessionId(newId("upload"));
     const expiresAt = now + Math.max(60, Math.min(input.expiresInSeconds ?? 900, 3600)) * 1000;
@@ -269,7 +310,10 @@ export class AssetService {
       assertDomain(input.contentLength >= 0 && input.contentLength <= session.maximumBytes, "UPLOAD_TOO_LARGE", "Upload exceeds the signed size limit", 413);
     }
     try {
-      const object = await this.#objects.put(session.objectKey, input.body, {
+      const bodyForStore = this.#trialInline
+        ? await this.#prepareTrialInlineBody(input.body, mediaType, session.maximumBytes)
+        : input.body;
+      const object = await this.#objects.put(session.objectKey, bodyForStore, {
         mediaType,
         customMetadata: { assetId: session.assetId, uploadSessionId: session.id },
       });
@@ -309,6 +353,11 @@ export class AssetService {
     const references = this.#usageInspector ? await this.#usageInspector.listPublishedReferences(asset.id) : [];
     assertDomain(references.length === 0, "ASSET_IN_USE", "Asset is used by published content", 409, { references });
     const deleted = await this.#metadata.softDeleteAsset({ assetId, now: this.#clock.now() });
+    try {
+      await this.#objects.delete(asset.objectKey);
+    } catch {
+      /* object store cleanup is best-effort */
+    }
     await this.#security.success(actor, {
       workspaceId: asset.workspaceId,
       action: "asset.delete",
@@ -323,6 +372,23 @@ export class AssetService {
     const asset = await this.#metadata.getAsset(id);
     assertDomain(asset, "ASSET_NOT_FOUND", "Asset not found", 404);
     return asset;
+  }
+
+  async #prepareTrialInlineBody(
+    body: AssetObjectBody,
+    mediaType: string,
+    maximumBytes: number,
+  ): Promise<Uint8Array> {
+    const bytes = await toBytes(body);
+    assertDomain(bytes.byteLength > 0, "UPLOAD_EMPTY", "Upload body is empty", 422);
+    assertDomain(bytes.byteLength <= maximumBytes, "UPLOAD_TOO_LARGE", "Upload exceeds the signed size limit", 413);
+    assertDomain(
+      isSniffedTrialInlineImage(bytes, mediaType),
+      "UPLOAD_CONTENT_MISMATCH",
+      "File content does not match declared image type",
+      422,
+    );
+    return bytes;
   }
 }
 
@@ -367,6 +433,33 @@ export class MemoryAssetMetadataStore implements AssetMetadataStore {
     asset.deletedAt = input.now;
     asset.updatedAt = input.now;
     return structuredClone(asset);
+  }
+  async countActiveAssets(workspaceId: WorkspaceId, now: number): Promise<number> {
+    let count = 0;
+    for (const asset of this.assets.values()) {
+      if (asset.workspaceId !== workspaceId || asset.deletedAt !== null) continue;
+      if (asset.state === "ready") {
+        count += 1;
+        continue;
+      }
+      if (asset.state !== "pending") continue;
+      const session = [...this.sessions.values()].find((entry) => entry.assetId === asset.id && entry.state === "pending");
+      if (session && session.expiresAt > now) count += 1;
+    }
+    return count;
+  }
+  async expireStalePendingUploads(workspaceId: WorkspaceId, now: number): Promise<void> {
+    for (const session of this.sessions.values()) {
+      if (session.workspaceId !== workspaceId || session.state !== "pending" || session.expiresAt > now) continue;
+      session.state = "expired";
+      session.completedAt = now;
+      session.failureReason = "expired";
+      const asset = this.assets.get(session.assetId);
+      if (asset && asset.state === "pending") {
+        asset.state = "quarantined";
+        asset.updatedAt = now;
+      }
+    }
   }
 }
 
