@@ -91,7 +91,7 @@ import {
   resolveActorContext,
 } from "./auth-routes.js";
 import { handleCloudflareAuthRoute } from "./cloudflare-auth-routes.js";
-import { resolveConsoleCapabilities } from "./platform-capabilities.js";
+import { resolveConsoleCapabilities, resolvePreviewBaseUrl, resolveUploadBaseUrl } from "./platform-capabilities.js";
 import { createCorsContext, applyCors } from "./http/cors.js";
 import { buildInitialHomepageBlocks } from "./initial-homepage-blocks.js";
 
@@ -870,7 +870,7 @@ export function createApiWorker(resolveCms: (env: Env) => CmsService = defaultRe
             workspaceId: workspaceIdBodyField(body, "workspaceId"),
             filename: stringField(body, "filename"),
             mediaType: stringField(body, "mediaType"),
-            uploadBaseUrl: typeof body.uploadBaseUrl === "string" ? body.uploadBaseUrl : env.PUBLIC_BASE_URL ?? url.origin,
+            uploadBaseUrl: typeof body.uploadBaseUrl === "string" ? body.uploadBaseUrl : resolveUploadBaseUrl(env, url),
             ...(typeof body.maximumBytes === "number" ? { maximumBytes: body.maximumBytes } : {}),
             ...(typeof body.expiresInSeconds === "number" ? { expiresInSeconds: body.expiresInSeconds } : {}),
           }), 201);
@@ -883,6 +883,21 @@ export function createApiWorker(resolveCms: (env: Env) => CmsService = defaultRe
         if (request.method === "GET" && assetMatch?.[1]) return json(await assets.getAsset(context, asAssetId(assetMatch[1])));
         if (request.method === "DELETE" && assetMatch?.[1]) return json(await assets.deleteAsset(context, asAssetId(assetMatch[1])));
 
+        const assetContentMatch = url.pathname.match(/^\/v1\/assets\/([^/]+)\/content$/);
+        if (request.method === "GET" && assetContentMatch?.[1]) {
+          const delivered = await assets.getAuthenticatedAssetContent(context, asAssetId(assetContentMatch[1]));
+          const headers = new Headers({
+            "content-type": delivered.asset.mediaType,
+            "content-length": String(delivered.asset.byteSize ?? delivered.object.size),
+            "cache-control": "private, no-store",
+            "x-content-type-options": "nosniff",
+          });
+          const etag = delivered.object.httpEtag ?? `"${delivered.object.etag}"`;
+          headers.set("etag", etag);
+          if (request.headers.get("if-none-match") === etag) return new Response(null, { status: 304, headers });
+          return new Response(delivered.object.body, { headers });
+        }
+
         const previewCreateMatch = url.pathname.match(/^\/v1\/content\/([^/]+)\/previews$/);
         if (request.method === "POST" && previewCreateMatch?.[1]) {
           const body = await readJson(request);
@@ -892,7 +907,7 @@ export function createApiWorker(resolveCms: (env: Env) => CmsService = defaultRe
           return json(await previews.create(context, {
             contentItemId,
             revisionId: asRevisionId(stringField(body, "revisionId")),
-            previewBaseUrl: typeof body.previewBaseUrl === "string" ? body.previewBaseUrl : env.PREVIEW_BASE_URL ?? env.PUBLIC_BASE_URL ?? url.origin,
+            previewBaseUrl: typeof body.previewBaseUrl === "string" ? body.previewBaseUrl : resolvePreviewBaseUrl(env, url),
             ...(typeof body.expiresInSeconds === "number" ? { expiresInSeconds: body.expiresInSeconds } : {}),
             themeRelease,
           }), 201);

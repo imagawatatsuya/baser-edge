@@ -26,6 +26,7 @@ import {
   serveBuiltinAssetByRawId,
   serveBuiltinAssetRequest,
 } from "./builtin-assets.js";
+import { isAssetDeliverableOnPublicSite } from "./public-asset-delivery.js";
 
 const defaultPublicAssetUrl = createPublicAssetUrlResolver("/assets");
 
@@ -85,7 +86,8 @@ export function createPublicWorker(
         if (assetMatch?.[1]) {
           const builtinById = serveBuiltinAssetByRawId(request, assetMatch[1]);
           if (builtinById) return builtinById;
-          return serveAsset(request, assets, assetMatch[1]);
+          const previews = options.resolvePreview?.(env, cms) ?? (env.PREVIEW_SECRET || env.DB ? createPreviewService(env, cms) : undefined);
+          return serveAsset(request, assets, cms, previews, env, assetMatch[1]);
         }
 
         const previewMatch = url.pathname.match(/^\/_preview\/(.+)$/);
@@ -384,8 +386,21 @@ function renderArticleCard(article: PublishedArticle): string {
 }
 function extractBody(html: string): string { const match = html.match(/<body[^>]*>([\s\S]*?)<\/body>/i); return match?.[1] ?? ""; }
 function escapeHtml(value: string): string { return value.replace(/[&<>"']/g, (character) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[character]!)); }
-async function serveAsset(request: Request, service: AssetService, rawId: string): Promise<Response> {
-  const result = await service.getPublicAsset(asAssetId(rawId));
+async function serveAsset(
+  request: Request,
+  service: AssetService,
+  cms: CmsService,
+  previews: PreviewService | undefined,
+  env: Env,
+  rawId: string,
+): Promise<Response> {
+  const assetId = asAssetId(rawId);
+  if (env.SITE_ID) {
+    const siteId = asSiteId(env.SITE_ID);
+    const deliverable = await isAssetDeliverableOnPublicSite(cms, previews, siteId, assetId, Date.now());
+    if (!deliverable) return new Response("Not Found", { status: 404 });
+  }
+  const result = await service.getPublicAsset(assetId);
   if (!result) return new Response("Not Found", { status: 404 });
   const headers = new Headers({
     "content-type": result.asset.mediaType,

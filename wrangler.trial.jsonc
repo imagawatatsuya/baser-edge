@@ -7,11 +7,13 @@
   "d1_databases": [
     {
       "binding": "DB",
-      "database_name": "baser-edge",
+      "database_name": "baser-edge-trial",
       "database_id": "REPLACE_ME",
       "migrations_dir": "migrations"
     }
   ],
+
+
 
   "assets": {
     "directory": "./apps/admin-web/dist",

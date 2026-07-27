@@ -191,13 +191,41 @@ export class D1CmsStore implements CmsStore {
     const routeRow = await this.#db.prepare("SELECT * FROM routes WHERE content_item_id=? AND active=1 AND is_canonical=1 ORDER BY activated_at DESC LIMIT 1").bind(contentItemId).first<RouteRow>();
     assertDomain(nodeRow && routeRow, "CONTENT_PROJECTION_MISSING", "Content node or route is missing", 500);
     const item = mapItem(itemRow);
+    let workingRevisionId = item.workingRevisionId;
+    if (!workingRevisionId) {
+      workingRevisionId = await this.#resolveLatestRevisionId(contentItemId);
+      if (workingRevisionId) {
+        await this.#reconcileWorkingRevisionPointer(contentItemId, workingRevisionId);
+        item.workingRevisionId = workingRevisionId;
+        const refreshed = await this.#db.prepare("SELECT lock_version FROM content_items WHERE id=?").bind(contentItemId).first<{ lock_version: number }>();
+        if (refreshed) item.lockVersion = refreshed.lock_version;
+      }
+    }
     return {
       item,
       node: mapNode(nodeRow),
       route: mapRoute(routeRow),
-      workingRevision: item.workingRevisionId ? await this.getRevision(item.workingRevisionId) : null,
+      workingRevision: workingRevisionId ? await this.getRevision(workingRevisionId) : null,
       publishedRevision: item.publishedRevisionId ? await this.getRevision(item.publishedRevisionId) : null,
     };
+  }
+
+  async #resolveLatestRevisionId(contentItemId: ContentItemId): Promise<RevisionId | null> {
+    const row = await this.#db.prepare(
+      "SELECT id FROM content_revisions WHERE content_item_id=? ORDER BY revision_number DESC LIMIT 1",
+    ).bind(contentItemId).first<{ id: string }>();
+    return row ? asRevisionId(row.id) : null;
+  }
+
+  async #reconcileWorkingRevisionPointer(contentItemId: ContentItemId, revisionId: RevisionId): Promise<void> {
+    const now = Date.now();
+    await this.#db.prepare(
+      `UPDATE content_items
+       SET working_revision_id=?,
+           lock_version=(SELECT MAX(revision_number) FROM content_revisions WHERE content_item_id=?),
+           updated_at=?
+       WHERE id=? AND working_revision_id IS NULL`,
+    ).bind(revisionId, contentItemId, now, contentItemId).run();
   }
 
   async getRevision(revisionId: RevisionId): Promise<ContentRevision | null> {
@@ -219,6 +247,9 @@ export class D1CmsStore implements CmsStore {
       this.#db.prepare("INSERT INTO revision_documents(revision_id,format_version,document_json,byte_size,document_hash) VALUES(?,?,?,?,?)")
         .bind(revisionId, input.document.formatVersion, documentJson, new TextEncoder().encode(documentJson).byteLength, input.contentHash),
       ...this.#assetReferenceStatements(revisionId, input.document),
+      this.#db.prepare(
+        "UPDATE content_items SET working_revision_id=?, lock_version=lock_version+1, updated_at=? WHERE id=? AND (working_revision_id IS NULL OR working_revision_id=?)",
+      ).bind(revisionId, input.now, input.contentItemId, input.baseRevisionId),
       this.#auditStatement(createAudit(input.actor, snapshot.item.workspaceId, snapshot.item.siteId, "content.revise", "content-item", input.contentItemId, revisionId, input.now, "content.revise", { basedOnRevisionId: input.baseRevisionId })),
     ]);
     const revision = await this.getRevision(revisionId);
@@ -532,6 +563,9 @@ export class D1CmsStore implements CmsStore {
     await this.#batch([
       this.#db.prepare("INSERT INTO publication_events(id,content_item_id,previous_revision_id,published_revision_id,approval_id,actor_principal_id,committed_at,verification_state) VALUES(?,?,?,?,?,?,?,'pending')")
         .bind(publicationId, input.contentItemId, snapshot.item.publishedRevisionId, input.revisionId, input.approvalId, input.actor.actorId, input.now),
+      this.#db.prepare(
+        "UPDATE content_items SET published_revision_id=?, updated_at=? WHERE id=? AND (published_revision_id IS NULL OR published_revision_id=?)",
+      ).bind(input.revisionId, input.now, input.contentItemId, snapshot.item.publishedRevisionId),
       this.#outboxStatement(outboxId, "content.published", input.contentItemId, { publicationId, revisionId: input.revisionId, siteId: snapshot.item.siteId }, input.now),
       this.#auditStatement(createAudit(input.actor, snapshot.item.workspaceId, snapshot.item.siteId, "content.publish", "content-item", input.contentItemId, input.revisionId, input.now, "content.publish", { publicationId, outboxEventId: outboxId })),
     ]);
@@ -671,6 +705,29 @@ export class D1CmsStore implements CmsStore {
     return rows.results.map((row) => ({ revisionId: asRevisionId(row.revision_id), assetId: asAssetId(row.asset_id), blockId: row.block_id, fieldPath: row.field_path, usage: row.usage, contentItemId: asContentItemId(row.content_item_id), siteId: asSiteId(row.site_id), path: row.cached_path }));
   }
 
+  async revisionReferencesAsset(revisionId: RevisionId, assetId: AssetId): Promise<boolean> {
+    const row = await this.#db.prepare(
+      "SELECT 1 AS ok FROM revision_asset_references WHERE revision_id=? AND asset_id=? LIMIT 1",
+    ).bind(revisionId, assetId).first<{ ok: number }>();
+    return Boolean(row);
+  }
+
+  async isAssetDeliverableOnPublicSite(siteId: SiteId, assetId: AssetId, now: number): Promise<boolean> {
+    const row = await this.#db.prepare(
+      `SELECT 1 AS ok WHERE EXISTS (
+        SELECT 1 FROM revision_asset_references r
+        JOIN content_revisions v ON v.id = r.revision_id
+        JOIN content_items c ON c.id = v.content_item_id AND c.published_revision_id = v.id AND c.state = 'active' AND c.site_id = ?
+        WHERE r.asset_id = ?
+      ) OR EXISTS (
+        SELECT 1 FROM revision_asset_references r
+        JOIN preview_sessions p ON p.revision_id = r.revision_id AND p.site_id = ? AND p.revoked_at IS NULL AND p.expires_at > ?
+        WHERE r.asset_id = ?
+      )`,
+    ).bind(siteId, assetId, siteId, now, assetId).first<{ ok: number }>();
+    return Boolean(row);
+  }
+
   async #createRoutable(input: RoutableCreateInput, contentType: "page" | "folder" | "blog" | "article" | "custom-content" | "mail-form" | "alias", routeType: StoredRoute["routeType"], aliasTarget?: ContentItemId): Promise<ContentSnapshot> {
     const site = await this.#requireSite(input.siteId);
     if (input.parentId) await this.#requireParentForType(input.parentId, input.siteId, contentType);
@@ -695,6 +752,11 @@ export class D1CmsStore implements CmsStore {
       this.#routeInsert(routeId, input.siteId, contentId, site.hostname, input.path, routeType, input.now),
     ];
     if (aliasTarget) statements.push(this.#db.prepare("INSERT INTO content_aliases(alias_content_item_id,target_content_item_id,created_at) VALUES(?,?,?)").bind(contentId, aliasTarget, input.now));
+    statements.push(
+      this.#db.prepare(
+        "UPDATE content_items SET working_revision_id=?, lock_version=1, updated_at=? WHERE id=? AND working_revision_id IS NULL",
+      ).bind(revisionId, input.now, contentId),
+    );
     statements.push(this.#auditStatement(createAudit(input.actor, input.workspaceId, input.siteId, `${contentType}.create`, "content-item", contentId, revisionId, input.now, `${contentType}.create`, { path: input.path, aliasTarget: aliasTarget ?? null })));
     await this.#batch(statements);
     return this.#requireSnapshot(contentId);
@@ -1159,6 +1221,12 @@ export class D1PreviewStore implements PreviewStore {
     return session;
   }
   async touch(id: PreviewSessionId, now: number): Promise<void> { await this.#db.prepare("UPDATE preview_sessions SET last_accessed_at=? WHERE id=?").bind(now, id).run(); }
+  async listActiveSessionsForSite(siteId: SiteId, now: number): Promise<PreviewSession[]> {
+    const rows = await this.#db.prepare(
+      "SELECT * FROM preview_sessions WHERE site_id=? AND revoked_at IS NULL AND expires_at > ?",
+    ).bind(siteId, now).all<PreviewRow>();
+    return rows.results.map(mapPreview);
+  }
 }
 
 export interface R2ObjectLike {

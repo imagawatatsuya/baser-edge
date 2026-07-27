@@ -98,3 +98,15 @@ export function isEditorDirty(document: StructuredDocument, title: string, block
   if (title !== parsed.title) return true;
   return JSON.stringify(blocks) !== JSON.stringify(parsed.blocks);
 }
+
+/** Client-side gate mirroring structured-document v2 image a11y rules. */
+export function validateEditorBlocks(blocks: BodyBlock[]): string | null {
+  for (const block of blocks) {
+    if (block.kind !== "image") continue;
+    if (block.decorative) continue;
+    if (!block.alt.trim()) {
+      return "画像の代替テキストを入力するか、「装飾画像」にチェックを入れてください。";
+    }
+  }
+  return null;
+}

@@ -16,6 +16,7 @@ export function MediaLibraryPage() {
   const { assets, error, session, reload } = useMediaAssetsContext();
   const [searchParams] = useSearchParams();
   const [status, setStatus] = useState("");
+  const [statusIsError, setStatusIsError] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const highlightId = searchParams.get("highlight");
 
@@ -33,12 +34,15 @@ export function MediaLibraryPage() {
     if (!window.confirm(`「${label}」をライブラリから削除しますか？公開中のページで使っている場合は削除できません。`)) return;
     setDeletingId(assetId);
     setStatus("");
+    setStatusIsError(false);
     try {
       await deleteAsset(assetId);
       await reload();
       setStatus("削除しました。");
+      setStatusIsError(false);
     } catch (e) {
       setStatus(formatAssetDeleteError(e));
+      setStatusIsError(true);
     } finally {
       setDeletingId(null);
     }
@@ -55,6 +59,7 @@ export function MediaLibraryPage() {
         </div>
         <p className="panel-lead">
           ワークスペース内の一覧です。不要な画像はカードの「削除」でライブラリから外せます。
+          公開サイトの <code>/assets/…</code> で見えるのは、公開中（または有効な下書きプレビュー）の本文に載っている画像だけです。記事から外したあとは「公開」するまで直リンクは残ることがあります。
         </p>
         {assets.length === 0 ? (
           <p className="status">
@@ -106,7 +111,7 @@ export function MediaLibraryPage() {
           })}
         </ul>
       </section>
-      <StatusMessage message={status || error} />
+      <StatusMessage message={status || error} error={statusIsError || Boolean(error)} />
     </>
   );
 }

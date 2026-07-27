@@ -46,7 +46,9 @@ export async function fetchContentEditorPayload(
         apiFetch<ArticleMeta>(`/v1/content/${encodeURIComponent(contentId)}/article-meta`),
       ]);
       const payload = { snapshot, articleMeta };
-      setContentEditorCache(contentId, payload);
+      if (snapshot.workingRevision?.id) {
+        setContentEditorCache(contentId, payload);
+      }
       return payload;
     }
     const snapshot = await apiFetch<ContentSnapshot>(`/v1/content/${encodeURIComponent(contentId)}`);
@@ -55,7 +57,9 @@ export async function fetchContentEditorPayload(
       articleMeta = await apiFetch<ArticleMeta>(`/v1/content/${encodeURIComponent(contentId)}/article-meta`);
     }
     const payload = { snapshot, articleMeta };
-    setContentEditorCache(contentId, payload);
+    if (snapshot.workingRevision?.id) {
+      setContentEditorCache(contentId, payload);
+    }
     return payload;
   })();
 

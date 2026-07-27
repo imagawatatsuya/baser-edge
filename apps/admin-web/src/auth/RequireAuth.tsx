@@ -31,7 +31,7 @@ export function RequireAuth({ children }: { children: ReactNode }) {
 
   if (!checked) {
     return (
-      <div className="login-page">
+      <div className="login-page" style={{ minHeight: "100vh", padding: "1rem" }}>
         <p className="status">認証を確認しています…</p>
       </div>
     );

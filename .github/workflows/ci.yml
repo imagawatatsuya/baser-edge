@@ -12,6 +12,7 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
+      - run: npx playwright install chromium
       - run: npm run check
 
   prove-local:

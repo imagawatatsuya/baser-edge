@@ -7,7 +7,7 @@
   "d1_databases": [
     {
       "binding": "DB",
-      "database_name": "baser-edge",
+      "database_name": "baser-edge-trial",
       "database_id": "REPLACE_ME",
       "migrations_dir": "migrations"
     }
@@ -15,7 +15,7 @@
   "r2_buckets": [
     {
       "binding": "R2",
-      "bucket_name": "baser-edge-assets"
+      "bucket_name": "baser-edge-assets-trial"
     }
   ],
   "assets": {

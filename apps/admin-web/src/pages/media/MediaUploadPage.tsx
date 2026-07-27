@@ -115,6 +115,7 @@ export function MediaUploadPage() {
           workspaceId: session.workspaceId,
           filename,
           mediaType,
+          uploadBaseUrl: window.location.origin,
           ...(trialInline ? {} : { maximumBytes: uploadBody.size }),
         },
       });

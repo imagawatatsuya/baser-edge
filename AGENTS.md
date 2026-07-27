@@ -62,5 +62,6 @@ Low bar validation (e.g. accepting Japanese URL slugs that break public routes, 
 5. **Tests:** every new input surface needs success + at least **two** rejection tests; extend golden-path tests when `/console/` behavior changes.
 6. **Auth mutations:** CSRF + session cookies; do not weaken fail-closed behavior for convenience.
 7. **Console UI sync:** after successful mutations, refresh or invalidate every on-screen view that depends on the changed data (read-your-writes); see `.cursor/rules/console-mutation-sync.mdc` and `docs/engineering/console-mutation-sync-audit.md`. Extend `tests/console-golden-path.test.mjs` and `tests/console-mutation-sync-ui.test.mjs` when behavior changes.
+8. **Admin SPA router:** `useBlocker` and similar APIs require `createBrowserRouter` + `RouterProvider` — never `BrowserRouter` in `apps/admin-web`. See `docs/engineering/admin-spa-router-policy.md` and `npm run verify:admin-router`.
 
 If a feature cannot meet this bar in the same change, **narrow the feature** (smaller API surface) rather than shipping permissive parsing.

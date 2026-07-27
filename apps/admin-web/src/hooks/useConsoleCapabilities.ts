@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { apiFetch } from "../api/client";
 import type { ConsoleCapabilities } from "../api/types";
+import { cacheConsolePublicSiteUrl } from "../lib/localDevUrls";
 
 export function useConsoleCapabilities() {
   const [capabilities, setCapabilities] = useState<ConsoleCapabilities | null>(null);
@@ -16,7 +17,10 @@ export function useConsoleCapabilities() {
     setError(null);
     void apiFetch<ConsoleCapabilities>("/v1/console/capabilities")
       .then((data) => {
-        if (!cancelled) setCapabilities(data);
+        if (!cancelled) {
+          cacheConsolePublicSiteUrl(data.publicSiteUrl);
+          setCapabilities(data);
+        }
       })
       .catch((e: unknown) => {
         if (!cancelled) setError(e instanceof Error ? e.message : "capabilities を取得できません");

@@ -206,7 +206,9 @@ async function issueCloudflareOwnerCmsSession(
   login.searchParams.set("ownerPrincipalId", target.ownerPrincipalId);
   login.searchParams.set("siteName", target.siteName);
   const publicUrl = env.PREVIEW_BASE_URL?.trim();
-  if (publicUrl) login.searchParams.set("publicUrl", publicUrl.replace(/\/$/, ""));
+  if (publicUrl && !publicUrl.includes("example.invalid")) {
+    login.searchParams.set("publicUrl", publicUrl.replace(/\/$/, ""));
+  }
   const headers = new Headers({ location: login.toString() });
   for (const cookie of auth.sessionCookieHeaders(issue)) headers.append("set-cookie", cookie);
   return new Response(null, { status: 302, headers });

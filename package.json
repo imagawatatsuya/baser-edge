@@ -14,11 +14,12 @@
   "scripts": {
     "clean": "node scripts/clean.mjs",
     "build": "tsc -b",
-    "test": "npm run build && node --test tests/*.test.mjs",
+    "test": "npm run build && npm run build:admin-web && node --test tests/*.test.mjs",
     "demo": "npm run build && node scripts/demo.mjs",
     "verify:schema": "node scripts/verify-schema.mjs",
     "verify:wrangler": "node scripts/verify-wrangler-tracked.mjs",
-    "check": "npm run test && npm run verify:schema && npm run verify:wrangler && npm run check:onboarding-worker && npm run check:cloud-operations-worker",
+    "verify:admin-router": "node scripts/verify-admin-router.mjs",
+    "check": "npm run test && npm run verify:schema && npm run verify:wrangler && npm run verify:admin-router && npm run check:onboarding-worker && npm run check:cloud-operations-worker",
     "smoke:stack": "node scripts/smoke-local-flow.mjs",
     "prove:local": "npm run build && npm run build:admin-web && node scripts/prove-local.mjs",
     "dev:api": "npm run build && node scripts/serve-api.mjs",
@@ -40,6 +41,7 @@
     "enable-media:cloudflare": "node scripts/cloudflare/enable-media.mjs",
     "destroy:cloudflare": "node scripts/cloudflare/destroy.mjs",
     "revert:wrangler": "node scripts/cloudflare/revert-wrangler-after-cloud.mjs",
+    "refresh:oauth-trial": "node scripts/cloudflare/refresh-oauth-trial-bootstrap.mjs",
     "smoke:cloudflare": "node scripts/cloudflare/smoke-remote.mjs",
     "dev:onboarding": "node scripts/onboarding/dev.mjs",
     "dev:onboarding-api": "node scripts/onboarding/server.mjs",
@@ -58,6 +60,7 @@
     "prepare:public-snapshot:git": "node scripts/release/prepare-public-snapshot.mjs --init-git"
   },
   "devDependencies": {
+    "playwright": "^1.52.0",
     "typescript": "^5.8.3",
     "wrangler": "^4.24.0"
   },

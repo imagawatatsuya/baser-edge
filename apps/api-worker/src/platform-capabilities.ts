@@ -60,6 +60,30 @@ export function resolveConsoleCapabilities(env: PlatformEnv): ConsoleCapabilitie
   };
 }
 
+function isPlaceholderUrl(value: string): boolean {
+  return value.includes("example.invalid");
+}
+
+/** Origin for signed upload PUT URLs (always the API worker). */
+export function resolveUploadBaseUrl(env: PlatformEnv, requestUrl: URL): string {
+  const pub = env.PUBLIC_BASE_URL?.trim();
+  if (pub && !isPlaceholderUrl(pub)) {
+    try {
+      return new URL(pub).origin;
+    } catch {
+      /* fall through */
+    }
+  }
+  return requestUrl.origin;
+}
+
+/** Public site base for previews and `/assets/…` (public worker when configured). */
+export function resolvePreviewBaseUrl(env: PlatformEnv, requestUrl: URL): string {
+  const picked = pickPublicSiteUrl(env);
+  if (picked) return picked;
+  return requestUrl.origin;
+}
+
 function pickPublicSiteUrl(env: PlatformEnv): string | null {
   const preview = env.PREVIEW_BASE_URL?.trim();
   const pub = env.PUBLIC_BASE_URL?.trim();
@@ -70,8 +94,4 @@ function pickPublicSiteUrl(env: PlatformEnv): string | null {
   } catch {
     return null;
   }
-}
-
-function isPlaceholderUrl(value: string): boolean {
-  return value.includes("example.invalid");
 }

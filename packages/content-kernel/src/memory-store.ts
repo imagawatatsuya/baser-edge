@@ -747,6 +747,10 @@ export class MemoryCmsStore implements CmsStore {
     return result;
   }
 
+  async revisionReferencesAsset(revisionId: RevisionId, assetId: AssetId): Promise<boolean> {
+    return this.revisionAssetReferences.some((reference) => reference.revisionId === revisionId && reference.assetId === assetId);
+  }
+
   private async createRoutableContent(
     input: CreatePageRecordInput | CreateFolderRecordInput | CreateBlogRecordInput | CreateCustomContentRecordInput | CreateMailFormRecordInput | CreateArticleRecordInput | CreateAliasRecordInput,
     contentTypeKey: "page" | "folder" | "blog" | "custom-content" | "mail-form" | "article" | "alias",

@@ -10,6 +10,7 @@ export function LoginPage() {
   const [searchParams] = useSearchParams();
   const [status, setStatus] = useState(searchParams.get("error") ?? "");
   const [loading, setLoading] = useState(false);
+  const [entryLoading, setEntryLoading] = useState(true);
   const [instant, setInstant] = useState<{ siteName: string } | null>(null);
   const [cloudflare, setCloudflare] = useState<{ mode: "oauth" | "access" } | null>(null);
 
@@ -33,15 +34,28 @@ export function LoginPage() {
     if (getSession() && !syncCsrfFromCookies()) {
       clearSession();
     }
-    void fetchCloudflareEntry().then((entry) => {
-      if (entry.available) setCloudflare({ mode: entry.mode ?? "oauth" });
-    }).catch(() => {});
-    void fetchInstantEntry().then((entry) => {
-      if (entry.publicUrl) cacheDevPublicUrl(entry.publicUrl);
-      if (entry.available && entry.siteName) {
-        setInstant({ siteName: entry.siteName });
-      }
-    }).catch(() => {});
+    let cancelled = false;
+    void Promise.all([
+      fetchCloudflareEntry()
+        .then((entry) => {
+          if (!cancelled && entry.available) setCloudflare({ mode: entry.mode ?? "oauth" });
+        })
+        .catch(() => {}),
+      fetchInstantEntry()
+        .then((entry) => {
+          if (cancelled) return;
+          if (entry.publicUrl) cacheDevPublicUrl(entry.publicUrl);
+          if (entry.available && entry.siteName) {
+            setInstant({ siteName: entry.siteName });
+          }
+        })
+        .catch(() => {}),
+    ]).finally(() => {
+      if (!cancelled) setEntryLoading(false);
+    });
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   async function onInstantStart() {
@@ -80,7 +94,12 @@ export function LoginPage() {
   return (
     <div className="login-page">
       <div className="login-card">
-        {cloudflare ? (
+        {entryLoading ? (
+          <>
+            <h1>管理画面</h1>
+            <p className="status">読み込み中…</p>
+          </>
+        ) : cloudflare ? (
           <>
             <h1>管理画面にログイン</h1>
             <p>このサイトを開設した Cloudflare アカウントでログインします。</p>

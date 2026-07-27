@@ -70,6 +70,7 @@ export function wranglerResult(args, opts = {}) {
     encoding: "utf8",
     stdio: opts.silent ? "pipe" : "inherit",
     shell: process.platform === "win32",
+    env: { ...process.env, ...opts.env },
   });
   return {
     ok: result.status === 0,
@@ -119,7 +120,7 @@ export function patchWranglerBindings({ databaseId, d1Name, r2Name } = {}) {
 
 export function patchPublicSiteId(siteId) {
   let text = readFileSync(wranglerPublicPath(), "utf8");
-  text = text.replace(/"SITE_ID":\s*"REPLACE_ME"/, `"SITE_ID": "${siteId}"`);
+  text = text.replace(/"SITE_ID":\s*"[^"]*"/, `"SITE_ID": "${siteId}"`);
   writeFileSync(wranglerPublicPath(), text, "utf8");
 }
 

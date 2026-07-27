@@ -41,6 +41,7 @@ export interface PreviewStore {
   get(id: PreviewSessionId): Promise<PreviewSession | null>;
   revoke(id: PreviewSessionId, now: number): Promise<PreviewSession>;
   touch(id: PreviewSessionId, now: number): Promise<void>;
+  listActiveSessionsForSite(siteId: SiteId, now: number): Promise<PreviewSession[]>;
 }
 
 export interface PreviewSecurityGateway {
@@ -206,6 +207,10 @@ export class PreviewService {
     });
     return revoked;
   }
+
+  listActiveSessionsForSite(siteId: SiteId, now = this.#clock.now()): Promise<PreviewSession[]> {
+    return this.#store.listActiveSessionsForSite(siteId, now);
+  }
 }
 
 export class MemoryPreviewStore implements PreviewStore {
@@ -219,4 +224,9 @@ export class MemoryPreviewStore implements PreviewStore {
     return structuredClone(session);
   }
   async touch(id: PreviewSessionId, now: number): Promise<void> { const session = this.sessions.get(id); if (session) session.lastAccessedAt = now; }
+  async listActiveSessionsForSite(siteId: SiteId, now: number): Promise<PreviewSession[]> {
+    return [...this.sessions.values()]
+      .filter((session) => session.siteId === siteId && session.revokedAt === null && session.expiresAt > now)
+      .map((session) => structuredClone(session));
+  }
 }

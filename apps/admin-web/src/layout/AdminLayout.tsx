@@ -68,6 +68,7 @@ export function AdminLayout() {
           <NavLink to="/content" className={({ isActive }) => isActive ? "active" : undefined} aria-current={({ isActive }) => isActive ? "page" : undefined}>コンテンツ</NavLink>
           <NavLink to="/media" className={({ isActive }) => isActive ? "active" : undefined} aria-current={({ isActive }) => isActive ? "page" : undefined}>メディア</NavLink>
           <NavLink to="/approvals" className={({ isActive }) => isActive ? "active" : undefined} aria-current={({ isActive }) => isActive ? "page" : undefined}>承認</NavLink>
+          <NavLink to="/out-of-sync" className={({ isActive }) => isActive ? "active" : undefined} aria-current={({ isActive }) => isActive ? "page" : undefined}>本番未反映</NavLink>
           <NavLink to="/trash" className={({ isActive }) => isActive ? "active" : undefined} aria-current={({ isActive }) => isActive ? "page" : undefined}>ゴミ箱</NavLink>
           <NavLink to="/custom" className={({ isActive }) => isActive ? "active" : undefined} aria-current={({ isActive }) => isActive ? "page" : undefined}>カスタム</NavLink>
           <NavLink to="/mail" className={({ isActive }) => isActive ? "active" : undefined} aria-current={({ isActive }) => isActive ? "page" : undefined}>メール</NavLink>

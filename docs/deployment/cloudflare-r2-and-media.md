@@ -45,6 +45,7 @@ R2の有効化時に、CloudflareダッシュボードのBillingで請求プロ�
 
 | 形態 | いつ | R2 バケット | Worker `R2` | 公開 `/assets/…` | 主なコマンド / 条件 |
 |------|------|-------------|-------------|------------------|---------------------|
+| **既存 OAuth お試し Worker の更新** | 開設済み `*-api-trial` を最新 + D1 inline に | 再開設不要 | 同左 | **可** | `npm run refresh:oauth-trial -- --yes`（cmd は `set BASER_CF_PROVE=1` でも可） |
 | **ブラウザ向けOAuthお試し** | 一般ユーザー向け標準 | 作らない | なし | **可（お試し上限あり）** | `wrangler.trial.jsonc` + `BASER_ASSET_STORAGE=d1-inline` |
 | **開発者prove（メディアなし）** | R2未契約、または明示 | 作らない | なし | **可（D1 inline・最大3枚）** | `BASER_CF_TRIAL=1` + trial wrangler |
 | **開発者prove + メディア** | R2 APIが使える | 作る | あり | **可** | `resolve-prove-media`が自動判定 |

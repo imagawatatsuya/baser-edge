@@ -1,17 +1,23 @@
 import { useCallback, useEffect, useState } from "react";
+import { flushSync } from "react-dom";
 import { useNavigate, useParams } from "react-router-dom";
 import { apiFetch, publishContent, unpublishContent } from "../api/client";
 import type { ArticleMeta, ContentSnapshot } from "../api/types";
 import { useAuth } from "../auth/AuthProvider";
 import { AssetPickerModal } from "../components/AssetPickerModal";
 import { BlockEditor } from "../components/BlockEditor";
+import { DraftOnlySaveModal } from "../components/DraftOnlySaveModal";
+import { EditorLeaveDialog } from "../components/EditorLeaveDialog";
 import { PublicMediaDeliveryGuide } from "../components/PublicMediaDeliveryGuide";
 import { RevisionBadges } from "../components/ui/Badge";
 import { Button } from "../components/ui/Button";
 import { Field } from "../components/ui/Field";
 import { StatusMessage } from "../components/ui/StatusMessage";
+import { useEditorLeaveGuard } from "../hooks/useEditorLeaveGuard";
+import { computeEditorSyncState, editorLeaveDialogMode } from "../lib/contentEditorSync";
 import { resolvePublicSiteOrigin } from "../lib/localDevUrls";
-import { isEditorDirty, readTitleAndBlocks, writeTitleAndBlocks, type BodyBlock } from "../lib/blocks";
+import { isEditorDirty, readTitleAndBlocks, validateEditorBlocks, writeTitleAndBlocks, type BodyBlock } from "../lib/blocks";
+import type { Revision } from "../api/types";
 import { formatDateTime, parseDatetimeLocalValue, toDatetimeLocalValue } from "../lib/dates";
 import {
   buildPublicLiveUrl,
@@ -67,6 +73,16 @@ export function ContentEditPage() {
   const [imageInsertIndex, setImageInsertIndex] = useState<number | null>(null);
   const [articleMeta, setArticleMeta] = useState<ArticleMeta | null>(null);
   const [postedAtLocal, setPostedAtLocal] = useState("");
+  const [draftOnlyModalOpen, setDraftOnlyModalOpen] = useState(false);
+
+  const editable = snapshot?.item.contentTypeKey === "page" || snapshot?.item.contentTypeKey === "article";
+  const syncState = snapshot
+    ? computeEditorSyncState(snapshot, title, blocks)
+    : null;
+  const guardWhen = Boolean(editable && syncState?.shouldBlockNavigation);
+  const { blocker, proceedLeave, cancelBlockedNavigation } = useEditorLeaveGuard(guardWhen);
+  const leaveDialogOpen = blocker.state === "blocked";
+  const leaveDialogMode = syncState ? editorLeaveDialogMode(syncState) : "unsaved" as const;
 
   const load = useCallback(async (options?: { silent?: boolean; fresh?: boolean }): Promise<ContentSnapshot | null> => {
     if (!session || !contentId) return null;
@@ -100,12 +116,18 @@ export function ContentEditPage() {
     setContentEditorCache(contentId, payload);
   }
 
-  useEffect(() => { void load(); }, [load]);
+  useEffect(() => { void load({ fresh: true }); }, [load]);
+
+  function editorValidationError(): string | null {
+    return validateEditorBlocks(blocks);
+  }
 
   async function commitEditorState(changeSummary: string): Promise<ContentSnapshot | null> {
     if (!session || !snapshot?.workingRevision) return null;
+    const validationError = editorValidationError();
+    if (validationError) throw new Error(validationError);
     const document = writeTitleAndBlocks(snapshot.workingRevision.document, title, blocks);
-    await apiFetch(`/v1/content/${encodeURIComponent(contentId)}/revisions`, {
+    const revision = await apiFetch<Revision>(`/v1/content/${encodeURIComponent(contentId)}/revisions`, {
       method: "POST",
       json: {
         baseRevisionId: snapshot.workingRevision.id,
@@ -115,18 +137,90 @@ export function ContentEditPage() {
         changeSummary,
       },
     });
-    return load({ silent: true, fresh: true });
+    const next = await load({ silent: true, fresh: true });
+    if (next) return next;
+    return {
+      ...snapshot,
+      item: { ...snapshot.item, lockVersion: snapshot.item.lockVersion + 1 },
+      workingRevision: revision,
+    };
+  }
+
+  async function publishLiveWorkflow(): Promise<boolean> {
+    if (!session || !snapshot) return false;
+    const validationError = editorValidationError();
+    if (validationError) {
+      setStatus(validationError);
+      return false;
+    }
+    setBusy(true);
+    setStatus("サイトに反映しています…");
+    try {
+      if (snapshot.workingRevision && isEditorDirty(snapshot.workingRevision.document, title, blocks)) {
+        await commitEditorState("管理画面から編集（公開反映前）");
+      }
+      const fresh = await apiFetch<ContentSnapshot>(`/v1/content/${encodeURIComponent(contentId)}`);
+      const publishedSnap = await publishContent(contentId, fresh, session.credentialId);
+      flushSync(() => syncEditorFromSnapshot(publishedSnap));
+      await reloadContentTree();
+      setStatus("サイトに反映しました。");
+      return true;
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : String(error));
+      return false;
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function discardUnsavedEditorInput() {
+    if (!snapshot?.workingRevision) return;
+    const parsed = readTitleAndBlocks(snapshot.workingRevision.document);
+    setTitle(parsed.title || String(snapshot.workingRevision.fields.title ?? ""));
+    setBlocks(parsed.blocks);
+  }
+
+  function finishBlockedNavigation(options?: { force?: boolean }) {
+    proceedLeave(options);
+  }
+
+  async function onSaveDraftOnly() {
+    if (!session) return;
+    if (!snapshot?.workingRevision) {
+      setStatus("下書きリビジョンがありません。ページを再読み込みしてください。");
+      return;
+    }
+    setBusy(true);
+    setStatus("下書きを保存中…");
+    try {
+      if (syncState?.isDirty) {
+        await commitEditorState("管理画面から編集（下書きのみ）");
+      }
+      await reloadContentTree();
+      setStatus("下書きのみ保存しました。公開サイトはまだ古い版です。");
+    } catch (error) {
+      setStatus(error instanceof Error ? error.message : String(error));
+    } finally {
+      setBusy(false);
+    }
   }
 
   async function onSave() {
-    if (!session || !snapshot?.workingRevision) return;
+    if (!session) return;
+    if (!snapshot?.workingRevision) {
+      setStatus("下書きリビジョンがありません。ページを再読み込みしてください。");
+      return;
+    }
+    if (syncState?.published) {
+      setDraftOnlyModalOpen(true);
+      return;
+    }
     setBusy(true);
     setStatus("保存中…");
     try {
       await commitEditorState("管理画面から編集");
       await reloadContentTree();
-      const wasPublished = Boolean(snapshot.publishedRevision);
-      setStatus(wasPublished ? "保存しました（サイトにはまだ反映されません）。" : "保存しました。");
+      setStatus("保存しました。");
     } catch (error) {
       setStatus(error instanceof Error ? error.message : String(error));
     } finally {
@@ -141,7 +235,11 @@ export function ContentEditPage() {
   }
 
   async function onPreviewDraft() {
-    if (!session || !snapshot?.workingRevision) return;
+    if (!session) return;
+    if (!snapshot?.workingRevision) {
+      setStatus("下書きリビジョンがありません。ページを再読み込みしてください。");
+      return;
+    }
     setBusy(true);
     setStatus("プレビュー準備中…");
     try {
@@ -172,23 +270,7 @@ export function ContentEditPage() {
   }
 
   async function onPublish() {
-    if (!session || !snapshot) return;
-    setBusy(true);
-    setStatus("公開処理中…");
-    try {
-      if (snapshot.workingRevision && isEditorDirty(snapshot.workingRevision.document, title, blocks)) {
-        await commitEditorState("管理画面から編集（公開前）");
-      }
-      const fresh = await apiFetch<ContentSnapshot>(`/v1/content/${encodeURIComponent(contentId)}`);
-      const publishedSnap = await publishContent(contentId, fresh, session.credentialId);
-      syncEditorFromSnapshot(publishedSnap);
-      await reloadContentTree();
-      setStatus("公開しました。");
-    } catch (error) {
-      setStatus(error instanceof Error ? error.message : String(error));
-    } finally {
-      setBusy(false);
-    }
+    await publishLiveWorkflow();
   }
 
   async function onTrash() {
@@ -200,6 +282,7 @@ export function ContentEditPage() {
     try {
       await trashContent(snapshot);
       await reloadContentTree();
+      proceedLeave({ force: true });
       navigate("/content");
     } catch (error) {
       setStatus(error instanceof Error ? error.message : String(error));
@@ -229,19 +312,22 @@ export function ContentEditPage() {
     return <p className="status editor-empty">{status || "読み込み中…"}</p>;
   }
 
-  const published = Boolean(snapshot.publishedRevision);
-  const hasUnpublishedChanges =
-    Boolean(snapshot.workingRevision)
-    && snapshot.workingRevision!.id !== snapshot.publishedRevision?.id;
-  const isDirty = snapshot.workingRevision
-    ? isEditorDirty(snapshot.workingRevision.document, title, blocks)
-    : false;
+  const published = syncState?.published ?? false;
+  const hasUnpublishedChanges = syncState?.hasUnpublishedChanges ?? false;
+  const isDirty = syncState?.isDirty ?? false;
+  const liveSiteOutOfSync = syncState?.liveSiteOutOfSync ?? false;
   const needsPublish = !published || hasUnpublishedChanges || isDirty;
-  const editable = snapshot.item.contentTypeKey === "page" || snapshot.item.contentTypeKey === "article";
   const publishDisabled = !snapshot.workingRevision || busy;
+  const publishLabel = published ? "サイトに反映" : "公開";
 
   return (
     <div className="editor-shell">
+      {liveSiteOutOfSync ? (
+        <div className="editor-live-stale-banner" role="alert">
+          <strong>公開サイトはまだ古い版です。</strong>
+          訪問者に見える内容を変えるには「{publishLabel}」が必要です。下書きのみ保存では本番は変わりません。
+        </div>
+      ) : null}
       <div className="editor-toolbar">
         <div>
           <strong>{snapshot.route.path}</strong>
@@ -251,7 +337,13 @@ export function ContentEditPage() {
         <div className="toolbar editor-actions">
           {editable ? (
             <>
-              <Button disabled={busy} onClick={() => void onSave()}>保存</Button>
+              {!published ? (
+                <Button disabled={busy} onClick={() => void onSave()}>保存</Button>
+              ) : (
+                <Button disabled={busy || !isDirty} onClick={() => setDraftOnlyModalOpen(true)} title="公開サイトは更新されません">
+                  下書きのみ保存…
+                </Button>
+              )}
               {published ? (
                 <Button disabled={busy} onClick={() => void onUnpublish()} title="サイトから非表示にします">
                   公開を取り下げ
@@ -259,7 +351,7 @@ export function ContentEditPage() {
               ) : null}
               {needsPublish ? (
                 <Button variant="primary" disabled={publishDisabled} onClick={() => void onPublish()} title={publishDisabled ? "下書きがありません" : undefined}>
-                  公開
+                  {publishLabel}
                 </Button>
               ) : null}
               <Button variant="danger" disabled={busy} onClick={() => void onTrash()} title="サイトツリーから外し、ゴミ箱へ移動">
@@ -284,7 +376,10 @@ export function ContentEditPage() {
       ) : null}
       {editable ? (
         <p className="status editor-hint">
-          保存は下書きのみ。サイトに出すには「公開」、「公開を取り下げ」でサイトから外せます。「削除（ゴミ箱へ）」でツリーから外せます（復元可）。
+          {published
+            ? "公開済みのページは「サイトに反映」で訪問者向け表示を更新します。「下書きのみ保存」は本番を変えません。"
+            : "保存は下書きのみ。サイトに出すには「公開」。"}
+          「公開を取り下げ」でサイトから外せます。「削除（ゴミ箱へ）」でツリーから外せます（復元可）。
         </p>
       ) : null}
       <dl className="content-meta-dl">
@@ -349,18 +444,68 @@ export function ContentEditPage() {
       ) : (
         <p className="status editor-empty">この種類のコンテンツは編集 UI 未対応です。</p>
       )}
-      <StatusMessage message={status} error={status.includes("失敗") || status.includes("エラー")} />
+      <StatusMessage
+        message={status}
+        error={
+          status.includes("失敗")
+          || status.includes("エラー")
+          || status.includes("ください")
+          || /^[A-Z][A-Z0-9_]+:/.test(status)
+        }
+      />
       {imageInsertIndex !== null ? (
         <AssetPickerModal
           onClose={() => setImageInsertIndex(null)}
           onSelect={(assetId) => {
             const next = [...blocks];
-            next.splice(imageInsertIndex, 0, { id: `img-${Date.now()}`, kind: "image", assetId, alt: "", decorative: false });
+            next.splice(imageInsertIndex, 0, { id: `img-${Date.now()}`, kind: "image", assetId, alt: "", decorative: true });
             setBlocks(next);
             setImageInsertIndex(null);
           }}
         />
       ) : null}
+      <DraftOnlySaveModal
+        open={draftOnlyModalOpen}
+        busy={busy}
+        onCancel={() => setDraftOnlyModalOpen(false)}
+        onConfirm={() => {
+          setDraftOnlyModalOpen(false);
+          void onSaveDraftOnly();
+        }}
+      />
+      <EditorLeaveDialog
+        open={leaveDialogOpen}
+        mode={leaveDialogMode}
+        busy={busy}
+        published={published}
+        needsCommit={isDirty}
+        onCancel={() => cancelBlockedNavigation()}
+        onSaveAndPublishLive={() => {
+          void (async () => {
+            const ok = await publishLiveWorkflow();
+            if (ok) finishBlockedNavigation();
+          })();
+        }}
+        onPublishLive={() => {
+          void (async () => {
+            const ok = await publishLiveWorkflow();
+            if (ok) finishBlockedNavigation();
+          })();
+        }}
+        onSaveDraftOnly={() => {
+          void (async () => {
+            await onSaveDraftOnly();
+            finishBlockedNavigation({ force: true });
+          })();
+        }}
+        onDiscard={() => {
+          flushSync(() => discardUnsavedEditorInput());
+          finishBlockedNavigation();
+        }}
+        onLeaveWithStaleLive={() => {
+          finishBlockedNavigation({ force: true });
+        }}
+      />
     </div>
   );
 }

@@ -65,6 +65,9 @@ test("D1 adapter executes the same approval-first publication flow", async () =>
   const heading = createBlock("heading", { level: 1, text: "Before" });
   document.root.slots.body.push(heading);
   const page = await cms.createPage(owner, { siteId: boot.siteId, parentId: null, slug: "d1", title: "D1", document });
+  const itemRow = db.prepare("SELECT working_revision_id, lock_version FROM content_items WHERE id=?").get(page.item.id);
+  assert.ok(itemRow.working_revision_id, "working_revision_id should be set after create");
+  assert.equal(itemRow.lock_version, 1);
   const proposal = await new AgentOperations(cms).proposeDocumentChange(agentActor, {
     contentItemId: page.item.id,
     baseRevisionId: page.workingRevision.id,
@@ -195,9 +198,11 @@ test("D1 persists signed assets, published references and revocable preview sess
   const document = createEmptyDocument();
   document.root.slots.body.push(createBlock("image", { assetId: ready.id, alt: "D1" }));
   const page = await cms.createPage(owner, { siteId: boot.siteId, parentId: null, slug: "media", title: "Media", document });
+  assert.equal(await store.isAssetDeliverableOnPublicSite(boot.siteId, ready.id, Date.now()), false);
   const approval = await cms.requestApproval(owner, { contentItemId: page.item.id, revisionId: page.workingRevision.id });
   await cms.decideApproval(owner, { approvalId: approval.id, decision: "approved" });
   await cms.publish(owner, { contentItemId: page.item.id, revisionId: page.workingRevision.id, approvalId: approval.id });
+  assert.equal(await store.isAssetDeliverableOnPublicSite(boot.siteId, ready.id, Date.now()), true);
   const references = await store.listPublishedAssetReferences(ready.id);
   assert.equal(references.length, 1);
   assert.equal(references[0].path, "/media");
@@ -205,6 +210,7 @@ test("D1 persists signed assets, published references and revocable preview sess
 
   const previews = new PreviewService({ store: new D1PreviewStore(shim), cms, security: gateway, signingSecret: "d1-preview-secret-tests" });
   const preview = await previews.create(owner, { contentItemId: page.item.id, revisionId: page.workingRevision.id, previewBaseUrl: "https://preview.test" });
+  assert.equal(await store.isAssetDeliverableOnPublicSite(boot.siteId, ready.id, Date.now()), true);
   const previewToken = decodeURIComponent(new URL(preview.previewUrl).pathname.replace("/_preview/", ""));
   assert.equal((await previews.resolve(previewToken)).revision.id, page.workingRevision.id);
   assert.equal(db.prepare("SELECT count(*) AS count FROM preview_sessions").get().count, 1);

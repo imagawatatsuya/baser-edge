@@ -112,7 +112,13 @@ export async function apiFetch<T>(path: string, options: RequestInit & { json?: 
     if (response.status === 404 && msg === "Route not found") {
       throw new Error(`APIルートが見つかりません。npm run dev:stack で起動し、${devStackConsoleUrl()} を開いてください（dev:api のみでは不足です）。`);
     }
-    throw new Error(code ? `${code}: ${msg}` : msg);
+    const thrown = new Error(code ? `${code}: ${msg}` : msg);
+    if (code) (thrown as Error & { domainCode?: string }).domainCode = code;
+    const details = data.error?.details;
+    if (details && typeof details === "object" && !Array.isArray(details)) {
+      (thrown as Error & { domainDetails?: Record<string, unknown> }).domainDetails = details as Record<string, unknown>;
+    }
+    throw thrown;
   }
   return data as T;
 }
@@ -162,7 +168,11 @@ export async function completeCloudflareOAuthLogin(searchParams: URLSearchParams
   }
   const session: SessionState = {
     apiUrl: window.location.origin,
-    publicUrl: searchParams.get("publicUrl")?.trim() || "",
+    publicUrl: (() => {
+      const fromQuery = searchParams.get("publicUrl")?.trim();
+      if (fromQuery && !fromQuery.includes("example.invalid")) return fromQuery;
+      return "";
+    })(),
     workspaceId,
     siteId,
     ownerPrincipalId,
@@ -171,6 +181,18 @@ export async function completeCloudflareOAuthLogin(searchParams: URLSearchParams
   saveSession(session);
   const ok = await verifySession();
   if (!ok) throw new Error("セッションを確認できませんでした。もう一度ログインしてください。");
+  if (!session.publicUrl) {
+    try {
+      const caps = await apiFetch<{ publicSiteUrl: string | null }>("/v1/console/capabilities");
+      const fromApi = caps.publicSiteUrl?.trim();
+      if (fromApi) {
+        session.publicUrl = fromApi.replace(/\/$/, "");
+        saveSession(session);
+      }
+    } catch {
+      /* preview falls back to capabilities cache once console loads */
+    }
+  }
   if (session.publicUrl) cacheDevPublicUrl(session.publicUrl);
   return session;
 }

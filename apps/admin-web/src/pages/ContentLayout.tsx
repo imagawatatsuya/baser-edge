@@ -18,6 +18,7 @@ import { canDropOnFolder, reorderContentInTree } from "../lib/treeMove";
 import { compareTreeEntries } from "../lib/treeSort";
 import { formatDateTime } from "../lib/dates";
 import { prefetchContentEditor } from "../lib/contentSnapshotCache";
+import { isContentTreeEntryLiveOutOfSync } from "../lib/liveSiteOutOfSync";
 
 const TYPE_LABEL: Record<string, string> = {
   folder: "フォルダ",
@@ -48,6 +49,7 @@ export function ContentLayout() {
   const [moveEntry, setMoveEntry] = useState<ContentTreeEntry | null>(null);
   const [treeError, setTreeError] = useState("");
   const [dragEntry, setDragEntry] = useState<ContentTreeEntry | null>(null);
+  const [dropHighlight, setDropHighlight] = useState<string | null>(null);
   const [treeAnnounce, setTreeAnnounce] = useState("");
 
   const { byParent, entryById } = useMemo(() => {
@@ -210,11 +212,12 @@ export function ContentLayout() {
       const isBlog = entry.snapshot.item.contentTypeKey === "blog";
       const droppable = isFolder || isBlog;
       const highlight = dropHighlight === id;
-      const siblings = sortedSiblings(parentKey);
+      const siblings = sortedSiblings(parentId);
       const index = siblings.findIndex((item) => item.snapshot.item.id === entry.snapshot.item.id);
       const canMoveUp = index > 0;
       const canMoveDown = index >= 0 && index < siblings.length - 1;
       const canMoveToParent = Boolean(entry.snapshot.node.parentId);
+      const liveOutOfSync = isContentTreeEntryLiveOutOfSync(entry);
       return (
         <li key={id} className="tree-item" style={{ paddingLeft: depth * 12 }}>
           <div
@@ -252,6 +255,7 @@ export function ContentLayout() {
             >
               <span className="tree-icon" aria-hidden>{typeIcon(entry.snapshot.item.contentTypeKey)}</span>
               <span className="tree-link-title">{displayTitle(entry)}</span>
+              {liveOutOfSync ? <span className="badge badge-warn tree-live-warn">本番未反映</span> : null}
               <span className="tree-meta">
                 {TYPE_LABEL[entry.snapshot.item.contentTypeKey] ?? entry.snapshot.item.contentTypeKey}
                 <span className="tree-dates" title="更新日時">

@@ -16,10 +16,36 @@ const CREATE_MIGRATIONS_TABLE = `CREATE TABLE IF NOT EXISTS d1_migrations(
   applied_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP NOT NULL
 );`;
 
-function parseWranglerJson(stdout) {
+export function parseWranglerJson(stdout) {
   const start = stdout.indexOf("[");
   if (start < 0) return null;
   return JSON.parse(stdout.slice(start));
+}
+
+/** @returns {Record<string, unknown>[]} */
+export function d1QueryRemote(databaseName, sql, configRel = wranglerApiConfigRel()) {
+  const dir = mkdtempSync(join(tmpdir(), "baser-d1-q-"));
+  const file = join(dir, "query.sql");
+  try {
+    writeFileSync(file, sql, "utf8");
+    const args = ["d1", "execute", databaseName, "--remote", "--config", configRel, "--file", file];
+    const r = wranglerResult(args, { silent: true, env: { ...process.env, CI: "true", WRANGLER_CI: "1" } });
+    const combined = `${r.stdout}\n${r.stderr}`;
+    if (!r.ok) throw new Error(`d1 query failed (${r.status}):\n${combined}`);
+    const payload = parseWranglerJson(r.stdout);
+    const block = Array.isArray(payload) ? payload[0] : payload;
+    return block?.results ?? [];
+  } finally {
+    try {
+      rmSync(dir, { recursive: true, force: true });
+    } catch {
+      /* ignore */
+    }
+  }
+}
+
+function d1Query(databaseName, configRel, sql) {
+  return d1QueryRemote(databaseName, sql, configRel);
 }
 
 function d1Execute({ databaseName, configRel, sql, log }) {
@@ -34,27 +60,6 @@ function d1Execute({ databaseName, configRel, sql, log }) {
       throw new Error(`d1 execute failed (${r.status}):\n${combined}`);
     }
     return combined;
-  } finally {
-    try {
-      rmSync(dir, { recursive: true, force: true });
-    } catch {
-      /* ignore */
-    }
-  }
-}
-
-function d1Query(databaseName, configRel, sql) {
-  const dir = mkdtempSync(join(tmpdir(), "baser-d1-q-"));
-  const file = join(dir, "query.sql");
-  try {
-    writeFileSync(file, sql, "utf8");
-    const args = ["d1", "execute", databaseName, "--remote", "--config", configRel, "--file", file];
-    const r = wranglerResult(args, { silent: true, env: { ...process.env, CI: "true", WRANGLER_CI: "1" } });
-    const combined = `${r.stdout}\n${r.stderr}`;
-    if (!r.ok) throw new Error(`d1 query failed (${r.status}):\n${combined}`);
-    const payload = parseWranglerJson(r.stdout);
-    const block = Array.isArray(payload) ? payload[0] : payload;
-    return block?.results ?? [];
   } finally {
     try {
       rmSync(dir, { recursive: true, force: true });

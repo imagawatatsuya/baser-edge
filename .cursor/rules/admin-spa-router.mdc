@@ -1,0 +1,22 @@
+---
+description: Admin SPA must use React Router data router when using useBlocker or similar
+globs: apps/admin-web/**/*
+alwaysApply: false
+---
+
+# Admin SPA router (mandatory)
+
+Policy: `docs/engineering/admin-spa-router-policy.md`. CI: `npm run verify:admin-router`.
+
+## Do not
+
+- Add `<BrowserRouter>` or wire routes only in `App.tsx` as the entry.
+- Import `useBlocker` (or `useFetcher`, `useLoaderData`, etc.) from page components.
+
+## Do
+
+- Register routes in `apps/admin-web/src/router.tsx` via `createBrowserRouter`.
+- Mount with `RouterProvider` in `main.tsx` (`basename: /console`).
+- Put navigation blocking in `hooks/useEditorLeaveGuard.ts` only.
+
+After changing router or leave-guard wiring, run `npm run verify:admin-router`.

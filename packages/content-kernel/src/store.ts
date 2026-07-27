@@ -196,6 +196,8 @@ export interface CmsStore {
   hasCloudflareOwnerBinding(): Promise<boolean>;
   listOutbox(): Promise<import("./entities.js").OutboxEvent[]>;
   listPublishedAssetReferences(assetId: AssetId): Promise<PublishedAssetReference[]>;
+  revisionReferencesAsset(revisionId: RevisionId, assetId: AssetId): Promise<boolean>;
+  isAssetDeliverableOnPublicSite?(siteId: SiteId, assetId: AssetId, now: number): Promise<boolean>;
 }
 
 export interface CreatePrincipalInput {

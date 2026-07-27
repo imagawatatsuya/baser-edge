@@ -152,6 +152,8 @@ Public mail submit (renderer, not api-worker) — see `tests/mail-form.test.mjs`
 | `/v1/assets/uploads/:id` | PUT | Y | Partial | Partial | Partial | Token query required |
 | `/v1/assets` | GET | Y | Partial | Partial | Partial | |
 | `/v1/assets/:id` | GET, DELETE | Y | — | Partial | Partial | DELETE mirrored in `MediaLibraryPage` (`ASSET_IN_USE` UI) |
+| `/v1/assets/:id/content` | GET | Y | — | Partial | OK | Authenticated binary; console thumbnails (`consoleAssetContentUrl`) |
+| Public `GET /assets/:id` | GET | — | Y (D1) | Partial | OK | Fail-closed: published revision or active preview session refs ([ADR-0024](../adr/0024-public-asset-delivery-fail-closed.md)) |
 
 ---
 

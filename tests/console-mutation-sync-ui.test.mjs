@@ -94,12 +94,10 @@ test("ContentEditPage reloads content tree after save, publish, and unpublish", 
   assert.match(source, /syncEditorFromSnapshot\(publishedSnap\)/);
   assert.match(source, /syncEditorFromSnapshot\(unpublished\)/);
   assert.match(source, /await reloadContentTree\(\)/);
-  const saveFn = source.indexOf("async function onSave()");
-  const publishFn = source.indexOf("async function onPublish()");
-  const unpublishFn = source.indexOf("async function onUnpublish()");
-  assert.ok(source.indexOf("await reloadContentTree()", saveFn) > saveFn && source.indexOf("await reloadContentTree()", saveFn) < publishFn);
-  assert.ok(source.indexOf("await reloadContentTree()", publishFn) > publishFn && source.indexOf("await reloadContentTree()", publishFn) < unpublishFn);
-  assert.ok(source.indexOf("await reloadContentTree()", unpublishFn) > unpublishFn);
+  assert.match(source, /async function onSave\(\)[\s\S]*await reloadContentTree\(\)/);
+  assert.match(source, /async function onSaveDraftOnly\(\)[\s\S]*await reloadContentTree\(\)/);
+  assert.match(source, /async function publishLiveWorkflow\(\)[\s\S]*await reloadContentTree\(\)/);
+  assert.match(source, /async function onUnpublish\(\)[\s\S]*await reloadContentTree\(\)/);
   assert.doesNotMatch(source, /entries\.find/);
 });
 
@@ -141,7 +139,7 @@ test("CustomEntriesLayout shares entries list; edit page reloads after mutations
   assert.match(entries, /useCustomEntriesContext/);
   assert.match(entries, /await reloadEntries\(\)/);
   const saveFn = entries.indexOf("async function onSave()");
-  const publishFn = entries.indexOf("async function onPublish()");
+  const publishFn = entries.indexOf("async function publishLiveWorkflow()");
   const unpublishFn = entries.indexOf("async function onUnpublish()");
   assert.ok(entries.indexOf("await reloadEntries()", saveFn) > saveFn);
   assert.ok(entries.indexOf("await reloadEntries()", publishFn) > publishFn);

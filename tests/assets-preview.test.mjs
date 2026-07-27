@@ -138,10 +138,46 @@ test("public worker serves signed previews and ready assets without publishing t
   assert.match(previewText, /下書きプレビュー（未公開）/);
   const normalResponse = await worker.fetch(new Request("https://public.test/unpublished"), { SITE_ID: boot.siteId });
   assert.equal(normalResponse.status, 404);
-  const assetResponse = await worker.fetch(new Request(`https://public.test/assets/${ready.id}`), {});
+  const assetResponse = await worker.fetch(new Request(`https://public.test/assets/${ready.id}`), { SITE_ID: boot.siteId });
   assert.equal(assetResponse.status, 200);
   assert.equal(assetResponse.headers.get("content-type"), "image/png");
   assert.equal((await assetResponse.arrayBuffer()).byteLength, 3);
+});
+
+test("public worker returns 404 for assets not referenced by published or preview revisions", async () => {
+  const { cms, boot, owner, assets, previews } = await setup();
+  const upload = await assets.createUploadSession(owner, {
+    workspaceId: boot.workspaceId,
+    filename: "orphan.png",
+    mediaType: "image/png",
+    uploadBaseUrl: "https://api.test",
+  });
+  const token = new URL(upload.uploadUrl).searchParams.get("token");
+  const ready = await assets.uploadWithToken({ sessionId: upload.session.id, token, mediaType: "image/png", body: new Uint8Array([5]) });
+  const worker = createPublicWorker(() => cms, { resolvePreview: () => previews, resolveAssets: () => assets });
+  const blocked = await worker.fetch(new Request(`https://public.test/assets/${ready.id}`), { SITE_ID: boot.siteId });
+  assert.equal(blocked.status, 404);
+});
+
+test("public worker serves assets referenced only by published revision", async () => {
+  const { cms, boot, owner, assets } = await setup();
+  const upload = await assets.createUploadSession(owner, {
+    workspaceId: boot.workspaceId,
+    filename: "live.png",
+    mediaType: "image/png",
+    uploadBaseUrl: "https://api.test",
+  });
+  const token = new URL(upload.uploadUrl).searchParams.get("token");
+  const ready = await assets.uploadWithToken({ sessionId: upload.session.id, token, mediaType: "image/png", body: new Uint8Array([7]) });
+  const document = createEmptyDocument();
+  document.root.slots.body.push(createBlock("image", { assetId: ready.id, alt: "live" }));
+  const page = await cms.createPage(owner, { siteId: boot.siteId, parentId: null, slug: "live-asset", title: "Live", document });
+  const approval = await cms.requestApproval(owner, { contentItemId: page.item.id, revisionId: page.workingRevision.id });
+  await cms.decideApproval(owner, { approvalId: approval.id, decision: "approved" });
+  await cms.publish(owner, { contentItemId: page.item.id, revisionId: page.workingRevision.id, approvalId: approval.id });
+  const worker = createPublicWorker(() => cms, { resolveAssets: () => assets });
+  const ok = await worker.fetch(new Request(`https://public.test/assets/${ready.id}`), { SITE_ID: boot.siteId });
+  assert.equal(ok.status, 200);
 });
 
 

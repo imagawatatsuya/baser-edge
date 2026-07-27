@@ -347,6 +347,14 @@ export class AssetService {
     return object ? { asset, object } : null;
   }
 
+  async getAuthenticatedAssetContent(actor: ActorContext, assetId: AssetId): Promise<{ asset: Asset; object: AssetObject }> {
+    const asset = await this.getAsset(actor, assetId);
+    assertDomain(asset.state === "ready" && asset.deletedAt === null, "ASSET_NOT_READY", "Asset is not ready for download", 404);
+    const object = await this.#objects.get(asset.objectKey);
+    assertDomain(object, "ASSET_OBJECT_MISSING", "Asset object not found", 404);
+    return { asset, object };
+  }
+
   async deleteAsset(actor: ActorContext, assetId: AssetId): Promise<Asset> {
     const asset = await this.#requireAsset(assetId);
     await this.#security.authorize(actor, Capabilities.AssetDelete, { workspaceId: asset.workspaceId, risk: "high" }, "asset.delete", "asset", asset.id);
