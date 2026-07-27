@@ -48,7 +48,7 @@ export function ContentLayout() {
   const [moveEntry, setMoveEntry] = useState<ContentTreeEntry | null>(null);
   const [treeError, setTreeError] = useState("");
   const [dragEntry, setDragEntry] = useState<ContentTreeEntry | null>(null);
-  const [dropHighlight, setDropHighlight] = useState<string | null>(null);
+  const [treeAnnounce, setTreeAnnounce] = useState("");
 
   const { byParent, entryById } = useMemo(() => {
     const byParent = new Map<string | "root", ContentTreeEntry[]>();
@@ -82,6 +82,56 @@ export function ContentLayout() {
     setTreeError("");
     try {
       await copyContent(entry.snapshot, slug, entry.snapshot.node.parentId);
+      await reload();
+    } catch (e) {
+      setTreeError(e instanceof Error ? e.message : String(e));
+    }
+  }
+
+  function sortedSiblings(parentKey: string | "root") {
+    return [...(byParent.get(parentKey) ?? [])].sort(compareTreeEntries);
+  }
+
+  async function moveEntryUp(entry: ContentTreeEntry) {
+    const parentKey = entry.snapshot.node.parentId ?? "root";
+    const siblings = sortedSiblings(parentKey);
+    const index = siblings.findIndex((item) => item.snapshot.item.id === entry.snapshot.item.id);
+    if (index <= 0) return;
+    setTreeError("");
+    try {
+      const insertAfter = siblings[index - 2]?.snapshot.item.id ?? null;
+      await reorderContentInTree(entry.snapshot, entry.snapshot.node.parentId, insertAfter);
+      setTreeAnnounce(`${displayTitle(entry)}を上へ移動しました`);
+      await reload();
+    } catch (e) {
+      setTreeError(e instanceof Error ? e.message : String(e));
+    }
+  }
+
+  async function moveEntryDown(entry: ContentTreeEntry) {
+    const parentKey = entry.snapshot.node.parentId ?? "root";
+    const siblings = sortedSiblings(parentKey);
+    const index = siblings.findIndex((item) => item.snapshot.item.id === entry.snapshot.item.id);
+    if (index < 0 || index >= siblings.length - 1) return;
+    setTreeError("");
+    try {
+      await reorderContentInTree(entry.snapshot, entry.snapshot.node.parentId, siblings[index + 1].snapshot.item.id);
+      setTreeAnnounce(`${displayTitle(entry)}を下へ移動しました`);
+      await reload();
+    } catch (e) {
+      setTreeError(e instanceof Error ? e.message : String(e));
+    }
+  }
+
+  async function moveEntryToParent(entry: ContentTreeEntry) {
+    const parentId = entry.snapshot.node.parentId;
+    if (!parentId) return;
+    const parentEntry = entryById.get(parentId);
+    if (!parentEntry) return;
+    setTreeError("");
+    try {
+      await reorderContentInTree(entry.snapshot, parentEntry.snapshot.node.parentId, parentEntry.snapshot.item.id);
+      setTreeAnnounce(`${displayTitle(entry)}を親フォルダの直後へ移動しました`);
       await reload();
     } catch (e) {
       setTreeError(e instanceof Error ? e.message : String(e));
@@ -160,6 +210,11 @@ export function ContentLayout() {
       const isBlog = entry.snapshot.item.contentTypeKey === "blog";
       const droppable = isFolder || isBlog;
       const highlight = dropHighlight === id;
+      const siblings = sortedSiblings(parentKey);
+      const index = siblings.findIndex((item) => item.snapshot.item.id === entry.snapshot.item.id);
+      const canMoveUp = index > 0;
+      const canMoveDown = index >= 0 && index < siblings.length - 1;
+      const canMoveToParent = Boolean(entry.snapshot.node.parentId);
       return (
         <li key={id} className="tree-item" style={{ paddingLeft: depth * 12 }}>
           <div
@@ -204,6 +259,11 @@ export function ContentLayout() {
                 </span>
               </span>
             </button>
+            <div className="tree-move-actions">
+              <button type="button" className="tree-move-btn" aria-label="上へ移動" disabled={!canMoveUp} onClick={() => void moveEntryUp(entry)}>↑</button>
+              <button type="button" className="tree-move-btn" aria-label="下へ移動" disabled={!canMoveDown} onClick={() => void moveEntryDown(entry)}>↓</button>
+              <button type="button" className="tree-move-btn" aria-label="親の直後へ移動" disabled={!canMoveToParent} onClick={() => void moveEntryToParent(entry)}>↰</button>
+            </div>
             <TreeRowMenu
               entry={entry}
               onAddPage={() => { setCreateParentId(entry.snapshot.node.id); setCreateKind("page"); }}
@@ -228,7 +288,7 @@ export function ContentLayout() {
       <div className="page-header">
         <div>
           <h1>コンテンツ</h1>
-          <p>ドラッグで並べ替え・フォルダ／ブログへ移動（フォルダへドロップ＝末尾、項目へドロップ＝直後）。⋯ メニューまたは編集画面から削除（ゴミ箱へ）。</p>
+          <p>ドラッグまたは ↑↓↰ ボタンで並べ替え。⋯ メニューまたは編集画面から削除（ゴミ箱へ）。</p>
         </div>
         <div className="toolbar">
           <PublicSiteLink className="btn">公開サイト（ホーム）</PublicSiteLink>
@@ -238,7 +298,7 @@ export function ContentLayout() {
         </div>
       </div>
       <div className="split content-split">
-        <div className="panel tree-panel">
+        <div className="panel tree-panel content-tree-panel">
           <div
             className={`panel-head ${dropHighlight === "root" ? "tree-drop-target" : ""}`}
             onDragOver={(e) => onDragOverTarget("root", e)}
@@ -249,6 +309,7 @@ export function ContentLayout() {
             {isReloading ? <span className="tree-reload-indicator">更新中…</span> : null}
           </div>
           <ul className="tree-list">{renderNodes("root", 0)}</ul>
+          {treeAnnounce ? <p className="tree-status" role="status" aria-live="polite">{treeAnnounce}</p> : null}
         </div>
         <div className="panel editor-panel">
           <Outlet />
