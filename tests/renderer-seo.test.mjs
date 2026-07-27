@@ -56,7 +56,7 @@ test("renderPage includes canonical and description for public page", () => {
 
 test("starter hero image is not lazy-loaded", () => {
   const document = createEmptyDocument();
-  const hero = createBlock("image", { assetId: "builtin:starter-home-hero", alt: "" });
+  const hero = createBlock("image", { assetId: "builtin:starter-home-hero", decorative: true, alt: "" });
   hero.id = "starter-home-hero";
   document.root.slots.body.push(hero);
   const html = renderPage(document, undefined, { title: "Home" });

@@ -7,6 +7,7 @@ import {
 export function buildInitialHomepageBlocks(siteName: string): BlockNode[] {
   const heroImage = createBlock("image", {
     assetId: BUILTIN_STARTER_HOME_HERO_ASSET_ID,
+    decorative: false,
     alt: "店内に飾られた花々のサンプル画像",
   });
   heroImage.id = "starter-home-hero";

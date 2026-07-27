@@ -1,4 +1,13 @@
 import { DomainError, assertDomain, newId, stableStringify } from "@baser-edge/core-types";
+import {
+  A11Y_V2_COMPONENT_TYPES,
+  defaultComponentVersion,
+  validateGalleryV2Props,
+  validateImageTextV2Props,
+  validateImageV2Props,
+  validateSafeEmbedV2Props,
+  validateTableV2Props,
+} from "./a11y-v2.js";
 
 export interface BlockVisibility {
   publishAt?: string;
@@ -273,6 +282,16 @@ export function diffDocuments(before: StructuredDocument, after: StructuredDocum
   return { added, removed, moved, updated };
 }
 
+export {
+  A11Y_V2_COMPONENT_TYPES,
+  defaultComponentVersion,
+  validateGalleryV2Props,
+  validateImageTextV2Props,
+  validateImageV2Props,
+  validateSafeEmbedV2Props,
+  validateTableV2Props,
+} from "./a11y-v2.js";
+
 export function createEmptyDocument(): StructuredDocument {
   return {
     formatVersion: 1,
@@ -286,14 +305,32 @@ export function createEmptyDocument(): StructuredDocument {
   };
 }
 
-export function createBlock(type: string, props: Record<string, unknown> = {}, slots: Record<string, BlockNode[]> = {}): BlockNode {
+export function createBlock(
+  type: string,
+  props: Record<string, unknown> = {},
+  slots: Record<string, BlockNode[]> = {},
+  componentVersion = defaultComponentVersion(type),
+): BlockNode {
+  const clonedProps = structuredClone(props);
+  if (componentVersion >= 2 && (type === "image" || type === "imageText") && clonedProps.decorative === undefined) {
+    clonedProps.decorative = false;
+  }
   return {
     id: newId("content").replace("cnt_", "blk_"),
     type,
-    componentVersion: 1,
-    props: structuredClone(props),
+    componentVersion,
+    props: clonedProps,
     slots: structuredClone(slots),
   };
+}
+
+function definitionV2(
+  type: string,
+  title: string,
+  validator: (props: Record<string, unknown>) => string[],
+  allowedSlots: Readonly<Record<string, readonly string[] | "*">> = {},
+): ComponentDefinition {
+  return { type, version: 2, title, allowedSlots, validateProps: validator };
 }
 
 function requireString(props: Record<string, unknown>, keyName: string): string[] {
@@ -332,6 +369,11 @@ export function createDefaultComponentRegistry(): ComponentRegistry {
   registry.register(definition("fileDownload", "File Download", (props) => [...requireString(props, "assetId"), ...requireString(props, "label")]));
   registry.register(definition("safeEmbed", "Safe Embed", (props) => [...requireString(props, "provider"), ...requireString(props, "url")]));
   registry.register(definition("divider", "Divider", () => []));
+  registry.register(definitionV2("image", "Image", validateImageV2Props));
+  registry.register(definitionV2("imageText", "Image and Text", validateImageTextV2Props));
+  registry.register(definitionV2("gallery", "Gallery", validateGalleryV2Props));
+  registry.register(definitionV2("table", "Table", validateTableV2Props));
+  registry.register(definitionV2("safeEmbed", "Safe Embed", validateSafeEmbedV2Props));
   return registry;
 }
 
@@ -357,10 +399,20 @@ export function collectAssetReferences(document: StructuredDocument): DocumentAs
         references.push({ assetId, blockId: block.id, fieldPath: "props.assetId", usage: "image" });
       }
     } else if (block.type === "gallery") {
-      const assetIds = block.props.assetIds;
-      if (Array.isArray(assetIds)) assetIds.forEach((assetId, index) => {
-        if (typeof assetId === "string" && assetId.length > 0) references.push({ assetId, blockId: block.id, fieldPath: `props.assetIds[${index}]`, usage: "gallery" });
-      });
+      if (block.componentVersion >= 2 && Array.isArray(block.props.items)) {
+        block.props.items.forEach((item, index) => {
+          if (!item || typeof item !== "object") return;
+          const assetId = (item as { assetId?: unknown }).assetId;
+          if (typeof assetId === "string" && assetId.length > 0) {
+            references.push({ assetId, blockId: block.id, fieldPath: `props.items[${index}].assetId`, usage: "gallery" });
+          }
+        });
+      } else {
+        const assetIds = block.props.assetIds;
+        if (Array.isArray(assetIds)) assetIds.forEach((assetId, index) => {
+          if (typeof assetId === "string" && assetId.length > 0) references.push({ assetId, blockId: block.id, fieldPath: `props.assetIds[${index}]`, usage: "gallery" });
+        });
+      }
     } else if (block.type === "fileDownload") {
       const assetId = block.props.assetId;
       if (typeof assetId === "string" && assetId.length > 0 && !isEmbeddedBuiltinAssetId(assetId)) {

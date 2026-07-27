@@ -3,7 +3,7 @@ import type { DocumentBlock, StructuredDocument } from "../api/types";
 export type BodyBlock =
   | { id: string; kind: "heading"; level: number; text: string }
   | { id: string; kind: "paragraph"; text: string }
-  | { id: string; kind: "image"; assetId: string; alt: string };
+  | { id: string; kind: "image"; assetId: string; alt: string; decorative: boolean };
 
 function newBlockId(prefix: string) {
   return `${prefix}-${Math.random().toString(36).slice(2, 9)}`;
@@ -35,6 +35,7 @@ export function readTitleAndBlocks(document: StructuredDocument): { title: strin
           kind: "image",
           assetId,
           alt: typeof block.props.alt === "string" ? block.props.alt : "",
+          decorative: block.componentVersion >= 2 ? block.props.decorative === true : false,
         });
       }
     }
@@ -76,8 +77,12 @@ export function writeTitleAndBlocks(document: StructuredDocument, title: string,
       body.push({
         id: block.id,
         type: "image",
-        componentVersion: 1,
-        props: { assetId: block.assetId, alt: block.alt },
+        componentVersion: 2,
+        props: {
+          assetId: block.assetId,
+          decorative: block.decorative,
+          ...(block.decorative ? {} : { alt: block.alt.trim() }),
+        },
         slots: {},
       });
     }

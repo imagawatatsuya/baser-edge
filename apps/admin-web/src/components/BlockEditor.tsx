@@ -52,11 +52,22 @@ export function BlockEditor({
           {block.kind === "image" ? (
             <Field label="画像" hint={`Asset ID: ${block.assetId}`}>
               <AssetPreviewImage assetId={block.assetId} alt={block.alt} className="media-preview block-editor-image" />
-              <input
-                value={block.alt}
-                placeholder="代替テキスト"
-                onChange={(e) => updateBlock(index, { ...block, alt: e.target.value })}
-              />
+              <label className="checkbox-inline">
+                <input
+                  type="checkbox"
+                  checked={block.decorative}
+                  onChange={(e) => updateBlock(index, { ...block, decorative: e.target.checked })}
+                />
+                装飾画像（代替テキスト不要）
+              </label>
+              {!block.decorative ? (
+                <input
+                  value={block.alt}
+                  placeholder="代替テキスト（必須）"
+                  required
+                  onChange={(e) => updateBlock(index, { ...block, alt: e.target.value })}
+                />
+              ) : null}
             </Field>
           ) : null}
           <Button variant="link" className="block-remove" onClick={() => removeBlock(index)}>削除</Button>

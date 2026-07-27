@@ -140,6 +140,14 @@ function renderBlock(block: BlockNode, resolver: RenderResolver, now: Date, prev
       if (!src) return preview ? unsupported(block, "Asset is unavailable") : "";
       const heroClass = block.id === "starter-home-hero" ? " bc-starter-hero" : "";
       const loading = imageLoadingAttr(block, imageState, preview);
+      if (block.componentVersion >= 2) {
+        const decorative = block.props.decorative === true;
+        const alt = decorative ? "" : asString(block.props.alt);
+        const caption = asString(block.props.caption);
+        const img = `<img src="${escapeAttribute(src)}" alt="${escapeAttribute(alt)}"${loading} decoding="async">`;
+        const captionHtml = caption ? `<figcaption>${escapeHtml(caption)}</figcaption>` : "";
+        return `<figure data-block-id="${id}" class="bc-figure-image${heroClass}">${img}${captionHtml}</figure>`;
+      }
       return `<figure data-block-id="${id}" class="bc-figure-image${heroClass}"><img src="${escapeAttribute(src)}" alt="${escapeAttribute(asString(block.props.alt))}"${loading} decoding="async"></figure>`;
     }
     case "imageText": {
@@ -147,15 +155,35 @@ function renderBlock(block: BlockNode, resolver: RenderResolver, now: Date, prev
       const src = resolver.assetUrl(assetId);
       if (!src) return preview ? unsupported(block, "Asset is unavailable") : "";
       const loading = imageLoadingAttr(block, imageState, preview);
+      if (block.componentVersion >= 2) {
+        const decorative = block.props.decorative === true;
+        const alt = decorative ? "" : asString(block.props.alt);
+        return `<section data-block-id="${id}" class="bc-image-text"><img src="${escapeAttribute(src)}" alt="${escapeAttribute(alt)}"${loading}><p>${escapeHtml(asString(block.props.text))}</p></section>`;
+      }
       return `<section data-block-id="${id}" class="bc-image-text"><img src="${escapeAttribute(src)}" alt="${escapeAttribute(asString(block.props.alt))}"${loading}><p>${escapeHtml(asString(block.props.text))}</p></section>`;
     }
     case "gallery": {
+      if (block.componentVersion >= 2) {
+        const items = Array.isArray(block.props.items) ? block.props.items : [];
+        return `<section data-block-id="${id}" class="bc-gallery">${items.map((rawItem) => {
+          if (!rawItem || typeof rawItem !== "object") return "";
+          const item = rawItem as Record<string, unknown>;
+          const assetId = asString(item.assetId);
+          const src = resolver.assetUrl(assetId);
+          if (!src) return "";
+          const decorative = item.decorative === true;
+          const alt = decorative ? "" : asString(item.alt);
+          const caption = asString(item.caption);
+          const loading = imageLoadingAttr(block, imageState, preview);
+          const img = `<img src="${escapeAttribute(src)}" alt="${escapeAttribute(alt)}"${loading}>`;
+          const captionHtml = caption ? `<figcaption>${escapeHtml(caption)}</figcaption>` : "";
+          return `<figure>${img}${captionHtml}</figure>`;
+        }).join("")}</section>`;
+      }
       const ids = Array.isArray(block.props.assetIds) ? block.props.assetIds.map(String) : [];
       return `<section data-block-id="${id}" class="bc-gallery">${ids.map((assetId) => {
         const src = resolver.assetUrl(assetId);
-        if (!src) return "";
-        const loading = imageLoadingAttr(block, imageState, preview);
-        return `<img src="${escapeAttribute(src)}" alt=""${loading}>`;
+        return src ? `<img src="${escapeAttribute(src)}" alt="" loading="lazy">` : "";
       }).join("")}</section>`;
     }
     case "callToAction": {
@@ -164,6 +192,24 @@ function renderBlock(block: BlockNode, resolver: RenderResolver, now: Date, prev
       return `<p data-block-id="${id}" class="bc-cta"><a href="${escapeAttribute(target)}">${escapeHtml(asString(block.props.label))}</a></p>`;
     }
     case "table": {
+      if (block.componentVersion >= 2) {
+        const caption = escapeHtml(asString(block.props.caption));
+        const headers = Array.isArray(block.props.columnHeaders) ? block.props.columnHeaders.map((value) => escapeHtml(String(value))) : [];
+        const rows = Array.isArray(block.props.rows) ? block.props.rows : [];
+        const rowHeaderColumn = block.props.rowHeaderColumn === true;
+        const thead = headers.length
+          ? `<thead><tr>${headers.map((header) => `<th scope="col">${header}</th>`).join("")}</tr></thead>`
+          : "";
+        const tbody = rows.map((row) => {
+          const cells = Array.isArray(row) ? row.map((cell) => escapeHtml(String(cell))) : [];
+          if (rowHeaderColumn && cells.length > 0) {
+            const [head, ...rest] = cells;
+            return `<tr><th scope="row">${head}</th>${rest.map((cell) => `<td>${cell}</td>`).join("")}</tr>`;
+          }
+          return `<tr>${cells.map((cell) => `<td>${cell}</td>`).join("")}</tr>`;
+        }).join("");
+        return `<div data-block-id="${id}" class="bc-table-wrap"><table><caption>${caption}</caption>${thead}<tbody>${tbody}</tbody></table></div>`;
+      }
       const rows = Array.isArray(block.props.rows) ? block.props.rows : [];
       return `<div data-block-id="${id}" class="bc-table-wrap"><table><tbody>${rows.map((row) => `<tr>${(Array.isArray(row) ? row : []).map((cell) => `<td>${escapeHtml(String(cell))}</td>`).join("")}</tr>`).join("")}</tbody></table></div>`;
     }
@@ -175,7 +221,9 @@ function renderBlock(block: BlockNode, resolver: RenderResolver, now: Date, prev
     case "safeEmbed": {
       const safeUrl = validateEmbed(asString(block.props.provider), asString(block.props.url));
       if (!safeUrl) return preview ? unsupported(block, "Embed URL is not allowed") : "";
-      return `<div data-block-id="${id}" class="bc-embed"><iframe src="${escapeAttribute(safeUrl)}" loading="lazy" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe></div>`;
+      const iframeTitle = block.componentVersion >= 2 ? escapeAttribute(asString(block.props.title)) : "";
+      const titleAttr = iframeTitle ? ` title="${iframeTitle}"` : "";
+      return `<div data-block-id="${id}" class="bc-embed"><iframe src="${escapeAttribute(safeUrl)}"${titleAttr} loading="lazy" referrerpolicy="strict-origin-when-cross-origin" allowfullscreen></iframe></div>`;
     }
     case "divider":
       return `<hr data-block-id="${id}">`;

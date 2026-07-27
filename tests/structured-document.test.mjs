@@ -1,5 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { DomainError } from "@baser-edge/core-types";
 import {
   applyOperations,
   createBlock,
@@ -45,4 +46,47 @@ test("moving a block into its descendant is rejected", () => {
   container.slots.body.push(child);
   const withContainer = applyOperations(document, [{ kind: "insert", parentId: "root", slot: "body", index: 0, block: container }], registry);
   assert.throws(() => applyOperations(withContainer, [{ kind: "move", blockId: container.id, parentId: child.id, slot: "body", index: 0 }], registry), /descendant/);
+});
+
+test("image v2 rejects non-decorative image without alt", () => {
+  const document = createEmptyDocument();
+  const image = createBlock("image", { assetId: "asset-1", decorative: false, alt: "" });
+  assert.throws(
+    () => applyOperations(document, [{ kind: "insert", parentId: "root", slot: "body", index: 0, block: image }], registry),
+    (error) => error instanceof DomainError && error.code === "INVALID_DOCUMENT",
+  );
+});
+
+test("image v2 accepts decorative image with empty alt", () => {
+  const document = createEmptyDocument();
+  const image = createBlock("image", { assetId: "asset-1", decorative: true, alt: "" });
+  const next = applyOperations(document, [{ kind: "insert", parentId: "root", slot: "body", index: 0, block: image }], registry);
+  assert.equal(validateDocument(next, registry).valid, true);
+});
+
+test("safeEmbed v2 requires iframe title", () => {
+  const document = createEmptyDocument();
+  const embed = createBlock("safeEmbed", { provider: "youtube", url: "https://www.youtube.com/embed/dQw4w9WgXcQ" });
+  assert.throws(
+    () => applyOperations(document, [{ kind: "insert", parentId: "root", slot: "body", index: 0, block: embed }], registry),
+    (error) => error instanceof DomainError && error.code === "INVALID_DOCUMENT",
+  );
+});
+
+test("safeEmbed v2 accepts titled embed", () => {
+  const document = createEmptyDocument();
+  const embed = createBlock("safeEmbed", {
+    provider: "youtube",
+    url: "https://www.youtube.com/embed/dQw4w9WgXcQ",
+    title: "Sample video",
+  });
+  const next = applyOperations(document, [{ kind: "insert", parentId: "root", slot: "body", index: 0, block: embed }], registry);
+  assert.equal(validateDocument(next, registry).valid, true);
+});
+
+test("v1 image blocks remain valid", () => {
+  const document = createEmptyDocument();
+  const image = createBlock("image", { assetId: "asset-1", alt: "" }, {}, 1);
+  const next = applyOperations(document, [{ kind: "insert", parentId: "root", slot: "body", index: 0, block: image }], registry);
+  assert.equal(validateDocument(next, registry).valid, true);
 });

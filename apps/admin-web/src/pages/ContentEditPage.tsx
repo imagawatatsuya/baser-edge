@@ -355,7 +355,7 @@ export function ContentEditPage() {
           onClose={() => setImageInsertIndex(null)}
           onSelect={(assetId) => {
             const next = [...blocks];
-            next.splice(imageInsertIndex, 0, { id: `img-${Date.now()}`, kind: "image", assetId, alt: "" });
+            next.splice(imageInsertIndex, 0, { id: `img-${Date.now()}`, kind: "image", assetId, alt: "", decorative: false });
             setBlocks(next);
             setImageInsertIndex(null);
           }}
