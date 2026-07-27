@@ -305,6 +305,90 @@ function compareSortKeys(a, b) {
 function buildSortKey(order, contentItemId) {
   return `${String(order).padStart(8, "0")}:${contentItemId}`;
 }
+function requireString$1(props, keyName) {
+  return typeof props[keyName] === "string" ? [] : [`${keyName} must be a string`];
+}
+function requireTrimmedString(props, keyName) {
+  const value = props[keyName];
+  if (typeof value !== "string" || value.trim().length === 0)
+    return [`${keyName} must be a non-empty string`];
+  return [];
+}
+function optionalString$1(props, keyName) {
+  const value = props[keyName];
+  return value === void 0 || typeof value === "string" ? [] : [`${keyName} must be a string`];
+}
+function requireBoolean(props, keyName) {
+  return typeof props[keyName] === "boolean" ? [] : [`${keyName} must be a boolean`];
+}
+function validateAccessibleImageProps(props) {
+  const errors = [...requireString$1(props, "assetId"), ...requireBoolean(props, "decorative")];
+  const decorative = props.decorative === true;
+  if (!decorative)
+    errors.push(...requireTrimmedString(props, "alt"));
+  else
+    errors.push(...optionalString$1(props, "alt"));
+  errors.push(...optionalString$1(props, "caption"));
+  return errors;
+}
+function validateImageV2Props(props) {
+  return validateAccessibleImageProps(props);
+}
+function validateImageTextV2Props(props) {
+  const errors = [...requireString$1(props, "assetId"), ...requireString$1(props, "text"), ...requireBoolean(props, "decorative")];
+  const decorative = props.decorative === true;
+  if (!decorative)
+    errors.push(...requireTrimmedString(props, "alt"));
+  else
+    errors.push(...optionalString$1(props, "alt"));
+  return errors;
+}
+function validateGalleryV2Props(props) {
+  const items = props.items;
+  if (!Array.isArray(items) || items.length === 0)
+    return ["items must be a non-empty array"];
+  const errors = [];
+  items.forEach((item, index2) => {
+    if (!item || typeof item !== "object") {
+      errors.push(`items[${index2}] must be an object`);
+      return;
+    }
+    validateAccessibleImageProps(item).forEach((message2) => {
+      errors.push(`items[${index2}]: ${message2}`);
+    });
+  });
+  return errors;
+}
+function validateTableV2Props(props) {
+  const errors = [...requireTrimmedString(props, "caption")];
+  const headers = props.columnHeaders;
+  if (!Array.isArray(headers) || headers.length === 0 || !headers.every((value) => typeof value === "string" && value.trim().length > 0)) {
+    errors.push("columnHeaders must be a non-empty array of non-empty strings");
+  }
+  const rows = props.rows;
+  if (!Array.isArray(rows)) {
+    errors.push("rows must be an array");
+    return errors;
+  }
+  const rowHeaderColumn = props.rowHeaderColumn === true;
+  const expectedCells = (Array.isArray(headers) ? headers.length : 0) + (rowHeaderColumn ? 1 : 0);
+  rows.forEach((row, index2) => {
+    if (!Array.isArray(row) || row.length !== expectedCells || !row.every((cell) => typeof cell === "string")) {
+      errors.push(`rows[${index2}] must be an array of ${expectedCells} strings`);
+    }
+  });
+  if (props.rowHeaderColumn !== void 0 && typeof props.rowHeaderColumn !== "boolean") {
+    errors.push("rowHeaderColumn must be a boolean");
+  }
+  return errors;
+}
+function validateSafeEmbedV2Props(props) {
+  return [...requireString$1(props, "provider"), ...requireString$1(props, "url"), ...requireTrimmedString(props, "title"), ...optionalString$1(props, "transcriptUrl")];
+}
+const A11Y_V2_COMPONENT_TYPES = /* @__PURE__ */ new Set(["image", "imageText", "gallery", "table", "safeEmbed"]);
+function defaultComponentVersion(type) {
+  return A11Y_V2_COMPONENT_TYPES.has(type) ? 2 : 1;
+}
 class ComponentRegistry {
   #definitions = /* @__PURE__ */ new Map();
   register(definition2) {
@@ -511,14 +595,21 @@ function createEmptyDocument() {
     }
   };
 }
-function createBlock(type, props = {}, slots = {}) {
+function createBlock(type, props = {}, slots = {}, componentVersion = defaultComponentVersion(type)) {
+  const clonedProps = structuredClone(props);
+  if (componentVersion >= 2 && (type === "image" || type === "imageText") && clonedProps.decorative === void 0) {
+    clonedProps.decorative = false;
+  }
   return {
     id: newId("content").replace("cnt_", "blk_"),
     type,
-    componentVersion: 1,
-    props: structuredClone(props),
+    componentVersion,
+    props: clonedProps,
     slots: structuredClone(slots)
   };
+}
+function definitionV2(type, title, validator, allowedSlots = {}) {
+  return { type, version: 2, title, allowedSlots, validateProps: validator };
 }
 function requireString(props, keyName) {
   return typeof props[keyName] === "string" ? [] : [`${keyName} must be a string`];
@@ -549,6 +640,11 @@ function createDefaultComponentRegistry() {
   registry.register(definition("fileDownload", "File Download", (props) => [...requireString(props, "assetId"), ...requireString(props, "label")]));
   registry.register(definition("safeEmbed", "Safe Embed", (props) => [...requireString(props, "provider"), ...requireString(props, "url")]));
   registry.register(definition("divider", "Divider", () => []));
+  registry.register(definitionV2("image", "Image", validateImageV2Props));
+  registry.register(definitionV2("imageText", "Image and Text", validateImageTextV2Props));
+  registry.register(definitionV2("gallery", "Gallery", validateGalleryV2Props));
+  registry.register(definitionV2("table", "Table", validateTableV2Props));
+  registry.register(definitionV2("safeEmbed", "Safe Embed", validateSafeEmbedV2Props));
   return registry;
 }
 const BUILTIN_STARTER_HOME_HERO_ASSET_ID = "builtin:starter-home-hero";
@@ -564,12 +660,23 @@ function collectAssetReferences(document) {
         references.push({ assetId, blockId: block.id, fieldPath: "props.assetId", usage: "image" });
       }
     } else if (block.type === "gallery") {
-      const assetIds = block.props.assetIds;
-      if (Array.isArray(assetIds))
-        assetIds.forEach((assetId, index2) => {
-          if (typeof assetId === "string" && assetId.length > 0)
-            references.push({ assetId, blockId: block.id, fieldPath: `props.assetIds[${index2}]`, usage: "gallery" });
+      if (block.componentVersion >= 2 && Array.isArray(block.props.items)) {
+        block.props.items.forEach((item, index2) => {
+          if (!item || typeof item !== "object")
+            return;
+          const assetId = item.assetId;
+          if (typeof assetId === "string" && assetId.length > 0) {
+            references.push({ assetId, blockId: block.id, fieldPath: `props.items[${index2}].assetId`, usage: "gallery" });
+          }
         });
+      } else {
+        const assetIds = block.props.assetIds;
+        if (Array.isArray(assetIds))
+          assetIds.forEach((assetId, index2) => {
+            if (typeof assetId === "string" && assetId.length > 0)
+              references.push({ assetId, blockId: block.id, fieldPath: `props.assetIds[${index2}]`, usage: "gallery" });
+          });
+      }
     } else if (block.type === "fileDownload") {
       const assetId = block.props.assetId;
       if (typeof assetId === "string" && assetId.length > 0 && !isEmbeddedBuiltinAssetId(assetId)) {
@@ -26208,6 +26315,7 @@ function applyCors(response, context) {
 function buildInitialHomepageBlocks(siteName) {
   const heroImage = createBlock("image", {
     assetId: BUILTIN_STARTER_HOME_HERO_ASSET_ID,
+    decorative: false,
     alt: "店内に飾られた花々のサンプル画像"
   });
   heroImage.id = "starter-home-hero";
