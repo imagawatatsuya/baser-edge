@@ -140,6 +140,10 @@ Authority: [ADR-0021](../adr/0021-baseredge-product-identity-no-host-migration.m
 
 This track **outranks** new CMS feature surface until DEPLOY-001–003 are met. Local `npm run dev:stack` remains a developer aid, not the product onboarding story.
 
+## Quality track (post-console, parallel)
+
+Console phases C1–C5 are done. Further **public HTML, crawler discovery, structured-document accessibility, and mobile console operability** are defined in [quality-track-implementation-plan.md](quality-track-implementation-plan.md). That track intentionally **does not** include search projection, `llms.txt`, or deploy-path changes. Priority: typed SEO → sitemap/robots → block v2 + 422 → mobile shell + keyboard tree.
+
 ## Suggested execution order
 
 1. C1 UI kit + state badges + block editor minimum
@@ -147,3 +151,4 @@ This track **outranks** new CMS feature surface until DEPLOY-001–003 are met. 
 3. C2 tree create/move/trash
 4. C3 media nav + picker
 5. C4 inbox
+6. Quality track Waves 1–4 per quality-track-implementation-plan.md (after or parallel to v1.0 deploy when not conflicting)
