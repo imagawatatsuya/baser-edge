@@ -1,5 +1,36 @@
 import { buildTestAuthenticationResponse, buildTestRegistrationResponse } from "@baser-edge/auth-kernel";
-import { getBootstrapSecret } from "./secrets-store.mjs";
+import { cmsOAuthSecretsConfigured, getBootstrapSecret } from "./secrets-store.mjs";
+
+export async function probeInstantLoginAvailable(apiUrl) {
+  const base = apiUrl.replace(/\/$/, "");
+  const res = await fetch(`${base}/v1/auth/instant-entry`);
+  if (!res.ok) return false;
+  const body = await res.json().catch(() => ({}));
+  return body?.available === true;
+}
+
+/**
+ * OAuth on the API worker disables instant login; ensure a deterministic demo passkey for prove smoke.
+ */
+export async function ensureDemoAuthForSmoke(boot, { log } = {}) {
+  if (boot.credentialId && boot.passkeyLabel) return boot;
+  if (await probeInstantLoginAvailable(boot.apiUrl)) {
+    return { ...boot, instantDemo: true };
+  }
+  if (!cmsOAuthSecretsConfigured() && boot.instantDemo) {
+    return boot;
+  }
+  log?.("Registering demo passkey for publish smoke (instant login unavailable)…");
+  const bootstrapSecret = getBootstrapSecret();
+  try {
+    const withPasskey = await registerDemoPasskey(boot.apiUrl, boot, bootstrapSecret);
+    return { ...boot, ...withPasskey, instantDemo: false };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    log?.(`Demo passkey registration failed: ${message}`);
+    return boot;
+  }
+}
 
 export async function bootstrapRemote(apiUrl) {
   const base = apiUrl.replace(/\/$/, "");

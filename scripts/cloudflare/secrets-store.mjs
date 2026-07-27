@@ -23,3 +23,9 @@ export function ensureSecretsFile() {
 export function getBootstrapSecret() {
   return ensureSecretsFile().BASER_BOOTSTRAP_SECRET;
 }
+
+/** When both are set on the API worker, instant login is disabled in favor of CMS OAuth. */
+export function cmsOAuthSecretsConfigured() {
+  const secrets = ensureSecretsFile();
+  return Boolean(secrets.BASER_CF_OAUTH_CLIENT_ID?.trim() && secrets.BASER_CF_OAUTH_CLIENT_SECRET?.trim());
+}

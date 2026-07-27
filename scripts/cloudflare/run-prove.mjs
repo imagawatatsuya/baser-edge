@@ -1,7 +1,7 @@
 import { run, wrangler, ensureLoggedIn, loadState, saveState, patchWranglerBindings, patchPublicSiteId, statePath, displayPath } from "./shared.mjs";
 import { extractWorkerUrl, patchWranglerApiUrls, patchInstantLogin } from "./wrangler-vars.mjs";
 import { pushApiSecrets, pushPublicSecrets } from "./push-secrets.mjs";
-import { bootstrapRemote, smokeLoginAndPublish } from "./remote-demo.mjs";
+import { bootstrapRemote, ensureDemoAuthForSmoke, smokeLoginAndPublish } from "./remote-demo.mjs";
 import {
   apiWorkerName,
   publicWorkerName,
@@ -136,6 +136,11 @@ export async function runProve(options = {}) {
 
   if (boot) {
     await syncInstantLoginDeploy(state, boot, log);
+    if (runSmoke) {
+      boot = await ensureDemoAuthForSmoke(boot, { log });
+      state.demoHint = boot;
+      saveState(state);
+    }
   }
 
   const health = await fetch(`${state.apiUrl.replace(/\/$/, "")}/health`);

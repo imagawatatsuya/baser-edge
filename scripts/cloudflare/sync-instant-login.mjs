@@ -2,8 +2,13 @@ import { wrangler } from "./shared.mjs";
 import { patchInstantLogin } from "./wrangler-vars.mjs";
 import { wranglerDeployApiArgs } from "./stack.mjs";
 import { waitForInstantLogin } from "./wait-instant-login.mjs";
+import { cmsOAuthSecretsConfigured } from "./secrets-store.mjs";
 
 export async function syncInstantLoginDeploy(state, boot, log = console.log) {
+  if (cmsOAuthSecretsConfigured()) {
+    log("CMS OAuth secrets are configured; instant login stays disabled on the worker.");
+    return;
+  }
   const payload = boot ?? state.demoHint ?? state.bootstrap;
   if (!payload?.workspaceId) return;
   const ownerHint = {
