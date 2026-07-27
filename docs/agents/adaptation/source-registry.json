@@ -1,0 +1,89 @@
+{
+  "schemaVersion": 1,
+  "checkedAt": "2026-07-28",
+  "policy": {
+    "copyCode": false,
+    "purpose": "Extract CMS user goals, state models, operational edge cases, and development practices; not runtime compatibility.",
+    "licenseNote": "baserCMS skills are MIT. This pack paraphrases concepts and does not copy application source code."
+  },
+  "sources": [
+    {
+      "id": "BE-AGENTS",
+      "kind": "baseredge-authority",
+      "url": "https://github.com/imagawatatsuya/baser-edge/blob/main/AGENTS.md",
+      "use": "Product invariants and source adoption rules"
+    },
+    {
+      "id": "BE-PRD",
+      "kind": "baseredge-authority",
+      "url": "https://github.com/imagawatatsuya/baser-edge/blob/main/docs/requirements/product-requirements-v0.4.md",
+      "use": "Product definition and priorities"
+    },
+    {
+      "id": "BE-RELATIONSHIP",
+      "kind": "baseredge-authority",
+      "url": "https://github.com/imagawatatsuya/baser-edge/blob/main/docs/compatibility/relationship-to-basercms.md",
+      "use": "No runtime/backward compatibility boundary"
+    },
+    {
+      "id": "BC-SKILL-BASE",
+      "kind": "basercms-skill",
+      "url": "https://github.com/baserproject/basercms/blob/5.3.x/.agents/skills/basercms5-development/SKILL.md",
+      "use": "Canonical-vs-specialized skill architecture and no-core-hack practice"
+    },
+    {
+      "id": "BC-SKILL-PLUGIN",
+      "kind": "basercms-skill",
+      "url": "https://github.com/baserproject/basercms/blob/5.3.x/.agents/skills/basercms5-plugin-development/SKILL.md",
+      "use": "Plugin lifecycle, admin extension, migration and test concerns"
+    },
+    {
+      "id": "BC-SKILL-THEME",
+      "kind": "basercms-skill",
+      "url": "https://github.com/baserproject/basercms/blob/5.3.x/.agents/skills/basercms5-theme-development/SKILL.md",
+      "use": "Layout, element, content-template and asset responsibilities"
+    },
+    {
+      "id": "BC-SKILL-CUSTOM",
+      "kind": "basercms-skill",
+      "url": "https://github.com/baserproject/basercms/blob/5.3.x/.agents/skills/basercms5-custom-content-development/SKILL.md",
+      "use": "Dynamic schema, field reuse/type conflict and front rendering edge cases"
+    },
+    {
+      "id": "BC-SKILL-TEST",
+      "kind": "basercms-skill",
+      "url": "https://github.com/baserproject/basercms/blob/5.3.x/.agents/skills/basercms-unittest/SKILL.md",
+      "use": "Executable test workflow and root-cause-oriented failure diagnosis"
+    },
+    {
+      "id": "BC-DOC-CONTENT",
+      "kind": "basercms-official-doc",
+      "url": "https://baserproject.github.io/5/operation/application/contents",
+      "use": "Unified tree content types and operations"
+    },
+    {
+      "id": "BC-DOC-BLOG",
+      "kind": "basercms-official-doc",
+      "url": "https://baserproject.github.io/5/package/specification/bc-blog/blog_contents/",
+      "use": "Multiple blogs, list/RSS/template settings and lifecycle"
+    },
+    {
+      "id": "BC-DOC-MAIL",
+      "kind": "basercms-official-doc",
+      "url": "https://baserproject.github.io/5/package/specification/bc-mail/mail_contents/",
+      "use": "Multiple forms, confirmation, reception period, notification and copy/delete concerns"
+    },
+    {
+      "id": "BC-DOC-THEME",
+      "kind": "basercms-official-doc",
+      "url": "https://baserproject.github.io/5/theme/folder",
+      "use": "Layout, elements, content-specific templates, assets and metadata"
+    },
+    {
+      "id": "CF-DOCS",
+      "kind": "cloudflare-official-doc",
+      "url": "https://developers.cloudflare.com/",
+      "use": "Current runtime/API/limit facts; never freeze volatile values in CMS knowledge"
+    }
+  ]
+}

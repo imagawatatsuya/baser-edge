@@ -1,0 +1,1502 @@
+{
+  "contextSchemaVersion": 1,
+  "generatedAt": "2026-07-27T22:52:26.876Z",
+  "repository": {
+    "name": "baser-edge",
+    "version": "0.9.0"
+  },
+  "authorities": {
+    "files": [
+      {
+        "path": "AGENTS.md",
+        "severity": "blocking",
+        "ids": [
+          "agents"
+        ],
+        "exists": true,
+        "sha256": "810c4522354d43356accec20e1f55fa66d6f2e358fd3877d023813aba7d2ff0d"
+      },
+      {
+        "path": "COMMERCIAL.md",
+        "severity": "review",
+        "ids": [
+          "linked-authority"
+        ],
+        "exists": true,
+        "sha256": "771223e6f508dcf567952cb84384c9afca2a0ecdabafda9c830cbcfa9c4cc50d"
+      },
+      {
+        "path": "docs/adr/0011-basercms-is-product-emdash-is-infrastructure-reference.md",
+        "severity": "review",
+        "ids": [
+          "linked-authority"
+        ],
+        "exists": true,
+        "sha256": "ceecb89fac2a44c55e8571ca58aead2ca3526dae1f09e41948be538b612cc95f"
+      },
+      {
+        "path": "docs/adr/0019-human-authentication-sessions-and-step-up.md",
+        "severity": "review",
+        "ids": [
+          "linked-authority"
+        ],
+        "exists": true,
+        "sha256": "1f39451ed92429be2f47783b0c029d10337ab5b721d8bbae039941ac10a75b21"
+      },
+      {
+        "path": "docs/adr/0020-admin-console-as-product-surface.md",
+        "severity": "review",
+        "ids": [
+          "linked-authority"
+        ],
+        "exists": true,
+        "sha256": "264295696ac3144c92e22b1574389f85d4f1fcb345199f3dc449d5a3745ee1c4"
+      },
+      {
+        "path": "docs/adr/0021-baseredge-product-identity-no-host-migration.md",
+        "severity": "review",
+        "ids": [
+          "linked-authority"
+        ],
+        "exists": true,
+        "sha256": "242d240e3ae9aa28d5ddd9aa0c807cbbda89a02c250ff1854eb9b239e9b4377b"
+      },
+      {
+        "path": "docs/adr/0022-cloud-operations-worker-security.md",
+        "severity": "review",
+        "ids": [
+          "linked-authority"
+        ],
+        "exists": true,
+        "sha256": "005922a1c8edde66835f019dc663a31c00bb5d4855d25d9ca58120b015dfddc9"
+      },
+      {
+        "path": "docs/adr/0023-trial-provision-without-github-actions.md",
+        "severity": "review",
+        "ids": [
+          "linked-authority"
+        ],
+        "exists": true,
+        "sha256": "e8f3179806ff32daf2f603b6f63666a37dab75cb54ef2345fb9f9a8fbd6c998a"
+      },
+      {
+        "path": "docs/adr/0024-public-asset-delivery-fail-closed.md",
+        "severity": "review",
+        "ids": [
+          "linked-authority"
+        ],
+        "exists": true,
+        "sha256": "6854156cb6878c099250a8294206c0393d5eb4415d53d290ff46ab1deb8b94ef"
+      },
+      {
+        "path": "docs/architecture/admin-console-v0.1.md",
+        "severity": "review",
+        "ids": [
+          "linked-authority"
+        ],
+        "exists": true,
+        "sha256": "60160b4b3f18109d095a01a4699634b0817ac43464b5caa5de0312680c03c63c"
+      },
+      {
+        "path": "docs/archive/README.md",
+        "severity": "review",
+        "ids": [
+          "linked-authority"
+        ],
+        "exists": true,
+        "sha256": "b0af96a41b4f28371fe17ca3e2d1d99a53e56c62aba5fa1828d3ea916a4e0486"
+      },
+      {
+        "path": "docs/compatibility/basercms-invariants.md",
+        "severity": "review",
+        "ids": [
+          "linked-authority"
+        ],
+        "exists": true,
+        "sha256": "fdcccfe87e41218491aff6b44eda8c4010f3b94d5e9895f628d51e3ccf47782c"
+      },
+      {
+        "path": "docs/compatibility/emdash-adoption-matrix.md",
+        "severity": "review",
+        "ids": [
+          "linked-authority"
+        ],
+        "exists": true,
+        "sha256": "25f3e3c533732dc9c5860f9fbfe2e81e32422ac26ae8be554651326d25259b00"
+      },
+      {
+        "path": "docs/compatibility/relationship-to-basercms.md",
+        "severity": "blocking",
+        "ids": [
+          "basercms-relationship"
+        ],
+        "exists": true,
+        "sha256": "e42d54519476b074e27a825720a7ed0c68283c750a22304b99ca1ccca6980d3a"
+      },
+      {
+        "path": "docs/deployment/baseredge-cloudflare.md",
+        "severity": "review",
+        "ids": [
+          "linked-authority"
+        ],
+        "exists": true,
+        "sha256": "d9d2223ea77833810e2a17f6395a7bf680c37ebf622f998b4d8f1417f96b60da"
+      },
+      {
+        "path": "docs/deployment/cloudflare-one-click-trial.md",
+        "severity": "review",
+        "ids": [
+          "linked-authority"
+        ],
+        "exists": true,
+        "sha256": "bbfc610a4196f6f7f9bddd67aee44264498be15dd228004675e030aa4478f2c1"
+      },
+      {
+        "path": "docs/deployment/cloudflare-prove-troubleshooting.md",
+        "severity": "review",
+        "ids": [
+          "linked-authority"
+        ],
+        "exists": true,
+        "sha256": "9a32e003c83ec979f75445758e14a8e284ac9077b7d5894bbfd4d9473a23d867"
+      },
+      {
+        "path": "docs/deployment/cloudflare-r2-and-media.md",
+        "severity": "review",
+        "ids": [
+          "linked-authority"
+        ],
+        "exists": true,
+        "sha256": "58295e1f0e59b21fbee172bf738e69c98f1ba92f5ec40407a523be4c445de257"
+      },
+      {
+        "path": "docs/deployment/cloudflare-teardown.md",
+        "severity": "review",
+        "ids": [
+          "linked-authority"
+        ],
+        "exists": true,
+        "sha256": "4f759c734d122679689478528a7a0984e894012991c98fb4ec80563283aec640"
+      },
+      {
+        "path": "docs/deployment/general-user-trial-experiment.md",
+        "severity": "review",
+        "ids": [
+          "linked-authority"
+        ],
+        "exists": true,
+        "sha256": "5741794283d02281cec7721947f1641a60cc9f7427b91c9c1dd4a0c0534d1c3c"
+      },
+      {
+        "path": "docs/deployment/provisioning-paths.md",
+        "severity": "review",
+        "ids": [
+          "linked-authority"
+        ],
+        "exists": true,
+        "sha256": "f84b0ac04622fc6e90640c1466af8036c40e754c8314c134e6ff8ccf7fb9c1d3"
+      },
+      {
+        "path": "docs/deployment/trial-oauth-host.md",
+        "severity": "review",
+        "ids": [
+          "linked-authority"
+        ],
+        "exists": true,
+        "sha256": "39e7beccb9a9c59f6bc18794a3f7aa6defefa584d5bf85d3c656b5c97a220e16"
+      },
+      {
+        "path": "docs/deployment/trial-provision-cloudflare-only.md",
+        "severity": "review",
+        "ids": [
+          "linked-authority"
+        ],
+        "exists": true,
+        "sha256": "03c049dff93b576ebc1ea13338da45da650a5d18846f83d7e869b807a1066fdc"
+      },
+      {
+        "path": "docs/developer-guide.md",
+        "severity": "review",
+        "ids": [
+          "developer-guide"
+        ],
+        "exists": true,
+        "sha256": "fb9e91b835ba253bc3e6621a97225885f6b4c4ffc298d6ae97de00c5740fb013"
+      },
+      {
+        "path": "docs/engineering/api-validation-audit.md",
+        "severity": "review",
+        "ids": [
+          "linked-authority"
+        ],
+        "exists": true,
+        "sha256": "4f51a117849ed10e0cf940fd483fe3d3a65bc9e7a385dae222f9ba307ca06f5a"
+      },
+      {
+        "path": "docs/engineering/validation-policy.md",
+        "severity": "review",
+        "ids": [
+          "linked-authority"
+        ],
+        "exists": true,
+        "sha256": "9b8f18503af7b1664470b8d3e96e7d6e7821497dd89ad87852db28793524f615"
+      },
+      {
+        "path": "docs/implementation/mvp-implementation-plan-v0.8.md",
+        "severity": "review",
+        "ids": [
+          "linked-authority"
+        ],
+        "exists": true,
+        "sha256": "a9c03323a5efcaf8be19b35309ed53f259c95edd566b96134388226e59e9e7a5"
+      },
+      {
+        "path": "docs/implementation/mvp-implementation-plan-v0.9.md",
+        "severity": "review",
+        "ids": [
+          "linked-authority"
+        ],
+        "exists": true,
+        "sha256": "49d20c5784304263decba5c8e7060f25c6eb23cb27b707f33c99ebcdca2f8a32"
+      },
+      {
+        "path": "docs/implementation/quality-track-implementation-plan.md",
+        "severity": "review",
+        "ids": [
+          "linked-authority"
+        ],
+        "exists": true,
+        "sha256": "798f46eecb772ddd68f4879d8faeeff5a8b46748e3db62bffb0661f44f62a294"
+      },
+      {
+        "path": "docs/internal/trial-hosting-architecture.md",
+        "severity": "review",
+        "ids": [
+          "linked-authority"
+        ],
+        "exists": true,
+        "sha256": "9bc24e6ac2c4024f91d716290460edf07e46918531660a7413770b83a29ec15e"
+      },
+      {
+        "path": "docs/README.md",
+        "severity": "blocking",
+        "ids": [
+          "docs-index"
+        ],
+        "exists": true,
+        "sha256": "490fe6f9540bfe56f0abc283bac797d2af35a4953f7ec73b5ec55971a2e9b466"
+      },
+      {
+        "path": "docs/requirements/product-requirements-v0.2.md",
+        "severity": "review",
+        "ids": [
+          "linked-authority"
+        ],
+        "exists": true,
+        "sha256": "d2aee31d914413ad79e04c9cfbef1858f8603c127b995b3c7bf70891bad9ef8c"
+      },
+      {
+        "path": "docs/requirements/product-requirements-v0.3.md",
+        "severity": "review",
+        "ids": [
+          "linked-authority"
+        ],
+        "exists": true,
+        "sha256": "55d55315dddd5a6ffc81a5ab47673b32eb9fd70243b05bb0db990718892f9069"
+      },
+      {
+        "path": "docs/requirements/product-requirements-v0.4.md",
+        "severity": "blocking",
+        "ids": [
+          "product-requirements-current"
+        ],
+        "exists": true,
+        "sha256": "520af2a22f00d43fb03630edb4adbb191ec95f85399399d911873623fce1ef2e"
+      },
+      {
+        "path": "docs/user-guide.md",
+        "severity": "review",
+        "ids": [
+          "linked-authority"
+        ],
+        "exists": true,
+        "sha256": "f4da489fc0255a6efc37127dbdab2d0625c3925605b82a8f133fb758dea95463"
+      },
+      {
+        "path": "IMPLEMENTATION_STATUS.md",
+        "severity": "info",
+        "ids": [
+          "implementation-status"
+        ],
+        "exists": true,
+        "sha256": "6481243c48530b58ac68b7e45b33cc1c53fe40a1ef22280f64359cf6b3a19e99"
+      },
+      {
+        "path": "package.json",
+        "severity": "review",
+        "ids": [
+          "root-package"
+        ],
+        "exists": true,
+        "sha256": "bf4d48675f425abb94e2b3af26d208886b2d88d9817ad066157620c1494fc2fb"
+      },
+      {
+        "path": "README.md",
+        "severity": "review",
+        "ids": [
+          "linked-authority"
+        ],
+        "exists": true,
+        "sha256": "c0080a0ebcb9d2d6ab7868acd3d9881cecadcae8dcbb47b7b0898e29a7c0e127"
+      },
+      {
+        "path": "THIRD_PARTY_NOTICES.md",
+        "severity": "review",
+        "ids": [
+          "linked-authority"
+        ],
+        "exists": true,
+        "sha256": "e7bbb10597f82a35b3ddee3610864d4b37cc4894fec73525f2ffe765d79f1015"
+      }
+    ],
+    "families": [
+      {
+        "id": "product-requirements",
+        "severity": "blocking",
+        "all": [
+          "docs/requirements/product-requirements-v0.2.md",
+          "docs/requirements/product-requirements-v0.3.md",
+          "docs/requirements/product-requirements-v0.4.md"
+        ],
+        "active": [
+          "docs/requirements/product-requirements-v0.2.md",
+          "docs/requirements/product-requirements-v0.3.md",
+          "docs/requirements/product-requirements-v0.4.md"
+        ]
+      },
+      {
+        "id": "mvp-plan",
+        "severity": "review",
+        "all": [
+          "docs/implementation/mvp-implementation-plan-v0.2.md",
+          "docs/implementation/mvp-implementation-plan-v0.3.md",
+          "docs/implementation/mvp-implementation-plan-v0.4.md",
+          "docs/implementation/mvp-implementation-plan-v0.5.md",
+          "docs/implementation/mvp-implementation-plan-v0.6.md",
+          "docs/implementation/mvp-implementation-plan-v0.7.md",
+          "docs/implementation/mvp-implementation-plan-v0.8.md",
+          "docs/implementation/mvp-implementation-plan-v0.9.md"
+        ],
+        "active": [
+          "docs/implementation/mvp-implementation-plan-v0.8.md",
+          "docs/implementation/mvp-implementation-plan-v0.9.md"
+        ]
+      }
+    ]
+  },
+  "workspace": {
+    "rootScripts": [
+      "bind:cloudflare-owner",
+      "browser:cms-login",
+      "build",
+      "build:admin-web",
+      "build:onboarding-web",
+      "bundle:onboarding-worker",
+      "check",
+      "check:agent-skills",
+      "check:cloud-operations-worker",
+      "check:onboarding-worker",
+      "clean",
+      "context:skills:check",
+      "context:skills:init",
+      "demo",
+      "deploy:cloud-operations",
+      "deploy:cloudflare",
+      "deploy:trial-host",
+      "deploy:trial-host:prebundled",
+      "destroy:cloudflare",
+      "dev:admin",
+      "dev:api",
+      "dev:console",
+      "dev:onboarding",
+      "dev:onboarding-api",
+      "dev:stack",
+      "diagnose:plugin",
+      "diagnose:theme",
+      "enable-media:cloudflare",
+      "ensure:trial-provision-queue",
+      "pack:trial-release",
+      "plan:cloudflare",
+      "preflight:cloudflare",
+      "prepare:public-snapshot",
+      "prepare:public-snapshot:git",
+      "preview:start-page",
+      "prove:cloudflare",
+      "prove:local",
+      "provision:cloudflare",
+      "push:cms-oauth-secrets",
+      "refresh:oauth-trial",
+      "revert:wrangler",
+      "setup:ops-broker-secret",
+      "smoke:cloudflare",
+      "smoke:stack",
+      "start:onboarding",
+      "test",
+      "verify:admin-router",
+      "verify:cms-knowledge",
+      "verify:schema",
+      "verify:wrangler"
+    ],
+    "workspacePatterns": [
+      "packages/*",
+      "apps/*"
+    ],
+    "workspaces": [
+      {
+        "path": "apps/admin",
+        "name": "@baser-edge/admin-prototype",
+        "version": "0.8.0",
+        "description": null,
+        "scripts": []
+      },
+      {
+        "path": "apps/admin-web",
+        "name": "@baser-edge/admin-web",
+        "version": "0.1.0",
+        "description": null,
+        "scripts": [
+          "build",
+          "dev",
+          "preview"
+        ]
+      },
+      {
+        "path": "apps/api-worker",
+        "name": "@baser-edge/api-worker",
+        "version": "0.8.0",
+        "description": null,
+        "scripts": []
+      },
+      {
+        "path": "apps/cloud-operations-worker",
+        "name": "@baser-edge/cloud-operations-worker",
+        "version": "0.1.0",
+        "description": null,
+        "scripts": [
+          "check"
+        ]
+      },
+      {
+        "path": "apps/onboarding-web",
+        "name": "@baser-edge/onboarding-web",
+        "version": "0.1.0",
+        "description": null,
+        "scripts": [
+          "build",
+          "dev",
+          "preview"
+        ]
+      },
+      {
+        "path": "apps/onboarding-worker",
+        "name": "@baser-edge/onboarding-worker",
+        "version": "0.1.0",
+        "description": null,
+        "scripts": [
+          "check"
+        ]
+      },
+      {
+        "path": "apps/public-renderer",
+        "name": "@baser-edge/public-renderer",
+        "version": "0.8.0",
+        "description": null,
+        "scripts": []
+      },
+      {
+        "path": "packages/agent-tools",
+        "name": "@baser-edge/agent-tools",
+        "version": "0.8.0",
+        "description": null,
+        "scripts": []
+      },
+      {
+        "path": "packages/asset-kernel",
+        "name": "@baser-edge/asset-kernel",
+        "version": "0.8.0",
+        "description": null,
+        "scripts": []
+      },
+      {
+        "path": "packages/auth-kernel",
+        "name": "@baser-edge/auth-kernel",
+        "version": "0.9.0",
+        "description": null,
+        "scripts": []
+      },
+      {
+        "path": "packages/authorization",
+        "name": "@baser-edge/authorization",
+        "version": "0.8.0",
+        "description": null,
+        "scripts": []
+      },
+      {
+        "path": "packages/baser-domain",
+        "name": "@baser-edge/baser-domain",
+        "version": "0.8.0",
+        "description": null,
+        "scripts": []
+      },
+      {
+        "path": "packages/blog-kernel",
+        "name": "@baser-edge/blog-kernel",
+        "version": "0.8.0",
+        "description": null,
+        "scripts": []
+      },
+      {
+        "path": "packages/cf-stack-destroy",
+        "name": "@baser-edge/cf-stack-destroy",
+        "version": "0.1.0",
+        "description": null,
+        "scripts": [
+          "build"
+        ]
+      },
+      {
+        "path": "packages/cf-trial-provision",
+        "name": "@baser-edge/cf-trial-provision",
+        "version": "0.1.0",
+        "description": null,
+        "scripts": [
+          "build"
+        ]
+      },
+      {
+        "path": "packages/cloudflare-adapters",
+        "name": "@baser-edge/cloudflare-adapters",
+        "version": "0.8.0",
+        "description": null,
+        "scripts": []
+      },
+      {
+        "path": "packages/content-kernel",
+        "name": "@baser-edge/content-kernel",
+        "version": "0.8.0",
+        "description": null,
+        "scripts": []
+      },
+      {
+        "path": "packages/core-types",
+        "name": "@baser-edge/core-types",
+        "version": "0.8.0",
+        "description": null,
+        "scripts": []
+      },
+      {
+        "path": "packages/custom-content-kernel",
+        "name": "@baser-edge/custom-content-kernel",
+        "version": "0.8.0",
+        "description": null,
+        "scripts": []
+      },
+      {
+        "path": "packages/mail-form-kernel",
+        "name": "@baser-edge/mail-form-kernel",
+        "version": "0.8.0",
+        "description": null,
+        "scripts": []
+      },
+      {
+        "path": "packages/plugin-kernel",
+        "name": "@baser-edge/plugin-kernel",
+        "version": "0.8.0",
+        "description": null,
+        "scripts": []
+      },
+      {
+        "path": "packages/preview-kernel",
+        "name": "@baser-edge/preview-kernel",
+        "version": "0.8.0",
+        "description": null,
+        "scripts": []
+      },
+      {
+        "path": "packages/renderer",
+        "name": "@baser-edge/renderer",
+        "version": "0.8.0",
+        "description": null,
+        "scripts": []
+      },
+      {
+        "path": "packages/structured-document",
+        "name": "@baser-edge/structured-document",
+        "version": "0.8.0",
+        "description": null,
+        "scripts": []
+      },
+      {
+        "path": "packages/theme-kernel",
+        "name": "@baser-edge/theme-kernel",
+        "version": "0.8.0",
+        "description": null,
+        "scripts": []
+      }
+    ]
+  },
+  "roles": [
+    {
+      "id": "cms.content",
+      "required": true,
+      "matches": [
+        {
+          "path": "packages/content-kernel",
+          "packageName": "@baser-edge/content-kernel"
+        },
+        {
+          "path": "packages/custom-content-kernel",
+          "packageName": "@baser-edge/custom-content-kernel"
+        }
+      ],
+      "resolved": true
+    },
+    {
+      "id": "cms.blog",
+      "required": true,
+      "matches": [
+        {
+          "path": "packages/blog-kernel",
+          "packageName": "@baser-edge/blog-kernel"
+        }
+      ],
+      "resolved": true
+    },
+    {
+      "id": "cms.custom-content",
+      "required": true,
+      "matches": [
+        {
+          "path": "packages/custom-content-kernel",
+          "packageName": "@baser-edge/custom-content-kernel"
+        }
+      ],
+      "resolved": true
+    },
+    {
+      "id": "cms.mail",
+      "required": true,
+      "matches": [
+        {
+          "path": "packages/mail-form-kernel",
+          "packageName": "@baser-edge/mail-form-kernel"
+        }
+      ],
+      "resolved": true
+    },
+    {
+      "id": "cms.theme",
+      "required": true,
+      "matches": [
+        {
+          "path": "packages/theme-kernel",
+          "packageName": "@baser-edge/theme-kernel"
+        }
+      ],
+      "resolved": true
+    },
+    {
+      "id": "cms.plugin",
+      "required": true,
+      "matches": [
+        {
+          "path": "packages/plugin-kernel",
+          "packageName": "@baser-edge/plugin-kernel"
+        }
+      ],
+      "resolved": true
+    },
+    {
+      "id": "security.auth",
+      "required": true,
+      "matches": [
+        {
+          "path": "packages/auth-kernel",
+          "packageName": "@baser-edge/auth-kernel"
+        }
+      ],
+      "resolved": true
+    },
+    {
+      "id": "platform.cloudflare",
+      "required": true,
+      "matches": [
+        {
+          "path": "packages/cloudflare-adapters",
+          "packageName": "@baser-edge/cloudflare-adapters"
+        }
+      ],
+      "resolved": true
+    },
+    {
+      "id": "surface.admin",
+      "required": true,
+      "matches": [
+        {
+          "path": "apps/admin-web",
+          "packageName": "@baser-edge/admin-web"
+        }
+      ],
+      "resolved": true
+    },
+    {
+      "id": "surface.api",
+      "required": true,
+      "matches": [
+        {
+          "path": "apps/api-worker",
+          "packageName": "@baser-edge/api-worker"
+        }
+      ],
+      "resolved": true
+    },
+    {
+      "id": "surface.public",
+      "required": true,
+      "matches": [
+        {
+          "path": "apps/public-renderer",
+          "packageName": "@baser-edge/public-renderer"
+        }
+      ],
+      "resolved": true
+    },
+    {
+      "id": "platform.onboarding",
+      "required": true,
+      "matches": [
+        {
+          "path": "apps/onboarding-web",
+          "packageName": "@baser-edge/onboarding-web"
+        },
+        {
+          "path": "apps/onboarding-worker",
+          "packageName": "@baser-edge/onboarding-worker"
+        }
+      ],
+      "resolved": true
+    },
+    {
+      "id": "platform.cloud-operations",
+      "required": false,
+      "matches": [
+        {
+          "path": "apps/cloud-operations-worker",
+          "packageName": "@baser-edge/cloud-operations-worker"
+        }
+      ],
+      "resolved": true
+    }
+  ],
+  "wrangler": [
+    {
+      "path": "deploy/one-click/wrangler.jsonc",
+      "sha256": "bc6dea12b80bdeffad932f10b6e30467d671a05b439d9a00275cee68cca84fa0"
+    },
+    {
+      "path": "release/public-snapshot-test/deploy/one-click/wrangler.jsonc",
+      "sha256": "bc6dea12b80bdeffad932f10b6e30467d671a05b439d9a00275cee68cca84fa0"
+    },
+    {
+      "path": "release/public-snapshot-test/wrangler.cloud-operations.jsonc",
+      "sha256": "9d28e6468dd08a1bd47edacbb5b419a7d08b95b97696c6a924af1f4b258999b1"
+    },
+    {
+      "path": "release/public-snapshot-test/wrangler.jsonc",
+      "sha256": "2dc291e5c3e878113bb591473e49dd99f99b0910d2efdbbb23ea622e9b022412"
+    },
+    {
+      "path": "release/public-snapshot-test/wrangler.onboarding-host.jsonc",
+      "sha256": "674212ee3fe01e1297c8c8c42f8741e36a5d5df33ced2147ad76c3871d535341"
+    },
+    {
+      "path": "release/public-snapshot-test/wrangler.onboarding-host.prebundled.jsonc",
+      "sha256": "1f25a6e134bb5ac9158cc5235556939dd0404921eb260dfb64dde63154e2af1c"
+    },
+    {
+      "path": "release/public-snapshot-test/wrangler.public.jsonc",
+      "sha256": "babba5b68e0509ed0b0ee1f67d615c3be63ac9c3cf5790cf35fa499a86984eb9"
+    },
+    {
+      "path": "release/public-snapshot-test/wrangler.public.trial.jsonc",
+      "sha256": "70330f2c40515a73ea7e6d1675c5b254a09890a10f2fbae75bcbac51433a4b72"
+    },
+    {
+      "path": "release/public-snapshot-test/wrangler.trial.jsonc",
+      "sha256": "3f2057be699c66a1c1c62f80c5e8de272a0f5c376a5a6e12fdc318d3361d40ab"
+    },
+    {
+      "path": "release/public-snapshot/deploy/one-click/wrangler.jsonc",
+      "sha256": "bc6dea12b80bdeffad932f10b6e30467d671a05b439d9a00275cee68cca84fa0"
+    },
+    {
+      "path": "release/public-snapshot/wrangler.jsonc",
+      "sha256": "0d9955e0c8b40fe046206db91fa172f0b9ce8594e5220615da35c7c85035ba34"
+    },
+    {
+      "path": "release/public-snapshot/wrangler.onboarding-host.jsonc",
+      "sha256": "f9d11dcde7e2146de8bec8e649f0e8b9c9465f7b4263b398d8199782e7cafdd9"
+    },
+    {
+      "path": "release/public-snapshot/wrangler.public.jsonc",
+      "sha256": "3caca755421e75debb70e4ab0b3bd4639b15f640c3d1ce369fb667c4141313fc"
+    },
+    {
+      "path": "release/public-snapshot/wrangler.public.trial.jsonc",
+      "sha256": "2b208b11041e65c5771b82b57de75c4da08150781ef24434453a407aeebe37ab"
+    },
+    {
+      "path": "release/public-snapshot/wrangler.trial.jsonc",
+      "sha256": "886cf814fb8af9b8c3318589b4eadd87f9b4b2fea56adcedc5b845fdf715fe02"
+    },
+    {
+      "path": "wrangler.cloud-operations.jsonc",
+      "sha256": "9d28e6468dd08a1bd47edacbb5b419a7d08b95b97696c6a924af1f4b258999b1"
+    },
+    {
+      "path": "wrangler.jsonc",
+      "sha256": "2dc291e5c3e878113bb591473e49dd99f99b0910d2efdbbb23ea622e9b022412"
+    },
+    {
+      "path": "wrangler.onboarding-host.jsonc",
+      "sha256": "674212ee3fe01e1297c8c8c42f8741e36a5d5df33ced2147ad76c3871d535341"
+    },
+    {
+      "path": "wrangler.onboarding-host.prebundled.jsonc",
+      "sha256": "1f25a6e134bb5ac9158cc5235556939dd0404921eb260dfb64dde63154e2af1c"
+    },
+    {
+      "path": "wrangler.public.jsonc",
+      "sha256": "babba5b68e0509ed0b0ee1f67d615c3be63ac9c3cf5790cf35fa499a86984eb9"
+    },
+    {
+      "path": "wrangler.public.trial.jsonc",
+      "sha256": "70330f2c40515a73ea7e6d1675c5b254a09890a10f2fbae75bcbac51433a4b72"
+    },
+    {
+      "path": "wrangler.trial.jsonc",
+      "sha256": "3f2057be699c66a1c1c62f80c5e8de272a0f5c376a5a6e12fdc318d3361d40ab"
+    }
+  ],
+  "migrations": [
+    {
+      "path": "migrations/0001_initial.sql",
+      "sha256": "4dcf2d4f97640c89c0f63287eda52b0117443b903cef24295c0f28b69ed010e1"
+    },
+    {
+      "path": "migrations/0002_content_manager.sql",
+      "sha256": "5b2c4fcae8415686def9a291e04be4924cf1f9f5075dc8b2f6710f7e03ea0da0"
+    },
+    {
+      "path": "migrations/0003_assets_and_previews.sql",
+      "sha256": "6e6cbae5809d2b28aeb698d6e32b65770804b8019a2cc353127c9be5af22a533"
+    },
+    {
+      "path": "migrations/0004_blog.sql",
+      "sha256": "b058390e41485abc4e480bfb036f1653afdc4122feb546ee4e485ce8acd166b5"
+    },
+    {
+      "path": "migrations/0005_custom_content.sql",
+      "sha256": "d963da0e5e88dcc2155af0f531c9f4bc24482ba71dad5692c577c106feb50303"
+    },
+    {
+      "path": "migrations/0006_mail_form.sql",
+      "sha256": "a845094f0931b21c559f30c5bc1a608cb8db94b95658e636be5e961d6c3fed5c"
+    },
+    {
+      "path": "migrations/0007_theme.sql",
+      "sha256": "3d6feab79b009337ec709b9b7626573cb9b8e38e1ce42cfbd20ea8c804fb2f4b"
+    },
+    {
+      "path": "migrations/0008_plugins.sql",
+      "sha256": "1a980f9e0a21c29502d535307d7c7d72c0f4d3146dca00f79c072f695b9a06e4"
+    },
+    {
+      "path": "migrations/0009_auth.sql",
+      "sha256": "5a809566ad9660c366d2f22a4d41c65764abca8429cda876031ca3fcca8c01cd"
+    },
+    {
+      "path": "migrations/0010_workspace_cloudflare_auth.sql",
+      "sha256": "f3eaa268b5e392d582bec0b7af299d245451bd13af46428bebba34d9de05038e"
+    },
+    {
+      "path": "migrations/0011_asset_object_blobs.sql",
+      "sha256": "2a9afb86c79f62c1792a8f12613fee59a261137eb1e01aec6df69def5e8600ca"
+    }
+  ],
+  "tests": [
+    {
+      "path": "release/public-snapshot-test/tests/admin-console-browser-smoke.test.mjs",
+      "sha256": "a3e5bf8e5f1309032bde2773826573cd8f057f39c23b1995e3bbbddcb0c11bf5"
+    },
+    {
+      "path": "release/public-snapshot-test/tests/admin-router-policy.test.mjs",
+      "sha256": "684e4ba3b3758be95a4f70044f0d9933dd2960561dff7167f797d05271966e29"
+    },
+    {
+      "path": "release/public-snapshot-test/tests/admin-view-banner.test.mjs",
+      "sha256": "4e3f8224867a7ca13ce5276261e86dc54fef4c7520a666a1c57365e28a8cfd59"
+    },
+    {
+      "path": "release/public-snapshot-test/tests/api-validation.test.mjs",
+      "sha256": "36f332b6aea083bc4d092d78a6796dea3a9372c7ef913009d4817e8235438448"
+    },
+    {
+      "path": "release/public-snapshot-test/tests/api-worker.test.mjs",
+      "sha256": "ba66e58ea50ff5a69c0185d87fc7418922518490ea8a5f426e043f72694d440f"
+    },
+    {
+      "path": "release/public-snapshot-test/tests/apply-d1-migrations.test.mjs",
+      "sha256": "06ad27d440864330b57d3c554ad059e7d53f97b39061d9d8473a373e9d6e0de0"
+    },
+    {
+      "path": "release/public-snapshot-test/tests/assets-preview.test.mjs",
+      "sha256": "266fb69dfd5c0684f989e32548268131a31c6551eb51053f7b6c9a9491654752"
+    },
+    {
+      "path": "release/public-snapshot-test/tests/auth.test.mjs",
+      "sha256": "48408c874b7a22f7e5ed8b1e1bdfbdc49e20f99dc0fa0321582b69ea294e6b7b"
+    },
+    {
+      "path": "release/public-snapshot-test/tests/baser-domain.test.mjs",
+      "sha256": "65c543075e743d6524452c24f7e272d72d551008408d266c7a3f5f2a12150542"
+    },
+    {
+      "path": "release/public-snapshot-test/tests/blog.test.mjs",
+      "sha256": "d3e6cc7bfc3b971108b2303b9c6eb9909c98a803ab4e4c3af468e1c81cc206f4"
+    },
+    {
+      "path": "release/public-snapshot-test/tests/burger-importer.test.mjs",
+      "sha256": "c3a52631b500b01c020f8a4ef9c1050569ba26eded3b223527d5b35f1c44d0ac"
+    },
+    {
+      "path": "release/public-snapshot-test/tests/cf-oauth-relay-state.test.mjs",
+      "sha256": "67ad94f2798f9accfe9a3de3ef5aad083d524c94a9960b1a6ad72d3f2457c14f"
+    },
+    {
+      "path": "release/public-snapshot-test/tests/cf-oauth-scopes.test.mjs",
+      "sha256": "eddfffc70dfa40398709303b92d8ad2765c0b2214b88a04bdab4a63ebe056837"
+    },
+    {
+      "path": "release/public-snapshot-test/tests/cf-stack-destroy.test.mjs",
+      "sha256": "785c464249abfc3d98fe5abb776aa5a049ae8353cab8e3fc5f3059b9721479ba"
+    },
+    {
+      "path": "release/public-snapshot-test/tests/cf-trial-provision-parse.test.mjs",
+      "sha256": "80a7df503e11127bd75003d14f2721b11069edf03f4fb7e6e9d5d6579766d301"
+    },
+    {
+      "path": "release/public-snapshot-test/tests/cloudflare-auth.test.mjs",
+      "sha256": "9b952a4e4ffd9f895bcf12bfe6c7a7d20e3adc6fabf12c300bae89e046c03579"
+    },
+    {
+      "path": "release/public-snapshot-test/tests/console-capabilities.test.mjs",
+      "sha256": "8863105ec865d9eed9c620a748da84850012aae297f1d70a057b6f4f83f20b2a"
+    },
+    {
+      "path": "release/public-snapshot-test/tests/console-golden-path.test.mjs",
+      "sha256": "125431c67a39d32dc12d2cc4e3a94651241f2f232130aec9995e1c5bfcb5bf15"
+    },
+    {
+      "path": "release/public-snapshot-test/tests/console-media-guide-ui.test.mjs",
+      "sha256": "59d6ce502c22defbd7828f5787f6f5a428db152237f0d6c62119c59b0b262fa7"
+    },
+    {
+      "path": "release/public-snapshot-test/tests/console-mutation-sync-ui.test.mjs",
+      "sha256": "1d97ecd941a597ade72e86400b286bd42ed72532afadf9842c81c3554b6e0f6d"
+    },
+    {
+      "path": "release/public-snapshot-test/tests/console-static-path.test.mjs",
+      "sha256": "9f6c2d8d7659d19b92f1c7906a893dd3065756d58b4655f969470a4a83542f9c"
+    },
+    {
+      "path": "release/public-snapshot-test/tests/content-editor-sync.test.mjs",
+      "sha256": "5c58f7b1e8161773632b8f35e7faba3d2d98e8b1220504f01b42b4e23b3efe25"
+    },
+    {
+      "path": "release/public-snapshot-test/tests/content-flow.test.mjs",
+      "sha256": "8288abbf581c2e3dae32ce3c727fca2869c9c14e739cbd12830f44cf027c3804"
+    },
+    {
+      "path": "release/public-snapshot-test/tests/content-manager.test.mjs",
+      "sha256": "7e94a6edc754b43527909bc577752e1638639199a7d7557759a2ad5916880639"
+    },
+    {
+      "path": "release/public-snapshot-test/tests/cors-and-starter-home.test.mjs",
+      "sha256": "3e51eeeb0f50b20906cd57d1a44133ef1998adcd112a567fbff37db6a8585ad8"
+    },
+    {
+      "path": "release/public-snapshot-test/tests/custom-content.test.mjs",
+      "sha256": "68b0d6bae3e6b62d9fcb3a4b3e132264a16b5fe7e402831442ab75ed4cea6433"
+    },
+    {
+      "path": "release/public-snapshot-test/tests/d1-adapter.test.mjs",
+      "sha256": "baca47055d705c86cb1000e5b67e5bb473bd38479f62df98ac731fdef7bde79f"
+    },
+    {
+      "path": "release/public-snapshot-test/tests/fixtures/admin-console-smoke-fixtures.mjs",
+      "sha256": "2d9b6e8787da6d31b20aaa78ea825528d1456955f970d06bf3cc8ec50cb2ae60"
+    },
+    {
+      "path": "release/public-snapshot-test/tests/format-asset-delete-error.test.mjs",
+      "sha256": "7cebb939bd8aea04f62b51a922c28dcf8c140e151d1b3eb15977233ccbb06b38"
+    },
+    {
+      "path": "release/public-snapshot-test/tests/mail-form.test.mjs",
+      "sha256": "db5a174c93934e43dea5872678dba33b173d99d916815dbaf20e6fcee677a1e7"
+    },
+    {
+      "path": "release/public-snapshot-test/tests/onboarding-oauth-verify.test.mjs",
+      "sha256": "6a8ebe0ac33d1634eb09c8a6e4543b7adb7725f40f2d4c24adf51ae808ebcfd4"
+    },
+    {
+      "path": "release/public-snapshot-test/tests/onboarding-safety.test.mjs",
+      "sha256": "63ec2c487fc38dd615dc13238ddfd5fcf7b9c13b21ea85de3e9e5e7ef81a8ee2"
+    },
+    {
+      "path": "release/public-snapshot-test/tests/parse-d1-id.test.mjs",
+      "sha256": "12b467fd145fcb3aa49a03946c649df421453de93f67c61ba3803968f5f397df"
+    },
+    {
+      "path": "release/public-snapshot-test/tests/platform-capabilities-urls.test.mjs",
+      "sha256": "ef1c30784a6ae45d504dd6584eec400331e96e7dabc9c7a5c26dc7ad8386581b"
+    },
+    {
+      "path": "release/public-snapshot-test/tests/plugin-diagnostics.test.mjs",
+      "sha256": "4925d9dd63397e972b6fec9739dd1d1aac182977abc58c07e32e0537d07776b3"
+    },
+    {
+      "path": "release/public-snapshot-test/tests/plugin.test.mjs",
+      "sha256": "a8c20881505e6ef36a31d2fd4603ca0896b02aa5d4b4476179c59594a0e126f5"
+    },
+    {
+      "path": "release/public-snapshot-test/tests/public-live-url.test.mjs",
+      "sha256": "e9b3ef2612ec3dc0a119c10de68a129e303d2a324d529a2f5fe9947c0b3dfca8"
+    },
+    {
+      "path": "release/public-snapshot-test/tests/public-renderer.test.mjs",
+      "sha256": "87f02a0c0aa5f0b71a10ba71a6c504a4f6efb1fa395237e763de222aa9d251c0"
+    },
+    {
+      "path": "release/public-snapshot-test/tests/public-snapshot.test.mjs",
+      "sha256": "d7e1cddcbcf1342849753e772f1f1b538db410b87d33cd2a3c554e9314d4e19e"
+    },
+    {
+      "path": "release/public-snapshot-test/tests/renderer-seo.test.mjs",
+      "sha256": "0be22292c35e9801b0912b650b6052f34579713a8e1200a86213c5847f0d48d3"
+    },
+    {
+      "path": "release/public-snapshot-test/tests/start-page-user-flow.test.mjs",
+      "sha256": "0a2d711a34019654e18759c0a6224b2e07d4e3a9f65bd8cc8c5f10c9bcc5903e"
+    },
+    {
+      "path": "release/public-snapshot-test/tests/structured-document.test.mjs",
+      "sha256": "caa70f2f134cb2fa7ec60cf8cd7226e3954ac1f52137befb5e91dae1775f7f66"
+    },
+    {
+      "path": "release/public-snapshot-test/tests/theme-diagnostics.test.mjs",
+      "sha256": "259e01b3012e0f48d6f78e3e8a8d472ce8dc633e5b1431eed2dd0108f44f91cf"
+    },
+    {
+      "path": "release/public-snapshot-test/tests/theme.test.mjs",
+      "sha256": "d5f1ece644e3735710267f67f17d777f5837c437d3079d19ea1fc92cc6d4b940"
+    },
+    {
+      "path": "release/public-snapshot-test/tests/trial-inline-assets.test.mjs",
+      "sha256": "3529f8bdf8a91d9778490e5cb9e1df1fa043f62bf028e63a5ba497a5dd684ed5"
+    },
+    {
+      "path": "release/public-snapshot-test/tests/trial-worker-vars.test.mjs",
+      "sha256": "66020a9a15926f932dbc539c273fd6a571cd3594b17eb8ec6abb6ad1ea71adb3"
+    },
+    {
+      "path": "release/public-snapshot-test/tests/upgrade-trial-media.test.mjs",
+      "sha256": "e3099e7128ae5db6f6f7a5a9b60102b1f4c3c9919ed4b134bb922c8fbba5d4d7"
+    },
+    {
+      "path": "release/public-snapshot-test/tests/verify-wrangler-tracked.test.mjs",
+      "sha256": "a7d361dda659d9cd49d42c7cace8f52973bd9362d4fd6e5a2ab6dfe0c36c8d09"
+    },
+    {
+      "path": "release/public-snapshot-test/tests/wrangler-reset.test.mjs",
+      "sha256": "950486423b6458c747e89103a9314432424bc3c7b97e99fa22c45266c6f1ad5c"
+    },
+    {
+      "path": "release/public-snapshot-test/tests/wrangler-template-sanity.test.mjs",
+      "sha256": "4430569d671b6ca17f2e4e5b2597719645639619ffa910bd6e0857acd6122278"
+    },
+    {
+      "path": "release/public-snapshot-test/tests/wrangler-vars.test.mjs",
+      "sha256": "85bf019781695226078b5dd6fac6d630727f107147b13214eb67e991aec14f7e"
+    },
+    {
+      "path": "release/public-snapshot/tests/admin-view-banner.test.mjs",
+      "sha256": "4e3f8224867a7ca13ce5276261e86dc54fef4c7520a666a1c57365e28a8cfd59"
+    },
+    {
+      "path": "release/public-snapshot/tests/api-validation.test.mjs",
+      "sha256": "9342cb91562f6ad5b3f782cf3ee2c2c5ae6ecb60cebe9cb7794f90aaf88df5fc"
+    },
+    {
+      "path": "release/public-snapshot/tests/api-worker.test.mjs",
+      "sha256": "1abd5470c924fb2dafc4c3f7e800f356f8259a096fbfc0afc9d9fc5ce503e2d8"
+    },
+    {
+      "path": "release/public-snapshot/tests/assets-preview.test.mjs",
+      "sha256": "70691d895885b3cb846f697c2d944f8a50954a4559cbab6d4c2d2d1929b5aaae"
+    },
+    {
+      "path": "release/public-snapshot/tests/auth.test.mjs",
+      "sha256": "48408c874b7a22f7e5ed8b1e1bdfbdc49e20f99dc0fa0321582b69ea294e6b7b"
+    },
+    {
+      "path": "release/public-snapshot/tests/baser-domain.test.mjs",
+      "sha256": "c019f06a0a7dd0b77e0e2f4a5db30710fdd44808c74ab5fca16c861ad1527ccc"
+    },
+    {
+      "path": "release/public-snapshot/tests/blog.test.mjs",
+      "sha256": "d3e6cc7bfc3b971108b2303b9c6eb9909c98a803ab4e4c3af468e1c81cc206f4"
+    },
+    {
+      "path": "release/public-snapshot/tests/burger-importer.test.mjs",
+      "sha256": "c3a52631b500b01c020f8a4ef9c1050569ba26eded3b223527d5b35f1c44d0ac"
+    },
+    {
+      "path": "release/public-snapshot/tests/console-golden-path.test.mjs",
+      "sha256": "a32406cf85cea18f8d6b3acab5c1b3c7233aaf1fffd129adb5649e7be48d6798"
+    },
+    {
+      "path": "release/public-snapshot/tests/content-flow.test.mjs",
+      "sha256": "8288abbf581c2e3dae32ce3c727fca2869c9c14e739cbd12830f44cf027c3804"
+    },
+    {
+      "path": "release/public-snapshot/tests/content-manager.test.mjs",
+      "sha256": "7e94a6edc754b43527909bc577752e1638639199a7d7557759a2ad5916880639"
+    },
+    {
+      "path": "release/public-snapshot/tests/custom-content.test.mjs",
+      "sha256": "68b0d6bae3e6b62d9fcb3a4b3e132264a16b5fe7e402831442ab75ed4cea6433"
+    },
+    {
+      "path": "release/public-snapshot/tests/d1-adapter.test.mjs",
+      "sha256": "4b31b0c70589d387ec804fd901c4773f10f6433662572921f0e49beb98bdfc2e"
+    },
+    {
+      "path": "release/public-snapshot/tests/mail-form.test.mjs",
+      "sha256": "db5a174c93934e43dea5872678dba33b173d99d916815dbaf20e6fcee677a1e7"
+    },
+    {
+      "path": "release/public-snapshot/tests/onboarding-safety.test.mjs",
+      "sha256": "e73439590720b1553e840513af2648c0cf7cf1c1dc16d09c2f40c68d07bb5195"
+    },
+    {
+      "path": "release/public-snapshot/tests/plugin-diagnostics.test.mjs",
+      "sha256": "4925d9dd63397e972b6fec9739dd1d1aac182977abc58c07e32e0537d07776b3"
+    },
+    {
+      "path": "release/public-snapshot/tests/plugin.test.mjs",
+      "sha256": "a8c20881505e6ef36a31d2fd4603ca0896b02aa5d4b4476179c59594a0e126f5"
+    },
+    {
+      "path": "release/public-snapshot/tests/public-renderer.test.mjs",
+      "sha256": "c07dee520a54a3c5edc9ece884334fb9465789e0fc5f3c90edcb83b8a1400e8d"
+    },
+    {
+      "path": "release/public-snapshot/tests/public-snapshot.test.mjs",
+      "sha256": "d7e1cddcbcf1342849753e772f1f1b538db410b87d33cd2a3c554e9314d4e19e"
+    },
+    {
+      "path": "release/public-snapshot/tests/structured-document.test.mjs",
+      "sha256": "aef9ac1c7b25c528644fdb90cc1437321d783753a1b05a6fc36aeca86ac09a46"
+    },
+    {
+      "path": "release/public-snapshot/tests/theme-diagnostics.test.mjs",
+      "sha256": "259e01b3012e0f48d6f78e3e8a8d472ce8dc633e5b1431eed2dd0108f44f91cf"
+    },
+    {
+      "path": "release/public-snapshot/tests/theme.test.mjs",
+      "sha256": "d5f1ece644e3735710267f67f17d777f5837c437d3079d19ea1fc92cc6d4b940"
+    },
+    {
+      "path": "tests/admin-console-browser-smoke.test.mjs",
+      "sha256": "ce4e225075300e20e54d0dc0f4da25970456dc438f57ad7c46b0e1568eb949e0"
+    },
+    {
+      "path": "tests/admin-router-policy.test.mjs",
+      "sha256": "15ce2ed3fb557f76c93d55926d0a6b3b662b803e0d42b4bdad9943db4c4f43bb"
+    },
+    {
+      "path": "tests/admin-view-banner.test.mjs",
+      "sha256": "4e3f8224867a7ca13ce5276261e86dc54fef4c7520a666a1c57365e28a8cfd59"
+    },
+    {
+      "path": "tests/api-validation.test.mjs",
+      "sha256": "36f332b6aea083bc4d092d78a6796dea3a9372c7ef913009d4817e8235438448"
+    },
+    {
+      "path": "tests/api-worker.test.mjs",
+      "sha256": "ba66e58ea50ff5a69c0185d87fc7418922518490ea8a5f426e043f72694d440f"
+    },
+    {
+      "path": "tests/apply-d1-migrations.test.mjs",
+      "sha256": "06ad27d440864330b57d3c554ad059e7d53f97b39061d9d8473a373e9d6e0de0"
+    },
+    {
+      "path": "tests/assets-preview.test.mjs",
+      "sha256": "16b76b8f5f1e4e319149dafbf20bdebbfeaab1da69f88b664ffcc9cd5336f363"
+    },
+    {
+      "path": "tests/auth.test.mjs",
+      "sha256": "48408c874b7a22f7e5ed8b1e1bdfbdc49e20f99dc0fa0321582b69ea294e6b7b"
+    },
+    {
+      "path": "tests/baser-domain.test.mjs",
+      "sha256": "65c543075e743d6524452c24f7e272d72d551008408d266c7a3f5f2a12150542"
+    },
+    {
+      "path": "tests/blog.test.mjs",
+      "sha256": "d3e6cc7bfc3b971108b2303b9c6eb9909c98a803ab4e4c3af468e1c81cc206f4"
+    },
+    {
+      "path": "tests/burger-importer.test.mjs",
+      "sha256": "c3a52631b500b01c020f8a4ef9c1050569ba26eded3b223527d5b35f1c44d0ac"
+    },
+    {
+      "path": "tests/cf-oauth-relay-state.test.mjs",
+      "sha256": "67ad94f2798f9accfe9a3de3ef5aad083d524c94a9960b1a6ad72d3f2457c14f"
+    },
+    {
+      "path": "tests/cf-oauth-scopes.test.mjs",
+      "sha256": "eddfffc70dfa40398709303b92d8ad2765c0b2214b88a04bdab4a63ebe056837"
+    },
+    {
+      "path": "tests/cf-stack-destroy.test.mjs",
+      "sha256": "785c464249abfc3d98fe5abb776aa5a049ae8353cab8e3fc5f3059b9721479ba"
+    },
+    {
+      "path": "tests/cf-trial-provision-parse.test.mjs",
+      "sha256": "80a7df503e11127bd75003d14f2721b11069edf03f4fb7e6e9d5d6579766d301"
+    },
+    {
+      "path": "tests/cloudflare-auth.test.mjs",
+      "sha256": "9b952a4e4ffd9f895bcf12bfe6c7a7d20e3adc6fabf12c300bae89e046c03579"
+    },
+    {
+      "path": "tests/console-capabilities.test.mjs",
+      "sha256": "8863105ec865d9eed9c620a748da84850012aae297f1d70a057b6f4f83f20b2a"
+    },
+    {
+      "path": "tests/console-golden-path.test.mjs",
+      "sha256": "125431c67a39d32dc12d2cc4e3a94651241f2f232130aec9995e1c5bfcb5bf15"
+    },
+    {
+      "path": "tests/console-media-guide-ui.test.mjs",
+      "sha256": "59d6ce502c22defbd7828f5787f6f5a428db152237f0d6c62119c59b0b262fa7"
+    },
+    {
+      "path": "tests/console-mutation-sync-ui.test.mjs",
+      "sha256": "95366b6f894b9e532c4919d061ac38fca5f764f39295bbb9edc8a5614a72cdf2"
+    },
+    {
+      "path": "tests/console-static-path.test.mjs",
+      "sha256": "9f6c2d8d7659d19b92f1c7906a893dd3065756d58b4655f969470a4a83542f9c"
+    },
+    {
+      "path": "tests/content-editor-session-leave.test.mjs",
+      "sha256": "3a142576ca48041cb9fb8182f765ed2329bc448a0f589cbce1302a7795cfee14"
+    },
+    {
+      "path": "tests/content-editor-sync.test.mjs",
+      "sha256": "9020916034287daaf06756cc0142f87b8a3476cc04cdb75c8ae6bbfd97c9d3de"
+    },
+    {
+      "path": "tests/content-flow.test.mjs",
+      "sha256": "8288abbf581c2e3dae32ce3c727fca2869c9c14e739cbd12830f44cf027c3804"
+    },
+    {
+      "path": "tests/content-manager.test.mjs",
+      "sha256": "7e94a6edc754b43527909bc577752e1638639199a7d7557759a2ad5916880639"
+    },
+    {
+      "path": "tests/cors-and-starter-home.test.mjs",
+      "sha256": "3e51eeeb0f50b20906cd57d1a44133ef1998adcd112a567fbff37db6a8585ad8"
+    },
+    {
+      "path": "tests/custom-content.test.mjs",
+      "sha256": "68b0d6bae3e6b62d9fcb3a4b3e132264a16b5fe7e402831442ab75ed4cea6433"
+    },
+    {
+      "path": "tests/d1-adapter.test.mjs",
+      "sha256": "2278ab4aa579cdde631fbf35b1275bbb345ea3e169610dfa47e784e57994e4c2"
+    },
+    {
+      "path": "tests/fixtures/admin-console-smoke-fixtures.mjs",
+      "sha256": "75a50cdfd61cb8422855f8cce38fe18efc3390858aa1607cd632dce393bc1c70"
+    },
+    {
+      "path": "tests/format-asset-delete-error.test.mjs",
+      "sha256": "679cf986ce4cea3d3d6e34ff4788c104e4da6db58a4321c0568da6e7bf68bf72"
+    },
+    {
+      "path": "tests/helpers/admin-console-smoke-harness.mjs",
+      "sha256": "16d6d73a9d6abade68f7f490d4d97a63077565d025a3ab9ae6c16e16ec8b367d"
+    },
+    {
+      "path": "tests/mail-form.test.mjs",
+      "sha256": "db5a174c93934e43dea5872678dba33b173d99d916815dbaf20e6fcee677a1e7"
+    },
+    {
+      "path": "tests/onboarding-oauth-verify.test.mjs",
+      "sha256": "6a8ebe0ac33d1634eb09c8a6e4543b7adb7725f40f2d4c24adf51ae808ebcfd4"
+    },
+    {
+      "path": "tests/onboarding-safety.test.mjs",
+      "sha256": "63ec2c487fc38dd615dc13238ddfd5fcf7b9c13b21ea85de3e9e5e7ef81a8ee2"
+    },
+    {
+      "path": "tests/parse-d1-id.test.mjs",
+      "sha256": "12b467fd145fcb3aa49a03946c649df421453de93f67c61ba3803968f5f397df"
+    },
+    {
+      "path": "tests/platform-capabilities-urls.test.mjs",
+      "sha256": "9409c117ac949158f1a516cbede7475ff5c39bd226588364a990ce9467330218"
+    },
+    {
+      "path": "tests/plugin-diagnostics.test.mjs",
+      "sha256": "4925d9dd63397e972b6fec9739dd1d1aac182977abc58c07e32e0537d07776b3"
+    },
+    {
+      "path": "tests/plugin.test.mjs",
+      "sha256": "a8c20881505e6ef36a31d2fd4603ca0896b02aa5d4b4476179c59594a0e126f5"
+    },
+    {
+      "path": "tests/public-live-url.test.mjs",
+      "sha256": "e9b3ef2612ec3dc0a119c10de68a129e303d2a324d529a2f5fe9947c0b3dfca8"
+    },
+    {
+      "path": "tests/public-renderer.test.mjs",
+      "sha256": "87f02a0c0aa5f0b71a10ba71a6c504a4f6efb1fa395237e763de222aa9d251c0"
+    },
+    {
+      "path": "tests/public-snapshot.test.mjs",
+      "sha256": "d7e1cddcbcf1342849753e772f1f1b538db410b87d33cd2a3c554e9314d4e19e"
+    },
+    {
+      "path": "tests/renderer-seo.test.mjs",
+      "sha256": "0be22292c35e9801b0912b650b6052f34579713a8e1200a86213c5847f0d48d3"
+    },
+    {
+      "path": "tests/start-page-user-flow.test.mjs",
+      "sha256": "0a2d711a34019654e18759c0a6224b2e07d4e3a9f65bd8cc8c5f10c9bcc5903e"
+    },
+    {
+      "path": "tests/structured-document.test.mjs",
+      "sha256": "caa70f2f134cb2fa7ec60cf8cd7226e3954ac1f52137befb5e91dae1775f7f66"
+    },
+    {
+      "path": "tests/theme-diagnostics.test.mjs",
+      "sha256": "259e01b3012e0f48d6f78e3e8a8d472ce8dc633e5b1431eed2dd0108f44f91cf"
+    },
+    {
+      "path": "tests/theme.test.mjs",
+      "sha256": "d5f1ece644e3735710267f67f17d777f5837c437d3079d19ea1fc92cc6d4b940"
+    },
+    {
+      "path": "tests/trial-inline-assets.test.mjs",
+      "sha256": "3529f8bdf8a91d9778490e5cb9e1df1fa043f62bf028e63a5ba497a5dd684ed5"
+    },
+    {
+      "path": "tests/trial-worker-vars.test.mjs",
+      "sha256": "66020a9a15926f932dbc539c273fd6a571cd3594b17eb8ec6abb6ad1ea71adb3"
+    },
+    {
+      "path": "tests/upgrade-trial-media.test.mjs",
+      "sha256": "e3099e7128ae5db6f6f7a5a9b60102b1f4c3c9919ed4b134bb922c8fbba5d4d7"
+    },
+    {
+      "path": "tests/verify-wrangler-tracked.test.mjs",
+      "sha256": "a7d361dda659d9cd49d42c7cace8f52973bd9362d4fd6e5a2ab6dfe0c36c8d09"
+    },
+    {
+      "path": "tests/wrangler-reset.test.mjs",
+      "sha256": "950486423b6458c747e89103a9314432424bc3c7b97e99fa22c45266c6f1ad5c"
+    },
+    {
+      "path": "tests/wrangler-template-sanity.test.mjs",
+      "sha256": "4430569d671b6ca17f2e4e5b2597719645639619ffa910bd6e0857acd6122278"
+    },
+    {
+      "path": "tests/wrangler-vars.test.mjs",
+      "sha256": "85bf019781695226078b5dd6fac6d630727f107147b13214eb67e991aec14f7e"
+    }
+  ],
+  "skills": [
+    {
+      "path": ".agents/skills/baseredge-admin-ux/SKILL.md",
+      "sha256": "08ce5e878dd66096eef088f4cddc265940a0618cd2a82dd7bd260cbc121757af"
+    },
+    {
+      "path": ".agents/skills/baseredge-blog-development/SKILL.md",
+      "sha256": "bf200cab5040fb7d9a69cd10fc977a7a59304489f6e123c18a318283b640e63b"
+    },
+    {
+      "path": ".agents/skills/baseredge-cloudflare-runtime-contract/SKILL.md",
+      "sha256": "136924d174fc232f5355fc8cf40159ab87f24a8ca28716e8706655bc556c8064"
+    },
+    {
+      "path": ".agents/skills/baseredge-cms-domain-contract/SKILL.md",
+      "sha256": "81cef4f1d715693a6cd197c2699ea0d37bd8c2c352ee6bd333e9c988776a3bf0"
+    },
+    {
+      "path": ".agents/skills/baseredge-cms-knowledge-review/SKILL.md",
+      "sha256": "2d06de4dd13503d027288327b9531ee106897409cd24a82e81bcabc555e08ae7"
+    },
+    {
+      "path": ".agents/skills/baseredge-content-development/SKILL.md",
+      "sha256": "be0bec506ef15ff8e388d43a00afab99c52193764e76b9574a17dd83389c4a5f"
+    },
+    {
+      "path": ".agents/skills/baseredge-d1-development/SKILL.md",
+      "sha256": "6e2af14baed9540e12bfa4bfdfd433e340e9868e24d275a1797ccc04e14ff940"
+    },
+    {
+      "path": ".agents/skills/baseredge-development/SKILL.md",
+      "sha256": "285e1d23c281d9de411639de830a34de65b15e37977ad6b6e669b6fa1cc6b843"
+    },
+    {
+      "path": ".agents/skills/baseredge-mail-form-development/SKILL.md",
+      "sha256": "06605f4eb1db7b39847e62b126e00d06bdd4b59ca3334d31438007f0d569e43e"
+    },
+    {
+      "path": ".agents/skills/baseredge-onboarding-deployment/SKILL.md",
+      "sha256": "0adca203104065e088ab6758e50734ac29d2f754f4757d8443fb23ab09b983ed"
+    },
+    {
+      "path": ".agents/skills/baseredge-plugin-development/SKILL.md",
+      "sha256": "f674d798854125ca85a4ee30f45bd044a0cd68c954ffdce6daf9ac4e696f2d87"
+    },
+    {
+      "path": ".agents/skills/baseredge-publishing-workflow/SKILL.md",
+      "sha256": "a0913b8addadd213154d4bb4818f0a1dc7eb070e27f49f848c0dff78e7850088"
+    },
+    {
+      "path": ".agents/skills/baseredge-testing/SKILL.md",
+      "sha256": "5976b6cafd2b53664298b9c7280b2201b575ea51817bdce3c9d50e60f8ad2383"
+    },
+    {
+      "path": ".agents/skills/baseredge-theme-development/SKILL.md",
+      "sha256": "b304575609438b8364ac3f3f41647d9ebc79e18f1f181930a077943b5b615e6a"
+    }
+  ],
+  "reviewReason": "initial adaptive skill installation"
+}

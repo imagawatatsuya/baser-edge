@@ -2,6 +2,11 @@
 node_modules/
 **/node_modules/
 
+# Accidental npm/shell artifacts at repo root (not node_modules)
+/node
+/npm
+/baser-edge@*/
+
 # --- Public release staging (no private git history; safe to push elsewhere) ---
 release/public-snapshot/
 release/public-snapshot-test/

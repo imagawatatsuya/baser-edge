@@ -1,0 +1,563 @@
+{
+  "schemaVersion": 1,
+  "updatedAt": "2026-07-28",
+  "decisions": [
+    "adopt",
+    "adapt",
+    "defer",
+    "reject",
+    "superseded"
+  ],
+  "entries": [
+    {
+      "id": "CMS-TREE-001",
+      "title": "異種コンテンツを一つのサイトツリーで管理する",
+      "category": "content",
+      "sourceRefs": [
+        "BC-DOC-CONTENT",
+        "BE-AGENTS"
+      ],
+      "universalNeed": "運営者がページ、フォルダ、ブログ、フォーム等をサイト構造の中で一貫して把握・操作できる。",
+      "hiddenEdgeCases": [
+        "種類ごとの追加可能位置",
+        "移動時のURL変更",
+        "権限による操作可否",
+        "大量の子孫"
+      ],
+      "decision": "adopt",
+      "rationale": "baserEdgeの製品骨格と一致する。",
+      "componentRoles": [
+        "cms.content",
+        "surface.admin",
+        "surface.public"
+      ],
+      "cloudflareTranslation": "D1上のtree/versionとWorker API。大量subtree処理は非同期化を検討。",
+      "acceptance": [
+        "全標準Content種別が同一treeに見える",
+        "追加・移動・ゴミ箱後にUIが即時同期する"
+      ],
+      "revisitTriggers": [
+        "Content種別追加",
+        "tree storage変更"
+      ]
+    },
+    {
+      "id": "CMS-ROUTE-001",
+      "title": "コンテンツの同一性とURL上の位置を分離する",
+      "category": "content",
+      "sourceRefs": [
+        "BE-AGENTS",
+        "BE-PRD",
+        "BC-DOC-CONTENT"
+      ],
+      "universalNeed": "移動や別導線によって内容の履歴とURLを同時に失わない。",
+      "hiddenEdgeCases": [
+        "redirect",
+        "canonical",
+        "route conflict",
+        "restore conflict"
+      ],
+      "decision": "superseded",
+      "rationale": "baserEdgeはbaserCMS風運用をより明確なContent/Route分離で実現済み。",
+      "componentRoles": [
+        "cms.content",
+        "surface.public"
+      ],
+      "cloudflareTranslation": "D1原子境界とpublic renderer route resolution。",
+      "acceptance": [
+        "move後もContent IDとRevision historyが維持される",
+        "旧URL方針が明示される"
+      ],
+      "revisitTriggers": [
+        "routing model変更"
+      ]
+    },
+    {
+      "id": "CMS-FOLDER-001",
+      "title": "Folderが子コンテンツの構造・URL・既定表示をまとめる",
+      "category": "content",
+      "sourceRefs": [
+        "BC-DOC-CONTENT"
+      ],
+      "universalNeed": "大規模サイトを階層化し、配下の導線を理解しやすくする。",
+      "hiddenEdgeCases": [
+        "folder自身の表示",
+        "子孫move",
+        "template inheritance",
+        "empty folder"
+      ],
+      "decision": "adapt",
+      "rationale": "URL階層は採用するが、PHP template継承ではなくTheme contractで表現する。",
+      "componentRoles": [
+        "cms.content",
+        "cms.theme",
+        "surface.public"
+      ],
+      "cloudflareTranslation": "route tree queryとTheme layout resolution。",
+      "acceptance": [
+        "配下URLが予測可能",
+        "子孫移動の影響が確認できる"
+      ],
+      "revisitTriggers": [
+        "layout inheritance導入"
+      ]
+    },
+    {
+      "id": "CMS-ALIAS-001",
+      "title": "同じ内容へ別のサイトツリー導線を作る",
+      "category": "content",
+      "sourceRefs": [
+        "BC-DOC-CONTENT"
+      ],
+      "universalNeed": "同一内容を複製せず複数のナビゲーション位置から到達可能にする。",
+      "hiddenEdgeCases": [
+        "canonical",
+        "cycle",
+        "target trash",
+        "target unpublished"
+      ],
+      "decision": "adapt",
+      "rationale": "Alias identityとrouteを持たせ、SEOとcycleを安全化する。",
+      "componentRoles": [
+        "cms.content",
+        "surface.public"
+      ],
+      "cloudflareTranslation": "D1 referenceとrenderer canonical/redirect policy。",
+      "acceptance": [
+        "本文を複製しない",
+        "cycleを拒否",
+        "target不可時を明示"
+      ],
+      "revisitTriggers": [
+        "navigation model変更"
+      ]
+    },
+    {
+      "id": "CMS-LIFECYCLE-001",
+      "title": "コピー・移動・プレビュー・ゴミ箱・復元を標準操作にする",
+      "category": "operations",
+      "sourceRefs": [
+        "BC-DOC-CONTENT",
+        "BC-DOC-BLOG",
+        "BC-DOC-MAIL"
+      ],
+      "universalNeed": "日常運用で作り直しや即時物理削除を避ける。",
+      "hiddenEdgeCases": [
+        "関連設定のcopy",
+        "route conflict",
+        "approval複製禁止",
+        "retention"
+      ],
+      "decision": "adopt",
+      "rationale": "CRUDを実用CMSへ引き上げる基本操作。",
+      "componentRoles": [
+        "cms.content",
+        "surface.admin"
+      ],
+      "cloudflareTranslation": "D1 immutable history、soft delete、非同期subtree処理。",
+      "acceptance": [
+        "操作ごとの対象と影響がUIで分かる",
+        "復元可能性を保持"
+      ],
+      "revisitTriggers": [
+        "新Content種別追加"
+      ]
+    },
+    {
+      "id": "CMS-BLOG-001",
+      "title": "一つのSiteへ複数Blogを配置する",
+      "category": "blog",
+      "sourceRefs": [
+        "BC-DOC-BLOG",
+        "BC-DOC-CONTENT"
+      ],
+      "universalNeed": "お知らせ、採用、活動記録等を別々の設定・記事集合として運用する。",
+      "hiddenEdgeCases": [
+        "Blog間Article移動",
+        "taxonomy scope",
+        "route collision"
+      ],
+      "decision": "adopt",
+      "rationale": "サイトツリー中心モデルと一致する。",
+      "componentRoles": [
+        "cms.blog",
+        "cms.content",
+        "surface.admin"
+      ],
+      "cloudflareTranslation": "D1 Blog scopeとindexed Article queries。",
+      "acceptance": [
+        "Blogごとに記事・設定・RSSが分離する"
+      ],
+      "revisitTriggers": [
+        "cross-blog taxonomy"
+      ]
+    },
+    {
+      "id": "CMS-BLOG-002",
+      "title": "Blogごとの一覧件数・順序・RSS・表示テンプレートを管理する",
+      "category": "blog",
+      "sourceRefs": [
+        "BC-DOC-BLOG",
+        "BC-DOC-THEME"
+      ],
+      "universalNeed": "同じArticle機能でも用途に応じて公開面の見せ方を変える。",
+      "hiddenEdgeCases": [
+        "summary無効化後の既存値",
+        "RSS count",
+        "archive pagination",
+        "eye-catch unavailable"
+      ],
+      "decision": "adapt",
+      "rationale": "PHP template選択をThemeReleaseのsemantic template slotへ変換する。",
+      "componentRoles": [
+        "cms.blog",
+        "cms.theme",
+        "surface.public"
+      ],
+      "cloudflareTranslation": "indexed D1 query、cache、任意R2。",
+      "acceptance": [
+        "設定変更が公開一覧/RSSへ反映",
+        "R2なしでも成立"
+      ],
+      "revisitTriggers": [
+        "Theme contract version変更"
+      ]
+    },
+    {
+      "id": "CMS-MAIL-001",
+      "title": "複数Mail Formと動的Fieldを管理する",
+      "category": "mail",
+      "sourceRefs": [
+        "BC-DOC-MAIL",
+        "BC-DOC-CONTENT"
+      ],
+      "universalNeed": "問い合わせ、資料請求、応募等を別フォームとしてサイトツリーへ置く。",
+      "hiddenEdgeCases": [
+        "Field version",
+        "copy",
+        "submission compatibility",
+        "order"
+      ],
+      "decision": "adopt",
+      "rationale": "標準CMS機能として重要。",
+      "componentRoles": [
+        "cms.mail",
+        "cms.content",
+        "surface.admin"
+      ],
+      "cloudflareTranslation": "D1 form schemaとsubmission schema version。",
+      "acceptance": [
+        "複数Formが分離",
+        "Field copy/order/typeが安全"
+      ],
+      "revisitTriggers": [
+        "form schema model変更"
+      ]
+    },
+    {
+      "id": "CMS-MAIL-002",
+      "title": "入力・確認・完了・受付停止を別状態として扱う",
+      "category": "mail",
+      "sourceRefs": [
+        "BC-DOC-MAIL",
+        "BC-DOC-THEME"
+      ],
+      "universalNeed": "送信者が内容を確認し、受付可否と送信結果を理解できる。",
+      "hiddenEdgeCases": [
+        "受付期間",
+        "二重送信",
+        "戻る操作",
+        "closed rendering"
+      ],
+      "decision": "adapt",
+      "rationale": "画面フローをTheme slotとserver-side submission tokenへ変換する。",
+      "componentRoles": [
+        "cms.mail",
+        "cms.theme",
+        "surface.public"
+      ],
+      "cloudflareTranslation": "short-lived confirm state、D1/edge validation。",
+      "acceptance": [
+        "confirm改ざん拒否",
+        "受付外は明示ページ",
+        "二重送信冪等"
+      ],
+      "revisitTriggers": [
+        "client rendering architecture変更"
+      ]
+    },
+    {
+      "id": "CMS-MAIL-003",
+      "title": "管理者通知・自動返信・保存方針を分離する",
+      "category": "mail",
+      "sourceRefs": [
+        "BC-DOC-MAIL"
+      ],
+      "universalNeed": "フォーム受付とEmail deliveryを信頼性高く運用する。",
+      "hiddenEdgeCases": [
+        "Email未構成",
+        "retry",
+        "duplicate delivery",
+        "BCC",
+        "個人情報retention"
+      ],
+      "decision": "adapt",
+      "rationale": "同期PHP mailからD1 Outbox + Queue + provider adapterへ変換する。",
+      "componentRoles": [
+        "cms.mail",
+        "platform.cloudflare"
+      ],
+      "cloudflareTranslation": "D1 atomic Outbox、Queue at-least-once、idempotency key。",
+      "acceptance": [
+        "Submission成功と通知状態が区別",
+        "重複通知を防止"
+      ],
+      "revisitTriggers": [
+        "Email provider変更",
+        "Queue architecture変更"
+      ]
+    },
+    {
+      "id": "CMS-CUSTOM-001",
+      "title": "運営者がFieldを組み合わせ独自Content種別を作る",
+      "category": "custom-content",
+      "sourceRefs": [
+        "BC-SKILL-CUSTOM",
+        "BC-DOC-CONTENT"
+      ],
+      "universalNeed": "製品固有のデータをcore改修なしで構造化管理する。",
+      "hiddenEdgeCases": [
+        "field name/type conflict",
+        "schema version",
+        "entry route",
+        "display flag",
+        "unknown fields"
+      ],
+      "decision": "adapt",
+      "rationale": "既存tableへの後付けではなく独立したschema/entry domainとして扱う。",
+      "componentRoles": [
+        "cms.custom-content",
+        "cms.content",
+        "surface.public"
+      ],
+      "cloudflareTranslation": "D1 schema metadata、immutable entry revisions、safe renderer。",
+      "acceptance": [
+        "型不一致を拒否",
+        "schema変更後も過去Entryを解釈可能"
+      ],
+      "revisitTriggers": [
+        "field type registry変更"
+      ]
+    },
+    {
+      "id": "CMS-THEME-001",
+      "title": "Layout・再利用部品・Content種別テンプレートを分ける",
+      "category": "theme",
+      "sourceRefs": [
+        "BC-DOC-THEME",
+        "BC-SKILL-THEME"
+      ],
+      "universalNeed": "サイト全体とPage/Blog/Mail固有の表示を再利用可能に管理する。",
+      "hiddenEdgeCases": [
+        "missing template",
+        "template selection",
+        "preview",
+        "contract version"
+      ],
+      "decision": "adapt",
+      "rationale": "PHP folder contractをimmutable ThemeRelease manifestへ変換する。",
+      "componentRoles": [
+        "cms.theme",
+        "surface.public"
+      ],
+      "cloudflareTranslation": "Static Assets/R2とsafe renderer。",
+      "acceptance": [
+        "Page/Blog/Mailごとにsemantic templateを選べる",
+        "missing時に診断可能"
+      ],
+      "revisitTriggers": [
+        "renderer contract変更"
+      ]
+    },
+    {
+      "id": "CMS-THEME-002",
+      "title": "Theme metadata・assets・初期サイトを一つの配布単位にする",
+      "category": "theme",
+      "sourceRefs": [
+        "BC-DOC-THEME"
+      ],
+      "universalNeed": "適用直後から完成したサイトを表示し、Themeを安全に更新する。",
+      "hiddenEdgeCases": [
+        "initial data idempotency",
+        "user data overwrite",
+        "asset cache",
+        "Theme依存機能"
+      ],
+      "decision": "adapt",
+      "rationale": "固定release packageとimmutable asset keyへ変換し、実行Plugin自動導入は拒否する。",
+      "componentRoles": [
+        "cms.theme",
+        "platform.onboarding",
+        "surface.public"
+      ],
+      "cloudflareTranslation": "fixed onboarding release、Static Assets/R2、hash verification。",
+      "acceptance": [
+        "初回適用が冪等",
+        "Theme updateがuser contentを上書きしない"
+      ],
+      "revisitTriggers": [
+        "release packaging変更"
+      ]
+    },
+    {
+      "id": "CMS-PLUGIN-001",
+      "title": "機能をPlugin単位で分離・配布・更新する",
+      "category": "plugin",
+      "sourceRefs": [
+        "BC-SKILL-PLUGIN",
+        "BE-AGENTS"
+      ],
+      "universalNeed": "coreを肥大化させず、機能ごとに導入・停止・更新できる。",
+      "hiddenEdgeCases": [
+        "install vs activate",
+        "migration",
+        "compatibility",
+        "uninstall retention"
+      ],
+      "decision": "adapt",
+      "rationale": "Manifest/immutable Release/explicit grant/sandboxへ再設計する。",
+      "componentRoles": [
+        "cms.plugin",
+        "surface.admin",
+        "platform.cloudflare"
+      ],
+      "cloudflareTranslation": "Workers for Platformsまたはtrusted handler、fail-closed egress。",
+      "acceptance": [
+        "requestとgrantが分離",
+        "core processへ任意codeを入れない"
+      ],
+      "revisitTriggers": [
+        "plugin runtime変更"
+      ]
+    },
+    {
+      "id": "CMS-PLUGIN-002",
+      "title": "Pluginが管理画面設定・navigation・hookを宣言する",
+      "category": "plugin",
+      "sourceRefs": [
+        "BC-SKILL-PLUGIN"
+      ],
+      "universalNeed": "導入機能を管理者が発見し設定でき、標準イベントへ統合できる。",
+      "hiddenEdgeCases": [
+        "arbitrary script",
+        "permission visibility",
+        "hook retry/order",
+        "core UI failure"
+      ],
+      "decision": "adapt",
+      "rationale": "宣言的extension contractに限定する。",
+      "componentRoles": [
+        "cms.plugin",
+        "surface.admin"
+      ],
+      "cloudflareTranslation": "signed manifest、safe UI component registry、audited dispatch。",
+      "acceptance": [
+        "権限未付与UIを隠す",
+        "Plugin失敗でconsole coreを壊さない"
+      ],
+      "revisitTriggers": [
+        "admin extension framework導入"
+      ]
+    },
+    {
+      "id": "CMS-WIDGET-001",
+      "title": "運営者が小さな表示部品を配置する",
+      "category": "theme",
+      "sourceRefs": [
+        "BC-DOC-BLOG",
+        "BC-DOC-THEME"
+      ],
+      "universalNeed": "新着、メニュー、バナー等を開発なしでlayoutへ配置する。",
+      "hiddenEdgeCases": [
+        "component schema",
+        "Theme compatibility",
+        "responsive placement",
+        "unknown widget"
+      ],
+      "decision": "defer",
+      "rationale": "Theme component/layout contractが安定してから導入する。",
+      "componentRoles": [
+        "cms.theme",
+        "surface.admin"
+      ],
+      "cloudflareTranslation": "structured component config、safe renderer。",
+      "acceptance": [
+        "defer中はTheme固定部品で代替し、任意HTMLを許さない"
+      ],
+      "revisitTriggers": [
+        "Theme contract安定",
+        "layout editor計画"
+      ]
+    },
+    {
+      "id": "CMS-SEO-001",
+      "title": "URL正規化・canonical・旧URL redirectをCMS操作へ統合する",
+      "category": "public",
+      "sourceRefs": [
+        "BC-DOC-CONTENT",
+        "BE-AGENTS"
+      ],
+      "universalNeed": "移動やAliasで重複・リンク切れ・検索評価喪失を防ぐ。",
+      "hiddenEdgeCases": [
+        "redirect loop",
+        "temporary/permanent",
+        "Alias canonical",
+        "trash"
+      ],
+      "decision": "adapt",
+      "rationale": "Route identity分離を活かして明示的に扱う。",
+      "componentRoles": [
+        "cms.content",
+        "surface.public"
+      ],
+      "cloudflareTranslation": "D1 redirect records、edge response/cache policy。",
+      "acceptance": [
+        "loop拒否",
+        "旧URLが意図したstatusで解決"
+      ],
+      "revisitTriggers": [
+        "routing/cache変更"
+      ]
+    },
+    {
+      "id": "CMS-TEST-001",
+      "title": "正本コマンド・絞り込み・失敗原因・完了証拠をスキル化する",
+      "category": "engineering",
+      "sourceRefs": [
+        "BC-SKILL-TEST"
+      ],
+      "universalNeed": "環境差や大量失敗を一件ずつ追わず、再現可能に検証する。",
+      "hiddenEdgeCases": [
+        "dependency service not ready",
+        "local/remote差",
+        "test isolation",
+        "stale command"
+      ],
+      "decision": "adapt",
+      "rationale": "Docker/PHP手順ではなくbaserEdgeのlocal/remote/onboarding proofへ変換する。",
+      "componentRoles": [
+        "platform.cloudflare",
+        "platform.onboarding"
+      ],
+      "cloudflareTranslation": "npm check、local proof、disposable remote proof、teardown。",
+      "acceptance": [
+        "実行コマンドと未実行理由を報告",
+        "driftで古いcommandを検出"
+      ],
+      "revisitTriggers": [
+        "package scripts変更",
+        "test runner変更"
+      ]
+    }
+  ]
+}

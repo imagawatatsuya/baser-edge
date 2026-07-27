@@ -1,0 +1,73 @@
+{
+  "schemaVersion": 1,
+  "seedFiles": [
+    {
+      "id": "agents",
+      "path": "AGENTS.md",
+      "severity": "blocking",
+      "required": true
+    },
+    {
+      "id": "docs-index",
+      "path": "docs/README.md",
+      "severity": "blocking",
+      "required": false
+    },
+    {
+      "id": "product-requirements-current",
+      "path": "docs/requirements/product-requirements-v0.4.md",
+      "severity": "blocking",
+      "required": false
+    },
+    {
+      "id": "basercms-relationship",
+      "path": "docs/compatibility/relationship-to-basercms.md",
+      "severity": "blocking",
+      "required": false
+    },
+    {
+      "id": "developer-guide",
+      "path": "docs/developer-guide.md",
+      "severity": "review",
+      "required": false
+    },
+    {
+      "id": "implementation-status",
+      "path": "IMPLEMENTATION_STATUS.md",
+      "severity": "info",
+      "required": false
+    },
+    {
+      "id": "root-package",
+      "path": "package.json",
+      "severity": "review",
+      "required": true
+    }
+  ],
+  "versionFamilies": [
+    {
+      "id": "product-requirements",
+      "directory": "docs/requirements",
+      "pattern": "^product-requirements-v[0-9]+(?:\\.[0-9]+)*\\.md$",
+      "severity": "blocking",
+      "selection": "linked-from-seed-files"
+    },
+    {
+      "id": "mvp-plan",
+      "directory": "docs/implementation",
+      "pattern": "^mvp-implementation-plan-v[0-9]+(?:\\.[0-9]+)*\\.md$",
+      "severity": "review",
+      "selection": "linked-from-seed-files"
+    }
+  ],
+  "linkDiscovery": {
+    "maxDepth": 2,
+    "onlyLocalMarkdown": true,
+    "ignore": [
+      "node_modules",
+      ".git",
+      "dist",
+      ".baser"
+    ]
+  }
+}

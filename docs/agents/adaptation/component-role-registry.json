@@ -1,0 +1,198 @@
+{
+  "schemaVersion": 1,
+  "roles": [
+    {
+      "id": "cms.content",
+      "required": true,
+      "packageNames": [
+        "@baser-edge/content-kernel"
+      ],
+      "pathHints": [
+        "content-kernel"
+      ],
+      "keywords": [
+        "site tree",
+        "revision",
+        "publish"
+      ]
+    },
+    {
+      "id": "cms.blog",
+      "required": true,
+      "packageNames": [
+        "@baser-edge/blog-kernel"
+      ],
+      "pathHints": [
+        "blog-kernel"
+      ],
+      "keywords": [
+        "article",
+        "taxonomy",
+        "rss"
+      ]
+    },
+    {
+      "id": "cms.custom-content",
+      "required": true,
+      "packageNames": [
+        "@baser-edge/custom-content-kernel"
+      ],
+      "pathHints": [
+        "custom-content-kernel"
+      ],
+      "keywords": [
+        "custom content",
+        "field",
+        "entry"
+      ]
+    },
+    {
+      "id": "cms.mail",
+      "required": true,
+      "packageNames": [
+        "@baser-edge/mail-form-kernel"
+      ],
+      "pathHints": [
+        "mail-form-kernel"
+      ],
+      "keywords": [
+        "mail form",
+        "submission",
+        "notification"
+      ]
+    },
+    {
+      "id": "cms.theme",
+      "required": true,
+      "packageNames": [
+        "@baser-edge/theme-kernel"
+      ],
+      "pathHints": [
+        "theme-kernel"
+      ],
+      "keywords": [
+        "theme release",
+        "layout",
+        "design token"
+      ]
+    },
+    {
+      "id": "cms.plugin",
+      "required": true,
+      "packageNames": [
+        "@baser-edge/plugin-kernel"
+      ],
+      "pathHints": [
+        "plugin-kernel"
+      ],
+      "keywords": [
+        "plugin",
+        "manifest",
+        "activation"
+      ]
+    },
+    {
+      "id": "security.auth",
+      "required": true,
+      "packageNames": [
+        "@baser-edge/auth-kernel"
+      ],
+      "pathHints": [
+        "auth-kernel"
+      ],
+      "keywords": [
+        "passkey",
+        "session",
+        "csrf"
+      ]
+    },
+    {
+      "id": "platform.cloudflare",
+      "required": true,
+      "packageNames": [
+        "@baser-edge/cloudflare-adapters"
+      ],
+      "pathHints": [
+        "cloudflare-adapters"
+      ],
+      "keywords": [
+        "d1",
+        "r2",
+        "cloudflare"
+      ]
+    },
+    {
+      "id": "surface.admin",
+      "required": true,
+      "packageNames": [
+        "@baser-edge/admin-web"
+      ],
+      "pathHints": [
+        "admin-web"
+      ],
+      "keywords": [
+        "console",
+        "admin"
+      ]
+    },
+    {
+      "id": "surface.api",
+      "required": true,
+      "packageNames": [
+        "@baser-edge/api-worker"
+      ],
+      "pathHints": [
+        "api-worker"
+      ],
+      "keywords": [
+        "api",
+        "worker"
+      ]
+    },
+    {
+      "id": "surface.public",
+      "required": true,
+      "packageNames": [
+        "@baser-edge/public-renderer"
+      ],
+      "pathHints": [
+        "public-renderer"
+      ],
+      "keywords": [
+        "renderer",
+        "preview"
+      ]
+    },
+    {
+      "id": "platform.onboarding",
+      "required": true,
+      "packageNames": [
+        "@baser-edge/onboarding-worker",
+        "@baser-edge/onboarding-web"
+      ],
+      "pathHints": [
+        "onboarding-worker",
+        "onboarding-web"
+      ],
+      "keywords": [
+        "oauth",
+        "onboarding",
+        "provision"
+      ]
+    },
+    {
+      "id": "platform.cloud-operations",
+      "required": false,
+      "packageNames": [
+        "@baser-edge/cloud-operations-worker"
+      ],
+      "pathHints": [
+        "cloud-operations-worker"
+      ],
+      "keywords": [
+        "cloud operations",
+        "control plane"
+      ]
+    }
+  ]
+}
