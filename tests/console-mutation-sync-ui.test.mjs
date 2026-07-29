@@ -41,8 +41,26 @@ test("ContentLayout tree row navigates without row-level draggable", () => {
   const layout = readAdmin("pages/ContentLayout.tsx");
   assert.match(layout, /className="tree-drag-handle"[\s\S]*?draggable/);
   assert.match(layout, /navigate\(`\/content\/\$\{id\}`\)/);
+  assert.match(layout, /navigate\(`\/content\/overview\/\$\{id\}`\)/);
   assert.match(layout, /prefetchContentEditor/);
   assert.doesNotMatch(layout, /className=\{`tree-row[\s\S]*?`\}\s*\n\s*draggable/);
+  assert.doesNotMatch(layout, /disabled=\{!canEdit\}/);
+});
+
+test("ContentLayout provides compact, accessible tree controls", () => {
+  const layout = readAdmin("pages/ContentLayout.tsx");
+  const menu = readAdmin("components/tree/TreeRowMenu.tsx");
+  assert.match(layout, /type="search"/);
+  assert.match(layout, /aria-expanded=\{!collapsed\}/);
+  assert.match(layout, /aria-current=\{active \? "page"/);
+  assert.match(layout, /publicationStatus/);
+  assert.match(layout, /ContentTreeEntryOverview/);
+  assert.doesNotMatch(layout, /tree-move-actions/);
+  const router = readAdmin("router.tsx");
+  assert.match(router, /overview\/:overviewContentId/);
+  assert.match(menu, /onMoveUp/);
+  assert.match(menu, /ArrowDown/);
+  assert.match(menu, /triggerRef\.current\?\.focus/);
 });
 
 test("useContentTree exposes context for child routes", () => {

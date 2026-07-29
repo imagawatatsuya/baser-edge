@@ -64,7 +64,7 @@ export const smokeSnapshot = {
   },
   node: {
     id: "node-smoke",
-    parentId: null,
+    parentId: "node-folder-smoke",
     slug: "smoke",
     sortKey: "a",
     treeVersion: 1,
@@ -75,7 +75,65 @@ export const smokeSnapshot = {
   publishedRevision,
 };
 
-export const smokeContentTree = [{ snapshot: smokeSnapshot }];
+const smokeFolderSnapshot = {
+  item: {
+    id: "c-folder-smoke",
+    contentTypeKey: "folder",
+    siteId: SMOKE_SITE_ID,
+    lockVersion: 1,
+    state: "active",
+    createdAt: 1,
+    updatedAt: 2,
+  },
+  node: {
+    id: "node-folder-smoke",
+    parentId: null,
+    slug: "folder",
+    sortKey: "a",
+    treeVersion: 1,
+    cachedPath: "/folder",
+  },
+  route: { path: "/folder" },
+  workingRevision: {
+    ...revision,
+    id: "rev-folder-working",
+    fields: { title: "Smoke folder" },
+  },
+  publishedRevision: null,
+};
+
+const smokeBlogSnapshot = {
+  item: {
+    id: "c-blog-smoke",
+    contentTypeKey: "blog",
+    siteId: SMOKE_SITE_ID,
+    lockVersion: 1,
+    state: "active",
+    createdAt: 1,
+    updatedAt: 3,
+  },
+  node: {
+    id: "node-blog-smoke",
+    parentId: null,
+    slug: "blog",
+    sortKey: "b",
+    treeVersion: 1,
+    cachedPath: "/blog",
+  },
+  route: { path: "/blog" },
+  workingRevision: {
+    ...revision,
+    id: "rev-blog-working",
+    fields: { title: "Smoke blog" },
+  },
+  publishedRevision,
+};
+
+export const smokeContentTree = [
+  { snapshot: smokeFolderSnapshot },
+  { snapshot: smokeSnapshot },
+  { snapshot: smokeBlogSnapshot },
+];
 
 export const smokeCapabilities = {
   assetPublicDelivery: false,

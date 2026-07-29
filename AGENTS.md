@@ -66,3 +66,30 @@ Low bar validation (e.g. accepting Japanese URL slugs that break public routes, 
 9. **Agent skills (repo):** adaptive CMS skills live under `.agents/skills/`; index and drift policy in `docs/agents/skill-index.md`. Run `npm run check:agent-skills` after changing authorities, component roles, or skill layout.
 
 If a feature cannot meet this bar in the same change, **narrow the feature** (smaller API surface) rather than shipping permissive parsing.
+
+## Cloudflare browser investigation
+
+Cloudflare Dashboard、Workers、Pages、D1、R2、KV、Durable Objects、Access、DNS、WAFのブラウザ調査では、`playwright-cloudflare` MCPを優先する。
+
+調査の基本手順:
+
+1. 接続中のブラウザ、タブ、現在のURLを確認する。
+2. ページ構造とスクリーンショットを確認する。
+3. Consoleメッセージを確認する。
+4. Networkリクエストを列挙する。
+5. 問題に関係する通信だけ、ヘッダー、送信本文、応答本文、HTTPステータスを確認する。
+6. Cookie、localStorage、sessionStorageは必要な項目だけ調べる。
+7. 調査依頼では、設定変更、削除、デプロイ、課金操作を行わない。
+8. UI表示とAPI応答が矛盾する場合は、両方を記録して原因を分析する。
+9. Cloudflare側の制限、ブラウザ側の制限、MCP側の制限、Codex側の制限を区別して報告する。
+10. Chrome DevTools MCPは、Playwrightでは取得できないChrome固有の詳細なパフォーマンストレースが必要な場合だけ使う。
+
+## Windows ACL escalation
+
+作業対象内のコマンドが `Access is denied`、`PermissionError`、`EPERM` で失敗した場合:
+
+1. 対象パスと操作を限定し、理由を明記してCodexのサンドボックス昇格承認をユーザーへ要求する。
+2. ユーザーが承認してもWindows ACLまたはUACで拒否された場合は、同じ試行を繰り返さない。
+3. 必要最小限の手動PowerShellコマンド、対象パス、変更内容、元に戻す方法を提示し、ユーザーの実行完了を待つ。
+4. リポジトリ全体やユーザープロファイル全体への再帰的ACL変更は提案しない。
+5. ユーザーの手動許可後、失敗した元のコマンドを再実行し、結果を確認してから作業を続ける。

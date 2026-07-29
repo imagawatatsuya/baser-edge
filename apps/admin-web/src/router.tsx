@@ -34,6 +34,7 @@ export const adminRouter = createBrowserRouter(
           element: <ContentLayout />,
           children: [
             { index: true, element: <ContentIndexPlaceholder /> },
+            { path: "overview/:overviewContentId", element: <ContentIndexPlaceholder /> },
             { path: ":contentId", element: <ContentEditPage /> },
           ],
         },
