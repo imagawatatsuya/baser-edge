@@ -1,4 +1,4 @@
-import { createContext, createElement, useCallback, useContext, useEffect, useState, type ReactNode } from "react";
+import { createContext, createElement, useCallback, useContext, useEffect, useState, type ReactNode, type SetStateAction } from "react";
 import type { ContentTreeEntry } from "../api/types";
 import { apiFetch } from "../api/client";
 import { useAuth } from "../auth/AuthProvider";
@@ -16,8 +16,7 @@ async function fetchContentTree(siteId: string, options?: { fresh?: boolean }): 
   const inflight = getContentTreeInflight();
   if (inflight && !options?.fresh) return inflight;
   const request = apiFetch<ContentTreeEntry[]>(`/v1/sites/${siteId}/content-tree`);
-  trackContentTreeInflight(request);
-  return request;
+  return trackContentTreeInflight(request);
 }
 
 export function useContentTree() {
@@ -51,11 +50,20 @@ export function useContentTree() {
     }
   }, [session]);
 
+  const updateEntries = useCallback((update: SetStateAction<ContentTreeEntry[]>) => {
+    if (!session) return;
+    setEntries((current) => {
+      const next = typeof update === "function" ? update(current) : update;
+      setContentTreeCache(session.siteId, next);
+      return next;
+    });
+  }, [session]);
+
   useEffect(() => {
     void reload({ force: false });
   }, [reload]);
 
-  return { entries, error, isReloading, reload };
+  return { entries, error, isReloading, reload, updateEntries };
 }
 
 export type ContentTreeState = ReturnType<typeof useContentTree>;

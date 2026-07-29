@@ -38,8 +38,9 @@ export function createAdminDistServer() {
 
     let filePath;
     if (pathname.startsWith("/console/")) {
-      const rel = pathname.slice("/console/".length);
-      filePath = rel ? join(distRoot, rel) : join(distRoot, "index.html");
+      filePath = pathname.startsWith("/console/assets/")
+        ? join(distRoot, pathname.slice(1))
+        : join(distRoot, "index.html");
     } else {
       res.writeHead(404);
       res.end("not found");

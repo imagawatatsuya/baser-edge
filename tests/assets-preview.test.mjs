@@ -68,6 +68,73 @@ test("signed asset upload enforces token, media type and size then exposes a rea
   );
 });
 
+test("authenticated asset thumbnails use a small immutable derivative and remove it with the asset", async () => {
+  const { assets, boot, owner, objects } = await setup();
+  const created = await assets.createUploadSession(owner, {
+    workspaceId: boot.workspaceId,
+    filename: "large.png",
+    mediaType: "image/png",
+    uploadBaseUrl: "https://api.test",
+  });
+  const token = new URL(created.uploadUrl).searchParams.get("token");
+  const ready = await assets.uploadWithToken({
+    sessionId: created.session.id,
+    token,
+    mediaType: "image/png",
+    body: new Uint8Array([137, 80, 78, 71]),
+  });
+  const before = await assets.getAuthenticatedAssetThumbnail(owner, ready.id);
+  assert.equal(before.source, "original");
+
+  const thumbnailBytes = new Uint8Array([
+    0x52, 0x49, 0x46, 0x46, 0, 0, 0, 0, 0x57, 0x45, 0x42, 0x50,
+  ]);
+  await assets.putAuthenticatedAssetThumbnail(owner, ready.id, {
+    mediaType: "image/webp",
+    contentLength: thumbnailBytes.byteLength,
+    body: thumbnailBytes,
+  });
+  const after = await assets.getAuthenticatedAssetThumbnail(owner, ready.id);
+  assert.equal(after.source, "thumbnail");
+  assert.equal(after.object.mediaType, "image/webp");
+  assert.equal((await new Response(after.object.body).arrayBuffer()).byteLength, thumbnailBytes.byteLength);
+
+  await assets.deleteAsset(owner, ready.id);
+  assert.equal(await objects.head(`${ready.objectKey}.thumbnail.webp`), null);
+});
+
+test("thumbnail upload rejects wrong media type and oversized bodies", async () => {
+  const { assets, boot, owner } = await setup();
+  const created = await assets.createUploadSession(owner, {
+    workspaceId: boot.workspaceId,
+    filename: "thumb-source.png",
+    mediaType: "image/png",
+    uploadBaseUrl: "https://api.test",
+  });
+  const token = new URL(created.uploadUrl).searchParams.get("token");
+  const ready = await assets.uploadWithToken({
+    sessionId: created.session.id,
+    token,
+    mediaType: "image/png",
+    body: new Uint8Array([137, 80, 78, 71]),
+  });
+  await assert.rejects(
+    assets.putAuthenticatedAssetThumbnail(owner, ready.id, {
+      mediaType: "image/png",
+      body: new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10]),
+    }),
+    (error) => error instanceof DomainError && error.code === "THUMBNAIL_MEDIA_TYPE_NOT_ALLOWED",
+  );
+  await assert.rejects(
+    assets.putAuthenticatedAssetThumbnail(owner, ready.id, {
+      mediaType: "image/webp",
+      contentLength: 256 * 1024 + 1,
+      body: new Uint8Array([0x52, 0x49, 0x46, 0x46, 0, 0, 0, 0, 0x57, 0x45, 0x42, 0x50]),
+    }),
+    (error) => error instanceof DomainError && error.code === "THUMBNAIL_TOO_LARGE",
+  );
+});
+
 test("asset upload rejects tampering, expiry and oversized bodies", async () => {
   const { assets, boot, owner, clock } = await setup(1_000_000);
   const created = await assets.createUploadSession(owner, {

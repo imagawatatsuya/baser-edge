@@ -3,6 +3,7 @@ import { apiFetch, ensureStepUp } from "../api/client";
 import { useAuth } from "../auth/AuthProvider";
 import { Button } from "../components/ui/Button";
 import { StatusMessage } from "../components/ui/StatusMessage";
+import { loadConsoleQuery, setConsoleQuery } from "../lib/consoleQueryCache";
 
 type ThemeRow = { id: string; key: string; name: string };
 type ThemeRelease = { id: string; version: string };
@@ -31,8 +32,9 @@ export function ActivationsPage() {
 
   const loadActiveTheme = useCallback(async () => {
     if (!session) return;
+    const path = `/v1/sites/${session.siteId}/theme`;
     try {
-      const active = await apiFetch<ActiveTheme>(`/v1/sites/${session.siteId}/theme`);
+      const active = await loadConsoleQuery(path, () => apiFetch<ActiveTheme>(path));
       applyActiveTheme(active);
       setThemeId((current) => current || active.theme.id);
     } catch {
@@ -47,7 +49,8 @@ export function ActivationsPage() {
 
   useEffect(() => {
     if (!session) return;
-    void apiFetch<ThemeRow[]>(`/v1/workspaces/${session.workspaceId}/themes`)
+    const path = `/v1/workspaces/${session.workspaceId}/themes`;
+    void loadConsoleQuery(path, () => apiFetch<ThemeRow[]>(path), { maxAgeMs: 5 * 60_000 })
       .then((list) => {
         setThemes(list);
         setThemeId((current) => current || list[0]?.id || "");
@@ -57,7 +60,8 @@ export function ActivationsPage() {
 
   useEffect(() => {
     if (!themeId) return;
-    void apiFetch<ThemeRelease[]>(`/v1/themes/${themeId}/releases`)
+    const path = `/v1/themes/${themeId}/releases`;
+    void loadConsoleQuery(path, () => apiFetch<ThemeRelease[]>(path), { maxAgeMs: 5 * 60_000 })
       .then(setReleases)
       .catch((e) => setStatus(e instanceof Error ? e.message : String(e)));
   }, [themeId]);
@@ -72,6 +76,7 @@ export function ActivationsPage() {
         json: { themeReleaseId: releaseId },
       });
       applyActiveTheme(activated);
+      setConsoleQuery(`/v1/sites/${session.siteId}/theme`, activated);
       setThemeId(activated.theme.id);
       setStatus("テーマを有効化しました。");
     } catch (e) {

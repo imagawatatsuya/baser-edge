@@ -1,6 +1,6 @@
 {
   "contextSchemaVersion": 1,
-  "generatedAt": "2026-07-27T22:52:26.876Z",
+  "generatedAt": "2026-07-29T13:43:27.760Z",
   "repository": {
     "name": "baser-edge",
     "version": "0.9.0"
@@ -140,7 +140,7 @@
           "linked-authority"
         ],
         "exists": true,
-        "sha256": "d9d2223ea77833810e2a17f6395a7bf680c37ebf622f998b4d8f1417f96b60da"
+        "sha256": "9629d774347646ad11fde2261a7d45091f332e50e596a58852204f985cff990f"
       },
       {
         "path": "docs/deployment/cloudflare-one-click-trial.md",
@@ -149,7 +149,7 @@
           "linked-authority"
         ],
         "exists": true,
-        "sha256": "bbfc610a4196f6f7f9bddd67aee44264498be15dd228004675e030aa4478f2c1"
+        "sha256": "6f4864d99ef142be0306c1c133ad3b1b18f47340af6e4e45d854456e58b2a96c"
       },
       {
         "path": "docs/deployment/cloudflare-prove-troubleshooting.md",
@@ -158,7 +158,7 @@
           "linked-authority"
         ],
         "exists": true,
-        "sha256": "9a32e003c83ec979f75445758e14a8e284ac9077b7d5894bbfd4d9473a23d867"
+        "sha256": "a0e76f6d95843910d3b7ada4e10429d77cd30917ad586327394122927f2d01bc"
       },
       {
         "path": "docs/deployment/cloudflare-r2-and-media.md",
@@ -230,7 +230,7 @@
           "linked-authority"
         ],
         "exists": true,
-        "sha256": "4f51a117849ed10e0cf940fd483fe3d3a65bc9e7a385dae222f9ba307ca06f5a"
+        "sha256": "069b9d8df091c64c5effa64f7baf8cb4501a84673d9708cb7d6f95b99ca581ae"
       },
       {
         "path": "docs/engineering/validation-policy.md",
@@ -329,7 +329,7 @@
           "implementation-status"
         ],
         "exists": true,
-        "sha256": "6481243c48530b58ac68b7e45b33cc1c53fe40a1ef22280f64359cf6b3a19e99"
+        "sha256": "353438197a855b809e1be5a567356565b3504a6afd55fde8a3c464ea45ef2ebf"
       },
       {
         "path": "package.json",
@@ -813,7 +813,7 @@
     },
     {
       "path": "release/public-snapshot-test/wrangler.jsonc",
-      "sha256": "2dc291e5c3e878113bb591473e49dd99f99b0910d2efdbbb23ea622e9b022412"
+      "sha256": "592f2810ba8fa744cb6231161bc3fc29eaa46d72d8a7b601b7cf0ab7031cccb0"
     },
     {
       "path": "release/public-snapshot-test/wrangler.onboarding-host.jsonc",
@@ -833,7 +833,7 @@
     },
     {
       "path": "release/public-snapshot-test/wrangler.trial.jsonc",
-      "sha256": "3f2057be699c66a1c1c62f80c5e8de272a0f5c376a5a6e12fdc318d3361d40ab"
+      "sha256": "a4275b6b60e4fba042e8fa78532402c26be214559f28e876fc22109b27e6a94e"
     },
     {
       "path": "release/public-snapshot/deploy/one-click/wrangler.jsonc",
@@ -865,7 +865,7 @@
     },
     {
       "path": "wrangler.jsonc",
-      "sha256": "2dc291e5c3e878113bb591473e49dd99f99b0910d2efdbbb23ea622e9b022412"
+      "sha256": "592f2810ba8fa744cb6231161bc3fc29eaa46d72d8a7b601b7cf0ab7031cccb0"
     },
     {
       "path": "wrangler.onboarding-host.jsonc",
@@ -885,7 +885,7 @@
     },
     {
       "path": "wrangler.trial.jsonc",
-      "sha256": "3f2057be699c66a1c1c62f80c5e8de272a0f5c376a5a6e12fdc318d3361d40ab"
+      "sha256": "a4275b6b60e4fba042e8fa78532402c26be214559f28e876fc22109b27e6a94e"
     }
   ],
   "migrations": [
@@ -937,11 +937,11 @@
   "tests": [
     {
       "path": "release/public-snapshot-test/tests/admin-console-browser-smoke.test.mjs",
-      "sha256": "a3e5bf8e5f1309032bde2773826573cd8f057f39c23b1995e3bbbddcb0c11bf5"
+      "sha256": "ce4e225075300e20e54d0dc0f4da25970456dc438f57ad7c46b0e1568eb949e0"
     },
     {
       "path": "release/public-snapshot-test/tests/admin-router-policy.test.mjs",
-      "sha256": "684e4ba3b3758be95a4f70044f0d9933dd2960561dff7167f797d05271966e29"
+      "sha256": "15ce2ed3fb557f76c93d55926d0a6b3b662b803e0d42b4bdad9943db4c4f43bb"
     },
     {
       "path": "release/public-snapshot-test/tests/admin-view-banner.test.mjs",
@@ -953,7 +953,7 @@
     },
     {
       "path": "release/public-snapshot-test/tests/api-worker.test.mjs",
-      "sha256": "ba66e58ea50ff5a69c0185d87fc7418922518490ea8a5f426e043f72694d440f"
+      "sha256": "35b217758ab0056eb570e02c89379345be8bfb661096d1321c789eff6f7ee592"
     },
     {
       "path": "release/public-snapshot-test/tests/apply-d1-migrations.test.mjs",
@@ -961,7 +961,7 @@
     },
     {
       "path": "release/public-snapshot-test/tests/assets-preview.test.mjs",
-      "sha256": "266fb69dfd5c0684f989e32548268131a31c6551eb51053f7b6c9a9491654752"
+      "sha256": "16b76b8f5f1e4e319149dafbf20bdebbfeaab1da69f88b664ffcc9cd5336f363"
     },
     {
       "path": "release/public-snapshot-test/tests/auth.test.mjs",
@@ -993,7 +993,7 @@
     },
     {
       "path": "release/public-snapshot-test/tests/cf-trial-provision-parse.test.mjs",
-      "sha256": "80a7df503e11127bd75003d14f2721b11069edf03f4fb7e6e9d5d6579766d301"
+      "sha256": "c33e1d917fe9217b718a3946279f48151e176bc193240ae8347f4a784d21746a"
     },
     {
       "path": "release/public-snapshot-test/tests/cloudflare-auth.test.mjs",
@@ -1013,15 +1013,19 @@
     },
     {
       "path": "release/public-snapshot-test/tests/console-mutation-sync-ui.test.mjs",
-      "sha256": "1d97ecd941a597ade72e86400b286bd42ed72532afadf9842c81c3554b6e0f6d"
+      "sha256": "95366b6f894b9e532c4919d061ac38fca5f764f39295bbb9edc8a5614a72cdf2"
     },
     {
       "path": "release/public-snapshot-test/tests/console-static-path.test.mjs",
-      "sha256": "9f6c2d8d7659d19b92f1c7906a893dd3065756d58b4655f969470a4a83542f9c"
+      "sha256": "8e0d57deb1b810f695618fe13792b677ba8a44fc14a2600c24a86d58cb748caa"
+    },
+    {
+      "path": "release/public-snapshot-test/tests/content-editor-session-leave.test.mjs",
+      "sha256": "3a142576ca48041cb9fb8182f765ed2329bc448a0f589cbce1302a7795cfee14"
     },
     {
       "path": "release/public-snapshot-test/tests/content-editor-sync.test.mjs",
-      "sha256": "5c58f7b1e8161773632b8f35e7faba3d2d98e8b1220504f01b42b4e23b3efe25"
+      "sha256": "9020916034287daaf06756cc0142f87b8a3476cc04cdb75c8ae6bbfd97c9d3de"
     },
     {
       "path": "release/public-snapshot-test/tests/content-flow.test.mjs",
@@ -1041,15 +1045,19 @@
     },
     {
       "path": "release/public-snapshot-test/tests/d1-adapter.test.mjs",
-      "sha256": "baca47055d705c86cb1000e5b67e5bb473bd38479f62df98ac731fdef7bde79f"
+      "sha256": "7c75bfbea202f22de329919c9ada2defd519544b400bee9a775adcd3a1ef7dfc"
     },
     {
       "path": "release/public-snapshot-test/tests/fixtures/admin-console-smoke-fixtures.mjs",
-      "sha256": "2d9b6e8787da6d31b20aaa78ea825528d1456955f970d06bf3cc8ec50cb2ae60"
+      "sha256": "75a50cdfd61cb8422855f8cce38fe18efc3390858aa1607cd632dce393bc1c70"
     },
     {
       "path": "release/public-snapshot-test/tests/format-asset-delete-error.test.mjs",
-      "sha256": "7cebb939bd8aea04f62b51a922c28dcf8c140e151d1b3eb15977233ccbb06b38"
+      "sha256": "679cf986ce4cea3d3d6e34ff4788c104e4da6db58a4321c0568da6e7bf68bf72"
+    },
+    {
+      "path": "release/public-snapshot-test/tests/helpers/admin-console-smoke-harness.mjs",
+      "sha256": "12ee9ec345e4e025b435532aa5d7c3a20c76918b7df55c2deaf9884b79d26531"
     },
     {
       "path": "release/public-snapshot-test/tests/mail-form.test.mjs",
@@ -1069,7 +1077,7 @@
     },
     {
       "path": "release/public-snapshot-test/tests/platform-capabilities-urls.test.mjs",
-      "sha256": "ef1c30784a6ae45d504dd6584eec400331e96e7dabc9c7a5c26dc7ad8386581b"
+      "sha256": "9409c117ac949158f1a516cbede7475ff5c39bd226588364a990ce9467330218"
     },
     {
       "path": "release/public-snapshot-test/tests/plugin-diagnostics.test.mjs",
@@ -1085,7 +1093,7 @@
     },
     {
       "path": "release/public-snapshot-test/tests/public-renderer.test.mjs",
-      "sha256": "87f02a0c0aa5f0b71a10ba71a6c504a4f6efb1fa395237e763de222aa9d251c0"
+      "sha256": "ded9e9a954b2c6ff96f4a7c39fa6d6cdd31c837baa646e306fea042aaea51aae"
     },
     {
       "path": "release/public-snapshot-test/tests/public-snapshot.test.mjs",
@@ -1245,7 +1253,7 @@
     },
     {
       "path": "tests/api-worker.test.mjs",
-      "sha256": "ba66e58ea50ff5a69c0185d87fc7418922518490ea8a5f426e043f72694d440f"
+      "sha256": "35b217758ab0056eb570e02c89379345be8bfb661096d1321c789eff6f7ee592"
     },
     {
       "path": "tests/apply-d1-migrations.test.mjs",
@@ -1285,7 +1293,7 @@
     },
     {
       "path": "tests/cf-trial-provision-parse.test.mjs",
-      "sha256": "80a7df503e11127bd75003d14f2721b11069edf03f4fb7e6e9d5d6579766d301"
+      "sha256": "c33e1d917fe9217b718a3946279f48151e176bc193240ae8347f4a784d21746a"
     },
     {
       "path": "tests/cloudflare-auth.test.mjs",
@@ -1309,7 +1317,7 @@
     },
     {
       "path": "tests/console-static-path.test.mjs",
-      "sha256": "9f6c2d8d7659d19b92f1c7906a893dd3065756d58b4655f969470a4a83542f9c"
+      "sha256": "8e0d57deb1b810f695618fe13792b677ba8a44fc14a2600c24a86d58cb748caa"
     },
     {
       "path": "tests/content-editor-session-leave.test.mjs",
@@ -1337,7 +1345,7 @@
     },
     {
       "path": "tests/d1-adapter.test.mjs",
-      "sha256": "2278ab4aa579cdde631fbf35b1275bbb345ea3e169610dfa47e784e57994e4c2"
+      "sha256": "7c75bfbea202f22de329919c9ada2defd519544b400bee9a775adcd3a1ef7dfc"
     },
     {
       "path": "tests/fixtures/admin-console-smoke-fixtures.mjs",
@@ -1349,7 +1357,7 @@
     },
     {
       "path": "tests/helpers/admin-console-smoke-harness.mjs",
-      "sha256": "16d6d73a9d6abade68f7f490d4d97a63077565d025a3ab9ae6c16e16ec8b367d"
+      "sha256": "12ee9ec345e4e025b435532aa5d7c3a20c76918b7df55c2deaf9884b79d26531"
     },
     {
       "path": "tests/mail-form.test.mjs",
@@ -1385,7 +1393,7 @@
     },
     {
       "path": "tests/public-renderer.test.mjs",
-      "sha256": "87f02a0c0aa5f0b71a10ba71a6c504a4f6efb1fa395237e763de222aa9d251c0"
+      "sha256": "ded9e9a954b2c6ff96f4a7c39fa6d6cdd31c837baa646e306fea042aaea51aae"
     },
     {
       "path": "tests/public-snapshot.test.mjs",
@@ -1497,6 +1505,5 @@
       "path": ".agents/skills/baseredge-theme-development/SKILL.md",
       "sha256": "b304575609438b8364ac3f3f41647d9ebc79e18f1f181930a077943b5b615e6a"
     }
-  ],
-  "reviewReason": "initial adaptive skill installation"
+  ]
 }

@@ -26,8 +26,8 @@ function migrate(db) {
 }
 
 class D1Shim {
-  constructor(db) { this.db = db; }
-  prepare(sql) { return new Statement(this.db, sql); }
+  constructor(db) { this.db = db; this.queryCount = 0; }
+  prepare(sql) { this.queryCount += 1; return new Statement(this.db, sql); }
   async batch(statements) {
     this.db.exec("BEGIN");
     try {
@@ -45,7 +45,8 @@ class D1Shim {
 test("D1 adapter executes the same approval-first publication flow", async () => {
   const db = new DatabaseSync(":memory:");
   migrate(db);
-  const store = new D1CmsStore(new D1Shim(db));
+  const shim = new D1Shim(db);
+  const store = new D1CmsStore(shim);
   const cms = new CmsService(store);
   const boot = await cms.bootstrap({ workspaceName: "D1", siteName: "D1 Site", hostname: "d1.test", ownerName: "Owner" });
   const owner = actor(boot.ownerPrincipalId, "human");
@@ -81,6 +82,10 @@ test("D1 adapter executes the same approval-first publication flow", async () =>
   await cms.decideApproval(owner, { approvalId: approval.id, decision: "approved" });
   const published = await cms.publish(owner, { contentItemId: page.item.id, revisionId: proposal.revision.id, approvalId: approval.id });
   assert.equal(published.publishedRevision.document.root.slots.body[0].props.text, "After");
+  shim.queryCount = 0;
+  const publicResolution = await cms.resolvePublicPath(boot.siteId, "/d1");
+  assert.equal(publicResolution?.kind, "content");
+  assert.ok(shim.queryCount <= 4, `public path used ${shim.queryCount} D1 queries`);
   assert.equal((await store.listOutbox()).length, 1);
   db.close();
 });
@@ -212,7 +217,9 @@ test("D1 persists signed assets, published references and revocable preview sess
   const preview = await previews.create(owner, { contentItemId: page.item.id, revisionId: page.workingRevision.id, previewBaseUrl: "https://preview.test" });
   assert.equal(await store.isAssetDeliverableOnPublicSite(boot.siteId, ready.id, Date.now()), true);
   const previewToken = decodeURIComponent(new URL(preview.previewUrl).pathname.replace("/_preview/", ""));
+  shim.queryCount = 0;
   assert.equal((await previews.resolve(previewToken)).revision.id, page.workingRevision.id);
+  assert.ok(shim.queryCount <= 2, `preview resolution used ${shim.queryCount} D1 statements`);
   assert.equal(db.prepare("SELECT count(*) AS count FROM preview_sessions").get().count, 1);
   await previews.revoke(owner, preview.session.id);
   await assert.rejects(previews.resolve(previewToken), (error) => error instanceof DomainError && error.code === "PREVIEW_REVOKED");

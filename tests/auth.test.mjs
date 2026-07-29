@@ -6,10 +6,13 @@ import { createApiWorker } from "../apps/api-worker/dist/index.js";
 import { CmsService, MemoryCmsStore } from "../packages/content-kernel/dist/index.js";
 import { D1CmsStore } from "../packages/cloudflare-adapters/dist/index.js";
 import {
+  AuthService,
   buildTestAuthenticationResponse,
   buildTestRegistrationResponse,
   CSRF_HEADER,
+  MemoryAuthStore,
   StepUpOperations,
+  TestWebAuthnGateway,
 } from "../packages/auth-kernel/dist/index.js";
 
 const THEME_TOKENS = {
@@ -132,6 +135,49 @@ test("cookie-authenticated mutations require CSRF protection", async () => {
     headers: sessionHeaders(cookies),
   }), {});
   assert.equal(denied.status, 403);
+});
+
+test("session activity writes are throttled during image request bursts", async () => {
+  class CountingAuthStore extends MemoryAuthStore {
+    updateCalls = 0;
+    async updateSession(session) {
+      this.updateCalls += 1;
+      await super.updateSession(session);
+    }
+  }
+  const store = new CountingAuthStore();
+  const clock = { value: 1_000_000, now() { return this.value; } };
+  const workspaceId = "ws_session-touch";
+  const principalId = "principal_session-touch";
+  const auth = new AuthService({
+    store,
+    clock,
+    sessionTouchIntervalMs: 5 * 60_000,
+    webauthn: new TestWebAuthnGateway(),
+    principals: {
+      async getPrincipal(id) {
+        return id === principalId
+          ? { id: principalId, workspaceId, type: "human", state: "active" }
+          : null;
+      },
+    },
+  });
+  const issued = await auth.issueInstantOwnerSession({ workspaceId, principalId });
+  const request = new Request("https://api.test/v1/assets/asset_x/thumbnail", {
+    headers: { cookie: `baser_session=${issued.sessionToken}` },
+  });
+
+  assert.ok(await auth.resolveSessionFromRequest(request));
+  clock.value += 5 * 60_000 - 1;
+  assert.ok(await auth.resolveSessionFromRequest(request));
+  assert.equal(store.updateCalls, 0);
+
+  clock.value += 1;
+  const touched = await auth.resolveSessionFromRequest(request);
+  assert.equal(touched.lastSeenAt, clock.value);
+  assert.equal(store.updateCalls, 1);
+  assert.ok(await auth.resolveSessionFromRequest(request));
+  assert.equal(store.updateCalls, 1);
 });
 
 test("production rejects development principal headers", async () => {

@@ -129,6 +129,8 @@ npx wrangler d1 delete baser-edge --config wrangler.trial.jsonc
 | `GET https://<api-worker>/health` | 200 JSON |
 | `GET https://<api-worker>/console/` | HTML に `/console/assets/*.js` |
 | 上記 JS URL | **200** かつ `Content-Type: application/javascript`（または `text/javascript`） |
+| 公開ページを2回GET | 1回目`x-baser-edge-cache: MISS`、同じcoloの2回目`HIT`（Cacheはcoloローカル） |
+| 公開ページの`Server-Timing` | `baser;dur=...`でWorker内処理時間を確認 |
 | `GET https://<public-worker>/assets/<id>`（フルスタック時） | 画像の 200（お試し R2 なしでは 404 が仕様） |
 | `deploy/cloudflare-state.json` | `d1DatabaseId`・`apiUrl`・`bootstrap` / `demoHint` |
 
@@ -159,6 +161,7 @@ npx wrangler d1 delete baser-edge --config wrangler.trial.jsonc
 2. **Wrangler 設定は trial / default を混ぜない**（`database_id`・migrate・delete）。
 3. **トリガーを含むリモート D1 マイグレーションは control-plane query ではなく D1 binding 経由**で実行する。
 4. **Windows は env 構文と `d1 execute --file`** に注意。
-5. **`/console` は URL と dist レイアウトのマッピング**が必須。
+5. **`/console/assets/*`は同じURL構造で配置し、root `index.html`をSPA fallbackに使う**。どちらもStatic Assetsから直接配信する。
+6. **公開D1 readはSessions API**、公開レスポンスはCache APIを使う。管理ビューとPreviewはbypassする。
 
 これらは「一度だけのイレギュラー」ではなく、Cloudflare 上で prove を商品化するうえでの **定常的なチェックリスト**として使える。

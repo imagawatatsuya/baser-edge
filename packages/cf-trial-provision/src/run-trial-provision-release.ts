@@ -27,6 +27,7 @@ export type TrialReleaseManifest = {
 
 export type TrialReleaseConfig = {
   accountId: string;
+  d1PrimaryLocationHint?: import("./cloudflare-builds.js").D1PrimaryLocationHint;
   releaseBaseUrl: string;
   /** Use ASSETS binding for same-origin /trial-release (avoids worker self-fetch 404). */
   httpFetch?: typeof fetch;
@@ -152,7 +153,11 @@ export async function runTrialProvisionRelease(
   const { accountId, releaseBaseUrl } = config;
 
   onProgress({ step: "provision", message: "データベースを準備しています…" });
-  const databaseId = await ensureD1Database(token, accountId, budget);
+  const databaseId = await ensureD1Database(token, accountId, budget, {
+    ...(config.d1PrimaryLocationHint
+      ? { primaryLocationHint: config.d1PrimaryLocationHint }
+      : {}),
+  });
   const manifest = await loadTrialReleaseManifest(config);
 
   onProgress({ step: "migrate", message: "データベースを初期化しています…" });

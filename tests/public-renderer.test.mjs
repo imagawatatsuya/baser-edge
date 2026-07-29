@@ -2,8 +2,21 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { createPublicWorker } from "../apps/public-renderer/dist/index.js";
 import { CmsService, MemoryCmsStore, actor } from "@baser-edge/content-kernel";
+import { MemoryThemeStore, ThemeService } from "@baser-edge/theme-kernel";
 
 import { createBlock, createEmptyDocument } from "@baser-edge/structured-document";
+
+function memoryResponseCache() {
+  const entries = new Map();
+  return {
+    async match(request) {
+      return entries.get(request.url)?.clone();
+    },
+    async put(request, response) {
+      entries.set(request.url, response.clone());
+    },
+  };
+}
 
 test("Public Renderer shows an initialized-site page instead of 404 for an empty root", async () => {
   const cms = new CmsService(new MemoryCmsStore());
@@ -72,6 +85,78 @@ test("Public Renderer shows published admin banner when baserAdminView=published
   assert.equal(admin.status, 200);
   assert.match(adminHtml, /公開済みページ/);
   assert.match(adminHtml, /【公開】/);
+});
+
+test("Public Renderer caches public GET responses, bypasses admin views, and uses a D1 read session", async () => {
+  const cms = new CmsService(new MemoryCmsStore());
+  const boot = await cms.bootstrap({
+    workspaceName: "Renderer",
+    siteName: "Cache Site",
+    hostname: "renderer.test",
+    ownerName: "Owner",
+  });
+  const owner = actor(boot.ownerPrincipalId, "human");
+  const page = await cms.createPage(owner, {
+    siteId: boot.siteId,
+    parentId: null,
+    slug: "cached",
+    title: "Cached",
+    document: createEmptyDocument(),
+  });
+  const approval = await cms.requestApproval(owner, {
+    contentItemId: page.item.id,
+    revisionId: page.workingRevision.id,
+  });
+  await cms.decideApproval(owner, { approvalId: approval.id, decision: "approved" });
+  await cms.publish(owner, {
+    contentItemId: page.item.id,
+    revisionId: page.workingRevision.id,
+    approvalId: approval.id,
+  });
+
+  const session = { prepare() {}, batch() {} };
+  let sessionCalls = 0;
+  let resolverCalls = 0;
+  const db = {
+    prepare() {},
+    batch() {},
+    withSession(constraint) {
+      assert.equal(constraint, "first-unconstrained");
+      sessionCalls += 1;
+      return session;
+    },
+  };
+  const worker = createPublicWorker(
+    (env) => {
+      resolverCalls += 1;
+      assert.equal(env.DB, session);
+      return cms;
+    },
+    {
+      cache: memoryResponseCache(),
+      resolveThemes: () => new ThemeService({
+        store: new MemoryThemeStore(),
+        cms,
+        security: { authorize: async () => {}, success: async () => {} },
+      }),
+    },
+  );
+  const env = { SITE_ID: boot.siteId, DB: db };
+  const request = new Request("https://renderer.test/cached");
+  const first = await worker.fetch(request, env);
+  assert.equal(first.headers.get("x-baser-edge-cache"), "MISS");
+  const second = await worker.fetch(request, env);
+  assert.equal(second.headers.get("x-baser-edge-cache"), "HIT");
+  assert.equal(sessionCalls, 1);
+  assert.equal(resolverCalls, 1);
+
+  const admin = await worker.fetch(
+    new Request("https://renderer.test/cached?baserAdminView=published"),
+    env,
+  );
+  assert.equal(admin.headers.get("x-baser-edge-cache"), "BYPASS");
+  assert.equal(sessionCalls, 2);
+  assert.equal(resolverCalls, 2);
 });
 
 test("Public Renderer returns an HTTP redirect for a moved baser content path", async () => {

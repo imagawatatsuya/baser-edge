@@ -70,6 +70,8 @@ export interface CommitRevisionRecordInput {
   changeSummary: string;
   agentRunId: string | null;
   now: number;
+  /** Snapshot already authorized by the application service for this operation. */
+  snapshot?: ContentSnapshot;
 }
 
 export interface RelocateContentRecordInput {
@@ -79,6 +81,8 @@ export interface RelocateContentRecordInput {
   newSlug: string;
   expectedTreeVersion: number;
   now: number;
+  /** Snapshot already authorized by the application service for this operation. */
+  snapshot?: ContentSnapshot;
 }
 
 export interface ReorderContentRecordInput {
@@ -89,6 +93,8 @@ export interface ReorderContentRecordInput {
   insertAfterContentItemId: ContentItemId | null;
   expectedTreeVersion: number;
   now: number;
+  /** Snapshot already authorized by the application service for this operation. */
+  snapshot?: ContentSnapshot;
 }
 
 export interface CopyContentRecordInput {

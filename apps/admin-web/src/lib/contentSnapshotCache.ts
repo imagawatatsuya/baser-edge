@@ -38,38 +38,22 @@ export async function fetchContentEditorPayload(
   const inflight = inflightById.get(contentId);
   if (inflight) return inflight;
 
-  const isArticle = options?.isArticle;
   const request = (async () => {
-    if (isArticle === true) {
-      const [snapshot, articleMeta] = await Promise.all([
-        apiFetch<ContentSnapshot>(`/v1/content/${encodeURIComponent(contentId)}`),
-        apiFetch<ArticleMeta>(`/v1/content/${encodeURIComponent(contentId)}/article-meta`),
-      ]);
-      const payload = { snapshot, articleMeta };
-      if (snapshot.workingRevision?.id) {
-        setContentEditorCache(contentId, payload);
-      }
-      return payload;
-    }
-    const snapshot = await apiFetch<ContentSnapshot>(`/v1/content/${encodeURIComponent(contentId)}`);
-    let articleMeta: ArticleMeta | null = null;
-    if (isArticle === undefined && snapshot.item.contentTypeKey === "article") {
-      articleMeta = await apiFetch<ArticleMeta>(`/v1/content/${encodeURIComponent(contentId)}/article-meta`);
-    }
-    const payload = { snapshot, articleMeta };
+    const payload = await apiFetch<CachedEditorPayload>(
+      `/v1/content/${encodeURIComponent(contentId)}/editor`,
+    );
+    const { snapshot } = payload;
     if (snapshot.workingRevision?.id) {
       setContentEditorCache(contentId, payload);
     }
     return payload;
   })();
 
-  inflightById.set(
-    contentId,
-    request.finally(() => {
-      if (inflightById.get(contentId) === request) inflightById.delete(contentId);
-    }),
-  );
-  return request;
+  const tracked = request.finally(() => {
+    if (inflightById.get(contentId) === tracked) inflightById.delete(contentId);
+  });
+  inflightById.set(contentId, tracked);
+  return tracked;
 }
 
 /** Warm cache before navigation (tree hover / focus). */

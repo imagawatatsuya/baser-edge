@@ -24,7 +24,9 @@ export function setContentTreeInflight(promise: Promise<ContentTreeEntry[]> | nu
 }
 
 export function trackContentTreeInflight(request: Promise<ContentTreeEntry[]>) {
-  inflightTree = request.finally(() => {
-    if (inflightTree === request) inflightTree = null;
+  const tracked = request.finally(() => {
+    if (inflightTree === tracked) inflightTree = null;
   });
+  inflightTree = tracked;
+  return tracked;
 }

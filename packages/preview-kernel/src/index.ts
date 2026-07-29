@@ -18,7 +18,7 @@ import {
   type WorkspaceId,
 } from "@baser-edge/core-types";
 import { Capabilities, type AuthorizationResource } from "@baser-edge/authorization";
-import type { CmsService, ContentRevision, ContentSnapshot } from "@baser-edge/content-kernel";
+import type { CmsService, ContentRevision, ContentSnapshot, Site } from "@baser-edge/content-kernel";
 
 export interface PreviewSession {
   id: PreviewSessionId;
@@ -42,6 +42,7 @@ export interface PreviewStore {
   revoke(id: PreviewSessionId, now: number): Promise<PreviewSession>;
   touch(id: PreviewSessionId, now: number): Promise<void>;
   listActiveSessionsForSite(siteId: SiteId, now: number): Promise<PreviewSession[]>;
+  resolve?(id: PreviewSessionId): Promise<ResolvedPreview | null>;
 }
 
 export interface PreviewSecurityGateway {
@@ -81,6 +82,7 @@ export interface ResolvedPreview {
   session: PreviewSession;
   snapshot: ContentSnapshot;
   revision: ContentRevision;
+  site?: Site;
 }
 
 export class PreviewService {
@@ -105,8 +107,10 @@ export class PreviewService {
     previewBaseUrl: string;
     expiresInSeconds?: number;
     themeRelease?: string;
+    snapshot?: ContentSnapshot;
   }): Promise<{ session: PreviewSession; previewUrl: string }> {
-    const snapshot = await this.#cms.getContent(actor, input.contentItemId);
+    const snapshot = input.snapshot ?? await this.#cms.getContent(actor, input.contentItemId);
+    assertDomain(snapshot.item.id === input.contentItemId, "PREVIEW_CONTENT_MISMATCH", "Preview content does not match the requested item", 422);
     await this.#security.authorize(actor, Capabilities.PreviewCreate, {
       workspaceId: snapshot.item.workspaceId,
       siteId: snapshot.item.siteId,
@@ -114,7 +118,7 @@ export class PreviewService {
       path: snapshot.route.path,
       risk: "low",
     }, "preview.create", "content-item", snapshot.item.id);
-    const revision = await this.#cms.getRevisionForPreview(actor, input.contentItemId, input.revisionId);
+    const revision = await this.#cms.getRevisionForPreview(actor, input.contentItemId, input.revisionId, snapshot);
     const now = this.#clock.now();
     const expiresAt = now + Math.max(60, Math.min(input.expiresInSeconds ?? 1800, 24 * 60 * 60)) * 1000;
     const session: PreviewSession = {
@@ -158,12 +162,14 @@ export class PreviewService {
     return { session, previewUrl };
   }
 
-  async resolve(token: string): Promise<ResolvedPreview> {
+  async resolve(token: string, options: { deferTouch?: (promise: Promise<void>) => void } = {}): Promise<ResolvedPreview> {
     const payload = await verifyCompactToken<PreviewTokenPayload>(token, this.#secret);
     assertDomain(payload?.typ === "content-preview", "INVALID_PREVIEW_TOKEN", "Preview token is invalid", 403);
     const now = this.#clock.now();
     assertDomain(typeof payload.expiresAt === "number" && payload.expiresAt > now, "PREVIEW_EXPIRED", "Preview has expired", 410);
-    const session = await this.#store.get(asPreviewSessionId(String(payload.sessionId)));
+    const previewId = asPreviewSessionId(String(payload.sessionId));
+    const projected = this.#store.resolve ? await this.#store.resolve(previewId) : null;
+    const session = projected?.session ?? await this.#store.get(previewId);
     assertDomain(session, "PREVIEW_NOT_FOUND", "Preview session not found", 404);
     assertDomain(session.revokedAt === null, "PREVIEW_REVOKED", "Preview session has been revoked", 410);
     assertDomain(session.expiresAt > now, "PREVIEW_EXPIRED", "Preview has expired", 410);
@@ -178,13 +184,15 @@ export class PreviewService {
       "Preview token no longer matches the stored session",
       403,
     );
-    const snapshot = await this.#cms.store.getContentSnapshot(asContentItemId(String(payload.contentItemId)));
+    const snapshot = projected?.snapshot ?? await this.#cms.store.getContentSnapshot(asContentItemId(String(payload.contentItemId)));
     assertDomain(snapshot && snapshot.item.siteId === asSiteId(String(payload.siteId)), "PREVIEW_CONTENT_NOT_FOUND", "Preview content was not found", 404);
-    const revision = await this.#cms.store.getRevision(asRevisionId(String(payload.revisionId)));
+    const revision = projected?.revision ?? await this.#cms.store.getRevision(asRevisionId(String(payload.revisionId)));
     assertDomain(revision && revision.contentItemId === snapshot.item.id, "PREVIEW_REVISION_NOT_FOUND", "Preview revision was not found", 404);
     assertDomain(revision.contentHash === session.revisionHash, "PREVIEW_REVISION_CHANGED", "Preview revision integrity check failed", 409);
-    await this.#store.touch(session.id, now);
-    return { session, snapshot, revision };
+    const touch = this.#store.touch(session.id, now);
+    if (options.deferTouch) options.deferTouch(touch);
+    else await touch;
+    return { session, snapshot, revision, ...(projected?.site ? { site: projected.site } : {}) };
   }
 
   async revoke(actor: ActorContext, previewId: PreviewSessionId): Promise<PreviewSession> {

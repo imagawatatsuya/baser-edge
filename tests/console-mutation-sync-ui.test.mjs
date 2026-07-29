@@ -71,6 +71,33 @@ test("siteViewSync invalidates content tree and media asset caches", () => {
   assert.match(source, /invalidateContentEditorCache/);
 });
 
+test("console GET cache deduplicates reads and is cleared on auth expiry", () => {
+  const cache = readAdmin("lib/consoleQueryCache.ts");
+  assert.match(cache, /const inflight = new Map/);
+  assert.match(cache, /if \(pending\) return pending as Promise<T>/);
+  assert.match(cache, /fresh\?: boolean/);
+  assert.match(cache, /invalidateConsoleQuery/);
+  const client = readAdmin("api/client.ts");
+  const failAuth = client.slice(client.indexOf("function failAuth()"), client.indexOf("export function syncCsrfFromCookies"));
+  assert.match(failAuth, /invalidateConsoleQuery\(\)/);
+});
+
+test("console capabilities share one cached request across mounted surfaces", () => {
+  const hook = readAdmin("hooks/useConsoleCapabilities.ts");
+  assert.match(hook, /loadConsoleQuery/);
+  assert.match(hook, /peekConsoleQuery/);
+  assert.match(hook, /CAPABILITIES_MAX_AGE_MS/);
+  assert.match(hook, /fresh: refreshKey > 0/);
+});
+
+test("LiveSiteOutOfSync reuses the content tree and parallelizes custom reads", () => {
+  const source = readAdmin("pages/LiveSiteOutOfSyncPage.tsx");
+  assert.match(source, /peekContentTreeCache/);
+  assert.match(source, /Promise\.all\(\[/);
+  assert.match(source, /Promise\.all\(defs\.map/);
+  assert.doesNotMatch(source, /for \(const def of defs\)/);
+});
+
 test("AssetPickerModal loads assets via shared workspace media cache", () => {
   const modal = readAdmin("components/AssetPickerModal.tsx");
   assert.match(modal, /useWorkspaceMediaAssets/);
@@ -107,11 +134,35 @@ test("contentSnapshotCache invalidation clears inflight editor fetches", () => {
   assert.match(source, /fresh\?: boolean/);
 });
 
-test("ContentEditPage reloads content tree after article-meta PATCH", () => {
+test("ContentEditPage updates article metadata locally without reloading the content tree", () => {
   const source = readAdmin("pages/ContentEditPage.tsx");
   assert.match(source, /\/article-meta`[\s\S]*method: "PATCH"/);
   assert.match(source, /toDatetimeLocalValue\(articleMeta\.postedAt\) === postedAtLocal/);
-  assert.match(source, /await reloadContentTree\(\)/);
+  const patchAt = source.indexOf("/article-meta`");
+  const patchBlock = source.slice(patchAt, source.indexOf("</Field>", patchAt));
+  assert.doesNotMatch(patchBlock, /reloadContentTree/);
+});
+
+test("editor reads one aggregated endpoint and opens a pending preview tab synchronously", () => {
+  const cache = readAdmin("lib/contentSnapshotCache.ts");
+  assert.match(cache, /\/v1\/content\/\$\{encodeURIComponent\(contentId\)\}\/editor/);
+  assert.doesNotMatch(cache, /Promise\.all/);
+  const source = readAdmin("pages/ContentEditPage.tsx");
+  const previewAt = source.indexOf("async function onPreviewDraft()");
+  const previewBlock = source.slice(previewAt, source.indexOf("async function onPublish()", previewAt));
+  const openAt = previewBlock.indexOf('openNamedBrowserTab("about:blank"');
+  const requestAt = previewBlock.indexOf("/previews`");
+  assert.ok(openAt >= 0 && openAt < requestAt, "pending tab must open before preview network work");
+  assert.match(previewBlock, /location\.replace\(result\.previewUrl\)/);
+});
+
+test("ContentLayout applies reorder results locally instead of reloading the full tree", () => {
+  const source = readAdmin("pages/ContentLayout.tsx");
+  const reorderAt = source.indexOf("async function reorderEntry(");
+  const reorderBlock = source.slice(reorderAt, source.indexOf("async function moveEntryUp", reorderAt));
+  assert.match(reorderBlock, /applyReorderToContentTree/);
+  assert.match(reorderBlock, /updateEntries/);
+  assert.doesNotMatch(reorderBlock, /reload\(\)/);
 });
 
 test("TrashPage reloads trash list after restore", () => {
@@ -130,6 +181,20 @@ test("MediaLayout shares media assets via provider; library and upload use conte
   const upload = readAdmin("pages/media/MediaUploadPage.tsx");
   assert.match(library, /useMediaAssetsContext/);
   assert.match(upload, /useMediaAssetsContext/);
+});
+
+test("media thumbnails use derivatives, upload-time generation, and above-fold priority", () => {
+  const component = readAdmin("components/AssetThumbnail.tsx");
+  const url = readAdmin("lib/assetUrl.ts");
+  const upload = readAdmin("pages/media/MediaUploadPage.tsx");
+  const library = readAdmin("pages/media/MediaLibraryPage.tsx");
+  assert.match(url, /\/thumbnail/);
+  assert.match(component, /consoleAssetThumbnailUrl/);
+  assert.match(component, /ensureAssetThumbnailFromImage/);
+  assert.match(component, /fetchPriority/);
+  assert.match(upload, /createAssetThumbnail/);
+  assert.match(upload, /persistAssetThumbnail/);
+  assert.match(library, /eager=\{index < 12\}/);
 });
 
 test("CustomEntriesLayout shares entries list; edit page reloads after mutations", () => {
@@ -153,6 +218,8 @@ test("PluginsPage reloads activations after activate and deactivate", () => {
   const deactivateFn = source.indexOf("async function deactivate(");
   assert.ok(source.indexOf("await loadActivations()", activateFn) > activateFn);
   assert.ok(source.indexOf("await loadActivations()", deactivateFn) > deactivateFn);
+  assert.ok(source.indexOf("invalidateConsoleQuery", activateFn) > activateFn);
+  assert.ok(source.indexOf("invalidateConsoleQuery", deactivateFn) > deactivateFn);
 });
 
 test("ActivationsPage reloads active theme after activate", () => {
@@ -162,6 +229,7 @@ test("ActivationsPage reloads active theme after activate", () => {
   assert.match(source, /activeSummary/);
   const activateFn = source.indexOf("async function activate(");
   assert.ok(source.indexOf("applyActiveTheme(activated)", activateFn) > activateFn);
+  assert.ok(source.indexOf("setConsoleQuery", activateFn) > activateFn);
   assert.match(source, /activeReleaseId/);
 });
 

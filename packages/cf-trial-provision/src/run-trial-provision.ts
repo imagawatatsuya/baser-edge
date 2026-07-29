@@ -27,7 +27,11 @@ export async function runTrialProvision(
   const { accountId } = config;
 
   onProgress({ step: "provision", message: "データベースを準備しています…" });
-  await ensureD1Database(token, accountId, budget);
+  await ensureD1Database(token, accountId, budget, {
+    ...(config.d1PrimaryLocationHint
+      ? { primaryLocationHint: config.d1PrimaryLocationHint }
+      : {}),
+  });
 
   onProgress({ step: "build", message: "利用者の Cloudflare でビルドを開始しています…" });
 

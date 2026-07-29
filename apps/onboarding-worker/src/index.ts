@@ -14,6 +14,7 @@ import {
   parseTrialProvisionQueueMessage,
   runTrialProvisionReleaseStep,
   trialProvisionStageProgress,
+  type D1PrimaryLocationHint,
   type TrialProvisionReleaseState,
   type TrialProvisionQueueMessage,
 } from "@baser-edge/cf-trial-provision";
@@ -72,6 +73,26 @@ const GRANT_TTL = 15 * 60;
 const SESSION_TTL = 24 * 60 * 60;
 const LEGACY_SESSION_STALE_MS = 2 * 60 * 1000;
 const QUEUED_SESSION_STALE_MS = 16 * 60 * 1000;
+
+export function resolveD1PrimaryLocationHint(request: Request): D1PrimaryLocationHint | undefined {
+  const cf = (request as Request & {
+    cf?: { continent?: unknown; longitude?: unknown };
+  }).cf;
+  const continent = typeof cf?.continent === "string"
+    ? cf.continent.toUpperCase()
+    : "";
+  if (continent === "AS") return "apac";
+  if (continent === "OC") return "oc";
+  if (continent === "EU" || continent === "AF") return "weur";
+  if (continent === "SA") return "enam";
+  if (continent === "NA") {
+    const longitude = typeof cf?.longitude === "number"
+      ? cf.longitude
+      : Number(cf?.longitude);
+    return Number.isFinite(longitude) && longitude <= -100 ? "wnam" : "enam";
+  }
+  return undefined;
+}
 
 function publicTrial(env: Env): boolean {
   const v = env.BASER_ONBOARDING_PUBLIC?.trim().toLowerCase();
@@ -279,6 +300,7 @@ async function startProveJob(
   const mode = provisionMode(env);
   const stackId = provisionStackId(env);
   const sessionId = randomHex(12);
+  const d1PrimaryLocationHint = resolveD1PrimaryLocationHint(req);
   const session: SessionRecord = {
     id: sessionId,
     status: "queued",
@@ -318,6 +340,7 @@ async function startProveJob(
         accountId,
         requestOrigin: requestOriginValue,
         encryptedApiToken,
+        ...(d1PrimaryLocationHint ? { d1PrimaryLocationHint } : {}),
       });
     } catch (error) {
       await patchSessionById(env, sessionId, {
@@ -393,6 +416,9 @@ async function consumeTrialProvisionMessage(
         requestOrigin: body.requestOrigin,
         encryptedApiToken: body.encryptedApiToken,
         encryptedState: currentCheckpoint,
+        ...(body.d1PrimaryLocationHint
+          ? { d1PrimaryLocationHint: body.d1PrimaryLocationHint }
+          : {}),
       });
     }
     message.ack();
@@ -422,6 +448,9 @@ async function consumeTrialProvisionMessage(
         apiToken,
         {
           accountId: body.accountId,
+          ...(body.d1PrimaryLocationHint
+            ? { d1PrimaryLocationHint: body.d1PrimaryLocationHint }
+            : {}),
           releaseBaseUrl: trialReleaseBaseUrl(env, body.requestOrigin),
           httpFetch: createTrialReleaseFetch(env.ASSETS, body.requestOrigin),
           ...(oauthConfigured(env)
@@ -469,6 +498,9 @@ async function consumeTrialProvisionMessage(
           requestOrigin: body.requestOrigin,
           encryptedApiToken: body.encryptedApiToken,
           encryptedState: nextProvisionState,
+          ...(body.d1PrimaryLocationHint
+            ? { d1PrimaryLocationHint: body.d1PrimaryLocationHint }
+            : {}),
         });
       }
     } else {
@@ -479,6 +511,7 @@ async function consumeTrialProvisionMessage(
         body.requestOrigin,
         (patch) => patchSessionById(env, body.sessionId, patch),
         createTrialReleaseFetch(env.ASSETS, body.requestOrigin),
+        body.d1PrimaryLocationHint,
       );
     }
   } catch (error) {

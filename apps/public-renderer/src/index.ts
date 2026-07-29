@@ -51,6 +51,16 @@ export interface PublicWorkerOptions {
   resolveCustomContent?: (env: Env, cms: CmsService) => CustomContentService;
   resolveMailForms?: (env: Env, cms: CmsService, customContent: CustomContentService) => MailFormService;
   resolveThemes?: (env: Env, cms: CmsService) => ThemeService;
+  cache?: PublicResponseCache | null;
+}
+
+export interface PublicResponseCache {
+  match(request: Request): Promise<Response | undefined>;
+  put(request: Request, response: Response): Promise<void>;
+}
+
+export interface PublicExecutionContext {
+  waitUntil(promise: Promise<unknown>): void;
 }
 
 const memoryCms = new CmsService(new MemoryCmsStore());
@@ -64,12 +74,12 @@ const noopSecurity = {
   success: async () => {},
 };
 
-export function createPublicWorker(
+function createPublicWorkerCore(
   resolveCms: (env: Env) => CmsService = (env) => env.DB ? new CmsService(new D1CmsStore(env.DB)) : memoryCms,
   options: PublicWorkerOptions = {},
 ) {
   return {
-    async fetch(request: Request, env: Env): Promise<Response> {
+    async fetch(request: Request, env: Env, context?: PublicExecutionContext): Promise<Response> {
       try {
         if (request.method !== "GET" && request.method !== "HEAD" && request.method !== "POST") return new Response("Method Not Allowed", { status: 405 });
         const url = new URL(request.url);
@@ -93,10 +103,19 @@ export function createPublicWorker(
         const previewMatch = url.pathname.match(/^\/_preview\/(.+)$/);
         if (previewMatch?.[1]) {
           const previews = options.resolvePreview?.(env, cms) ?? createPreviewService(env, cms);
-          const resolved = await previews.resolve(decodeURIComponent(previewMatch[1]));
+          const resolved = await previews.resolve(
+            decodeURIComponent(previewMatch[1]),
+            context ? {
+              deferTouch: (promise) => context.waitUntil(promise.catch((error) => {
+                console.warn("preview access timestamp update failed", error);
+              })),
+            } : {},
+          );
           const title = typeof resolved.revision.fields.title === "string" ? resolved.revision.fields.title : "";
-          const theme = await themes.resolveRelease(resolved.session.themeRelease, resolved.session.siteId);
-          const previewSite = await cms.store.getSite(resolved.session.siteId);
+          const [theme, previewSite] = await Promise.all([
+            themes.resolveRelease(resolved.session.themeRelease, resolved.session.siteId),
+            resolved.site ? Promise.resolve(resolved.site) : cms.store.getSite(resolved.session.siteId),
+          ]);
           let html = renderPage(resolved.revision.document, {
             assetUrl: createPublicAssetUrlResolver("/assets"),
             contentUrl: (contentId) => `/content/${encodeURIComponent(contentId)}`,
@@ -135,10 +154,6 @@ export function createPublicWorker(
 
         if (!env.SITE_ID) return new Response("SITE_ID is not configured", { status: 503 });
         const siteId = asSiteId(env.SITE_ID);
-        const activeTheme = await themes.resolveActive(siteId);
-        const site = await cms.store.getSite(siteId);
-        const siteName = site?.name ?? "";
-        const siteLocale = site?.locale ?? "ja";
 
         if (url.pathname === "/robots.txt") {
           const body = renderRobotsTxt(url.origin);
@@ -176,6 +191,13 @@ export function createPublicWorker(
           return renderMailThanks(request, root.snapshot, submission.id);
         }
 
+        const [activeTheme, site] = await Promise.all([
+          themes.resolveActive(siteId),
+          cms.store.getSite(siteId),
+        ]);
+        const siteName = site?.name ?? "";
+        const siteLocale = site?.locale ?? "ja";
+
         const customDetailMatch = url.pathname.match(/^(.*)\/view\/([^/]+)\/?$/);
         if (customDetailMatch) {
           const rootPath = customDetailMatch[1] || "/";
@@ -212,8 +234,10 @@ export function createPublicWorker(
           return renderBlogResponse(request, root.snapshot, blog, collection.id, assets, url, activeTheme, siteName, siteLocale, [term.id], `${term.title}`);
         }
 
-        const resolution = await cms.resolvePublicPath(siteId, url.pathname);
-        if (!resolution && url.pathname === "/") {
+        const resolution = url.pathname === "/"
+          ? null
+          : await cms.resolvePublicPath(siteId, url.pathname);
+        if (url.pathname === "/") {
           const homepage = await cms.resolvePublicPath(siteId, "/home");
           if (homepage?.kind === "content" && homepage.snapshot.publishedRevision) {
             return new Response(null, {
@@ -298,6 +322,101 @@ export function createPublicWorker(
       }
     },
   };
+}
+
+export function createPublicWorker(
+  resolveCms: (env: Env) => CmsService = (env) => env.DB ? new CmsService(new D1CmsStore(env.DB)) : memoryCms,
+  options: PublicWorkerOptions = {},
+) {
+  const core = createPublicWorkerCore(resolveCms, options);
+  return {
+    async fetch(
+      request: Request,
+      env: Env,
+      context?: PublicExecutionContext,
+    ): Promise<Response> {
+      const startedAt = performance.now();
+      const cache = options.cache === undefined ? defaultPublicCache() : options.cache;
+      const cacheableRequest = shouldUsePublicResponseCache(request);
+      if (cacheableRequest && cache) {
+        const cached = await cache.match(request);
+        if (cached) return withPerformanceHeaders(cached, "HIT", startedAt);
+      }
+
+      const requestEnv = shouldUseReplicaSession(request) && env.DB?.withSession
+        ? { ...env, DB: env.DB.withSession("first-unconstrained") }
+        : env;
+      const response = await core.fetch(request, requestEnv, context);
+      if (cacheableRequest && cache && isCacheablePublicResponse(response)) {
+        const write = cache.put(request, responseForPublicCache(response)).catch((error) => {
+          console.warn("public response cache write failed", error);
+        });
+        if (context) context.waitUntil(write);
+        else await write;
+      }
+      return withPerformanceHeaders(
+        response,
+        cacheableRequest && cache ? "MISS" : "BYPASS",
+        startedAt,
+      );
+    },
+  };
+}
+
+function defaultPublicCache(): PublicResponseCache | null {
+  const runtime = globalThis as typeof globalThis & {
+    caches?: { default?: PublicResponseCache };
+  };
+  return runtime.caches?.default ?? null;
+}
+
+function responseForPublicCache(response: Response): Response {
+  const headers = new Headers(response.headers);
+  // There is no cross-Worker tag purge in the Cache API. Keep the edge TTL
+  // aligned with the console's public-view freshness contract.
+  headers.set("cache-control", "public, max-age=60, s-maxage=60");
+  return new Response(response.clone().body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers,
+  });
+}
+
+function shouldUsePublicResponseCache(request: Request): boolean {
+  if (request.method !== "GET") return false;
+  const url = new URL(request.url);
+  if (url.search) return false;
+  if (url.pathname.startsWith("/_preview/") || url.pathname.startsWith("/assets/")) return false;
+  return !/\/(?:confirm|submit)\/?$/.test(url.pathname);
+}
+
+function shouldUseReplicaSession(request: Request): boolean {
+  if (request.method !== "GET" && request.method !== "HEAD") return false;
+  const pathname = new URL(request.url).pathname;
+  return !pathname.startsWith("/_preview/");
+}
+
+function isCacheablePublicResponse(response: Response): boolean {
+  if (response.status !== 200 && response.status !== 301 && response.status !== 302
+    && response.status !== 307 && response.status !== 308) return false;
+  if (response.headers.has("set-cookie")) return false;
+  const cacheControl = response.headers.get("cache-control")?.toLowerCase() ?? "";
+  return cacheControl.includes("public") && !cacheControl.includes("no-store");
+}
+
+function withPerformanceHeaders(
+  response: Response,
+  cacheState: "HIT" | "MISS" | "BYPASS",
+  startedAt: number,
+): Response {
+  const headers = new Headers(response.headers);
+  headers.set("x-baser-edge-cache", cacheState);
+  headers.append("server-timing", `baser;dur=${Math.max(0, performance.now() - startedAt).toFixed(1)}`);
+  return new Response(response.body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers,
+  });
 }
 
 function createAssetService(env: Env): AssetService {

@@ -30,7 +30,7 @@ export function AssetPickerModal({
     >
       {error ? <p className="status status-error">{error}</p> : null}
       <ul className="asset-picker-list asset-picker-grid">
-        {ready.map((asset) => (
+        {ready.map((asset, index) => (
           <li key={asset.id}>
             <button type="button" className="asset-picker-item" onClick={() => { onSelect(asset.id); onClose(); }}>
               <AssetThumbnail
@@ -38,6 +38,7 @@ export function AssetPickerModal({
                 mediaType={asset.mediaType}
                 state={asset.state}
                 alt={assetLabel(asset)}
+                eager={index < 8}
               />
               <span className="asset-picker-meta">
                 <strong>{assetLabel(asset)}</strong>

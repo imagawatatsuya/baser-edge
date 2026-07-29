@@ -58,6 +58,25 @@ function shouldSkipPath(absPath) {
   return false;
 }
 
+function scrubInternalContextEntries(value) {
+  if (Array.isArray(value)) {
+    return value
+      .filter((entry) => !(
+        entry
+        && typeof entry === "object"
+        && typeof entry.path === "string"
+        && entry.path.startsWith("docs/internal/")
+      ))
+      .map(scrubInternalContextEntries);
+  }
+  if (value && typeof value === "object") {
+    return Object.fromEntries(
+      Object.entries(value).map(([key, entry]) => [key, scrubInternalContextEntries(entry)]),
+    );
+  }
+  return value;
+}
+
 export function scrubPublicMarkdown(relPath, content) {
   let out = content;
 
@@ -96,6 +115,13 @@ async function copyTree(srcRoot, destRoot) {
         if (rel.endsWith(".md")) {
           const raw = await readFile(srcPath, "utf8");
           await writeFile(destPath, scrubPublicMarkdown(rel, raw), "utf8");
+        } else if (rel === ".agents/context/baseredge-context.snapshot.json") {
+          const raw = JSON.parse(await readFile(srcPath, "utf8"));
+          await writeFile(
+            destPath,
+            `${JSON.stringify(scrubInternalContextEntries(raw), null, 2)}\n`,
+            "utf8",
+          );
         } else {
           await cp(srcPath, destPath);
         }

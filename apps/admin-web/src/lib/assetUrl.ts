@@ -10,6 +10,11 @@ export function consoleAssetContentUrl(assetId: string): string {
   return `/v1/assets/${encodeURIComponent(assetId)}/content`;
 }
 
+/** Console-origin authenticated 256px derivative, with original fallback during legacy backfill. */
+export function consoleAssetThumbnailUrl(assetId: string): string {
+  return `/v1/assets/${encodeURIComponent(assetId)}/thumbnail`;
+}
+
 export function canShowPublicImagePreview(mediaType: string, state: string): boolean {
   return state === "ready" && isAllowedImageMediaType(mediaType);
 }

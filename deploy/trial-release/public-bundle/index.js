@@ -1166,6 +1166,9 @@ class MemoryCmsStore {
     }
     return result;
   }
+  async revisionReferencesAsset(revisionId, assetId) {
+    return this.revisionAssetReferences.some((reference) => reference.revisionId === revisionId && reference.assetId === assetId);
+  }
   async createRoutableContent(input, contentTypeKey, routeType) {
     const site = requireValue$1(this.sites.get(input.siteId), "SITE_NOT_FOUND", "Site not found");
     if (input.parentId)
@@ -1503,10 +1506,10 @@ class CmsService {
   async recordSuccessfulOperation(actor, input) {
     return this.#successAudit(actor, input.workspaceId, input.siteId ?? null, input.action, input.resourceType, input.resourceId, input.revisionId ?? null, input.capability, input.details ?? {});
   }
-  async getRevisionForPreview(actor, contentItemId, revisionId) {
-    const snapshot = await this.#requireSnapshot(contentItemId);
+  async getRevisionForPreview(actor, contentItemId, revisionId, knownSnapshot) {
+    const snapshot = knownSnapshot ?? await this.#requireSnapshot(contentItemId);
     await this.#authorize(actor, Capabilities.ContentRead, this.#resource(snapshot, "low"), "preview.revision-read", "content-item", contentItemId);
-    const revision = await this.#requireRevision(revisionId);
+    const revision = snapshot.workingRevision?.id === revisionId ? snapshot.workingRevision : snapshot.publishedRevision?.id === revisionId ? snapshot.publishedRevision : await this.#requireRevision(revisionId);
     assertDomain(revision.contentItemId === contentItemId, "REVISION_CONTENT_MISMATCH", "Revision belongs to another content item", 422);
     return revision;
   }
@@ -1675,7 +1678,8 @@ class CmsService {
       contentHash,
       changeSummary: input.changeSummary,
       agentRunId: input.agentRunId ?? null,
-      now: this.#clock.now()
+      now: this.#clock.now(),
+      snapshot
     });
   }
   async analyzeRelocation(actor, input) {
@@ -1704,7 +1708,8 @@ class CmsService {
       targetParentId: input.targetParentId,
       newSlug: normalizeSlug(input.newSlug),
       expectedTreeVersion: input.expectedTreeVersion,
-      now: this.#clock.now()
+      now: this.#clock.now(),
+      snapshot
     });
   }
   async reorderContent(actor, input) {
@@ -1719,7 +1724,8 @@ class CmsService {
       targetParentId: input.targetParentId,
       insertAfterContentItemId: input.insertAfterContentItemId,
       expectedTreeVersion: input.expectedTreeVersion,
-      now: this.#clock.now()
+      now: this.#clock.now(),
+      snapshot
     });
   }
   async copyContent(actor, input) {
@@ -2058,6 +2064,11 @@ const defaultAllowedMediaTypes = /* @__PURE__ */ new Set([
   "text/csv",
   "application/zip"
 ]);
+const ASSET_THUMBNAIL_MEDIA_TYPE = "image/webp";
+const ASSET_THUMBNAIL_MAX_BYTES = 256 * 1024;
+function assetThumbnailObjectKey(asset) {
+  return `${asset.objectKey}.thumbnail.webp`;
+}
 class AssetService {
   #metadata;
   #objects;
@@ -2201,6 +2212,50 @@ class AssetService {
     const object = await this.#objects.get(asset.objectKey);
     return object ? { asset, object } : null;
   }
+  async getAuthenticatedAssetContent(actor, assetId) {
+    const asset = await this.getAsset(actor, assetId);
+    assertDomain(asset.state === "ready" && asset.deletedAt === null, "ASSET_NOT_READY", "Asset is not ready for download", 404);
+    const object = await this.#objects.get(asset.objectKey);
+    assertDomain(object, "ASSET_OBJECT_MISSING", "Asset object not found", 404);
+    return { asset, object };
+  }
+  async getAuthenticatedAssetThumbnail(actor, assetId) {
+    const asset = await this.getAsset(actor, assetId);
+    assertDomain(asset.state === "ready" && asset.deletedAt === null, "ASSET_NOT_READY", "Asset is not ready for download", 404);
+    const thumbnail = await this.#objects.get(assetThumbnailObjectKey(asset));
+    if (thumbnail)
+      return { asset, object: thumbnail, source: "thumbnail" };
+    const original = await this.#objects.get(asset.objectKey);
+    assertDomain(original, "ASSET_OBJECT_MISSING", "Asset object not found", 404);
+    return { asset, object: original, source: "original" };
+  }
+  async putAuthenticatedAssetThumbnail(actor, assetId, input) {
+    const asset = await this.#requireAsset(assetId);
+    await this.#security.authorize(actor, Capabilities.AssetUpload, { workspaceId: asset.workspaceId, risk: "low" }, "asset.thumbnail.write", "asset", asset.id);
+    assertDomain(asset.state === "ready" && asset.deletedAt === null, "ASSET_NOT_READY", "Asset is not ready", 404);
+    const mediaType = normalizeMediaType(input.mediaType);
+    assertDomain(mediaType === ASSET_THUMBNAIL_MEDIA_TYPE, "THUMBNAIL_MEDIA_TYPE_NOT_ALLOWED", "Thumbnail Content-Type must be image/webp", 422);
+    if (input.contentLength !== void 0) {
+      assertDomain(Number.isInteger(input.contentLength) && input.contentLength > 0 && input.contentLength <= ASSET_THUMBNAIL_MAX_BYTES, "THUMBNAIL_TOO_LARGE", "Thumbnail exceeds the size limit", 413);
+    }
+    const bytes = await toBytes$1(input.body);
+    assertDomain(bytes.byteLength > 0, "UPLOAD_EMPTY", "Thumbnail body is empty", 422);
+    assertDomain(bytes.byteLength <= ASSET_THUMBNAIL_MAX_BYTES, "THUMBNAIL_TOO_LARGE", "Thumbnail exceeds the size limit", 413);
+    assertDomain(isSniffedTrialInlineImage(bytes, mediaType), "UPLOAD_CONTENT_MISMATCH", "Thumbnail content does not match image/webp", 422);
+    const stored = await this.#objects.put(assetThumbnailObjectKey(asset), bytes, {
+      mediaType,
+      customMetadata: { assetId: asset.id, derivative: "thumbnail" }
+    });
+    await this.#security.success(actor, {
+      workspaceId: asset.workspaceId,
+      action: "asset.thumbnail.write",
+      resourceType: "asset",
+      resourceId: asset.id,
+      capability: Capabilities.AssetUpload,
+      details: { byteSize: stored.size, mediaType }
+    });
+    return stored;
+  }
   async deleteAsset(actor, assetId) {
     const asset = await this.#requireAsset(assetId);
     await this.#security.authorize(actor, Capabilities.AssetDelete, { workspaceId: asset.workspaceId, risk: "high" }, "asset.delete", "asset", asset.id);
@@ -2209,6 +2264,7 @@ class AssetService {
     const deleted = await this.#metadata.softDeleteAsset({ assetId, now: this.#clock.now() });
     try {
       await this.#objects.delete(asset.objectKey);
+      await this.#objects.delete(assetThumbnailObjectKey(asset));
     } catch {
     }
     await this.#security.success(actor, {
@@ -2386,6 +2442,10 @@ async function digest(bytes) {
   const hash = await crypto.subtle.digest("SHA-256", bytes);
   return [...new Uint8Array(hash)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
 }
+const THUMBNAIL_OBJECT_SUFFIX = ".thumbnail.webp";
+function originalKeyForThumbnail(key2) {
+  return key2.endsWith(THUMBNAIL_OBJECT_SUFFIX) ? key2.slice(0, -THUMBNAIL_OBJECT_SUFFIX.length) : null;
+}
 function workspaceIdFromAssetObjectKey(objectKey) {
   const match = /^workspaces\/([^/]+)\/assets\//.exec(objectKey);
   assertDomain(match?.[1], "INVALID_OBJECT_KEY", "Asset object key is invalid", 500);
@@ -2406,6 +2466,28 @@ class D1AssetObjectStore {
     const checksum = await digest(bytes);
     const workspaceId = workspaceIdFromAssetObjectKey(key2);
     const now = Date.now();
+    const originalKey = originalKeyForThumbnail(key2);
+    if (originalKey) {
+      const asset = await this.#db.prepare("SELECT id FROM assets WHERE object_key = ? AND deleted_at IS NULL").bind(originalKey).first();
+      assertDomain(asset, "ASSET_NOT_FOUND", "Thumbnail asset not found", 404);
+      await this.#db.prepare(`INSERT INTO asset_thumbnail_blobs (asset_id, object_key, workspace_id, media_type, byte_size, checksum, body, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT(asset_id) DO UPDATE SET
+           object_key = excluded.object_key,
+           workspace_id = excluded.workspace_id,
+           media_type = excluded.media_type,
+           byte_size = excluded.byte_size,
+           checksum = excluded.checksum,
+           body = excluded.body,
+           created_at = excluded.created_at`).bind(asset.id, key2, workspaceId, options.mediaType, bytes.byteLength, checksum, bytes, now).run();
+      return {
+        key: key2,
+        size: bytes.byteLength,
+        etag: checksum,
+        uploadedAt: now,
+        mediaType: options.mediaType
+      };
+    }
     await this.#db.prepare(`INSERT INTO asset_object_blobs (object_key, workspace_id, media_type, byte_size, checksum, body, created_at)
        VALUES (?, ?, ?, ?, ?, ?, ?)
        ON CONFLICT(object_key) DO UPDATE SET
@@ -2423,7 +2505,8 @@ class D1AssetObjectStore {
     };
   }
   async head(key2) {
-    const row = await this.#db.prepare("SELECT media_type, byte_size, checksum, created_at FROM asset_object_blobs WHERE object_key = ?").bind(key2).first();
+    const table = originalKeyForThumbnail(key2) ? "asset_thumbnail_blobs" : "asset_object_blobs";
+    const row = await this.#db.prepare(`SELECT media_type, byte_size, checksum, created_at FROM ${table} WHERE object_key = ?`).bind(key2).first();
     if (!row)
       return null;
     return {
@@ -2435,7 +2518,8 @@ class D1AssetObjectStore {
     };
   }
   async get(key2) {
-    const row = await this.#db.prepare("SELECT media_type, byte_size, checksum, created_at, body FROM asset_object_blobs WHERE object_key = ?").bind(key2).first();
+    const table = originalKeyForThumbnail(key2) ? "asset_thumbnail_blobs" : "asset_object_blobs";
+    const row = await this.#db.prepare(`SELECT media_type, byte_size, checksum, created_at, body FROM ${table} WHERE object_key = ?`).bind(key2).first();
     if (!row)
       return null;
     const bytes = row.body instanceof Uint8Array ? row.body : new Uint8Array(row.body);
@@ -2449,7 +2533,8 @@ class D1AssetObjectStore {
     };
   }
   async delete(key2) {
-    await this.#db.prepare("DELETE FROM asset_object_blobs WHERE object_key = ?").bind(key2).run();
+    const table = originalKeyForThumbnail(key2) ? "asset_thumbnail_blobs" : "asset_object_blobs";
+    await this.#db.prepare(`DELETE FROM ${table} WHERE object_key = ?`).bind(key2).run();
   }
 }
 function isD1InlineAssetStorageEnabled(env) {
@@ -2808,6 +2893,63 @@ class D1ThemeStore {
   constructor(db) {
     this.#db = db;
   }
+  async resolveActivePresentation(siteId) {
+    const row = await this.#db.prepare(`SELECT
+         a.id AS a_id,a.site_id AS a_site_id,a.theme_release_id AS a_release_id,
+         a.activated_by AS a_activated_by,a.activated_at AS a_activated_at,
+         a.deactivated_at AS a_deactivated_at,
+         r.id AS r_id,r.theme_id AS r_theme_id,r.version AS r_version,
+         r.design_token_revision_id AS r_token_id,r.layout_revision_id AS r_layout_id,
+         r.manifest_json AS r_manifest_json,r.release_hash AS r_release_hash,
+         r.state AS r_state,r.created_by AS r_created_by,r.created_at AS r_created_at,
+         t.id AS t_id,t.workspace_id AS t_workspace_id,t.theme_key AS t_key,
+         t.name AS t_name,t.description AS t_description,t.state AS t_state,
+         t.created_by AS t_created_by,t.created_at AS t_created_at,
+         d.id AS d_id,d.theme_id AS d_theme_id,d.revision_number AS d_revision_number,
+         d.name AS d_name,d.tokens_json AS d_tokens_json,d.content_hash AS d_content_hash,
+         d.created_by AS d_created_by,d.created_at AS d_created_at,
+         l.id AS l_id,l.theme_id AS l_theme_id,l.revision_number AS l_revision_number,
+         l.name AS l_name,l.layout_json AS l_layout_json,l.content_hash AS l_content_hash,
+         l.created_by AS l_created_by,l.created_at AS l_created_at
+       FROM site_theme_activations a
+       INNER JOIN theme_releases r ON r.id=a.theme_release_id
+       INNER JOIN themes t ON t.id=r.theme_id
+       INNER JOIN design_token_revisions d ON d.id=r.design_token_revision_id
+       INNER JOIN layout_revisions l ON l.id=r.layout_revision_id
+       WHERE a.site_id=? AND a.deactivated_at IS NULL
+       ORDER BY a.activated_at DESC LIMIT 1`).bind(siteId).first();
+    if (!row)
+      return null;
+    return mapResolvedTheme(row);
+  }
+  async resolveReleasePresentation(releaseId, siteId) {
+    const row = await this.#db.prepare(`SELECT
+         a.id AS a_id,a.site_id AS a_site_id,a.theme_release_id AS a_release_id,
+         a.activated_by AS a_activated_by,a.activated_at AS a_activated_at,
+         a.deactivated_at AS a_deactivated_at,
+         r.id AS r_id,r.theme_id AS r_theme_id,r.version AS r_version,
+         r.design_token_revision_id AS r_token_id,r.layout_revision_id AS r_layout_id,
+         r.manifest_json AS r_manifest_json,r.release_hash AS r_release_hash,
+         r.state AS r_state,r.created_by AS r_created_by,r.created_at AS r_created_at,
+         t.id AS t_id,t.workspace_id AS t_workspace_id,t.theme_key AS t_key,
+         t.name AS t_name,t.description AS t_description,t.state AS t_state,
+         t.created_by AS t_created_by,t.created_at AS t_created_at,
+         d.id AS d_id,d.theme_id AS d_theme_id,d.revision_number AS d_revision_number,
+         d.name AS d_name,d.tokens_json AS d_tokens_json,d.content_hash AS d_content_hash,
+         d.created_by AS d_created_by,d.created_at AS d_created_at,
+         l.id AS l_id,l.theme_id AS l_theme_id,l.revision_number AS l_revision_number,
+         l.name AS l_name,l.layout_json AS l_layout_json,l.content_hash AS l_content_hash,
+         l.created_by AS l_created_by,l.created_at AS l_created_at
+       FROM theme_releases r
+       INNER JOIN themes t ON t.id=r.theme_id
+       INNER JOIN design_token_revisions d ON d.id=r.design_token_revision_id
+       INNER JOIN layout_revisions l ON l.id=r.layout_revision_id
+       LEFT JOIN site_theme_activations a
+         ON a.theme_release_id=r.id AND a.site_id=? AND a.deactivated_at IS NULL
+       WHERE r.id=?
+       ORDER BY a.activated_at DESC LIMIT 1`).bind(siteId ?? null, releaseId).first();
+    return row ? mapResolvedTheme(row) : null;
+  }
   async createTheme(theme) {
     await this.#db.prepare("INSERT INTO themes(id,workspace_id,theme_key,name,description,state,created_by,created_at) VALUES(?,?,?,?,?,?,?,?)").bind(theme.id, theme.workspaceId, theme.key, theme.name, theme.description, theme.state, theme.createdBy, theme.createdAt).run();
   }
@@ -2875,6 +3017,61 @@ function mapRelease(r) {
 }
 function mapActivation(r) {
   return { id: asThemeActivationId(r.id), siteId: asSiteId(r.site_id), themeReleaseId: asThemeReleaseId(r.theme_release_id), activatedBy: asPrincipalId(r.activated_by), activatedAt: r.activated_at, deactivatedAt: r.deactivated_at };
+}
+function mapResolvedTheme(row) {
+  return {
+    activation: row.a_id && row.a_site_id && row.a_release_id && row.a_activated_by && row.a_activated_at !== null ? mapActivation({
+      id: row.a_id,
+      site_id: row.a_site_id,
+      theme_release_id: row.a_release_id,
+      activated_by: row.a_activated_by,
+      activated_at: row.a_activated_at,
+      deactivated_at: row.a_deactivated_at
+    }) : null,
+    release: mapRelease({
+      id: row.r_id,
+      theme_id: row.r_theme_id,
+      version: row.r_version,
+      design_token_revision_id: row.r_token_id,
+      layout_revision_id: row.r_layout_id,
+      manifest_json: row.r_manifest_json,
+      release_hash: row.r_release_hash,
+      state: row.r_state,
+      created_by: row.r_created_by,
+      created_at: row.r_created_at
+    }),
+    theme: mapTheme({
+      id: row.t_id,
+      workspace_id: row.t_workspace_id,
+      theme_key: row.t_key,
+      name: row.t_name,
+      description: row.t_description,
+      state: row.t_state,
+      created_by: row.t_created_by,
+      created_at: row.t_created_at
+    }),
+    tokenRevision: mapToken({
+      id: row.d_id,
+      theme_id: row.d_theme_id,
+      revision_number: row.d_revision_number,
+      name: row.d_name,
+      tokens_json: row.d_tokens_json,
+      content_hash: row.d_content_hash,
+      created_by: row.d_created_by,
+      created_at: row.d_created_at
+    }),
+    layoutRevision: mapLayout({
+      id: row.l_id,
+      theme_id: row.l_theme_id,
+      revision_number: row.l_revision_number,
+      name: row.l_name,
+      layout_json: row.l_layout_json,
+      content_hash: row.l_content_hash,
+      created_by: row.l_created_by,
+      created_at: row.l_created_at
+    }),
+    builtin: false
+  };
 }
 const memoryMetadataSingleton = new MemoryAssetMetadataStore();
 const memoryObjectsSingleton = new MemoryAssetObjectStore();
@@ -2950,24 +3147,57 @@ class D1CmsStore {
     const itemRow = await this.#db.prepare("SELECT * FROM content_items WHERE id=?").bind(contentItemId).first();
     if (!itemRow)
       return null;
-    const nodeRow = await this.#db.prepare("SELECT * FROM content_nodes WHERE content_item_id=?").bind(contentItemId).first();
-    const routeRow = await this.#db.prepare("SELECT * FROM routes WHERE content_item_id=? AND active=1 AND is_canonical=1 ORDER BY activated_at DESC LIMIT 1").bind(contentItemId).first();
-    assertDomain(nodeRow && routeRow, "CONTENT_PROJECTION_MISSING", "Content node or route is missing", 500);
+    return this.#contentSnapshotFromItemRow(itemRow);
+  }
+  async #contentSnapshotFromItemRow(itemRow) {
+    const contentItemId = asContentItemId(itemRow.id);
     const item = mapItem(itemRow);
+    let workingRevisionId = item.workingRevisionId;
+    if (!workingRevisionId) {
+      workingRevisionId = await this.#resolveLatestRevisionId(contentItemId);
+      if (workingRevisionId) {
+        await this.#reconcileWorkingRevisionPointer(contentItemId, workingRevisionId);
+        item.workingRevisionId = workingRevisionId;
+        const refreshed = await this.#db.prepare("SELECT lock_version FROM content_items WHERE id=?").bind(contentItemId).first();
+        if (refreshed)
+          item.lockVersion = refreshed.lock_version;
+      }
+    }
+    const workingRevisionPromise = workingRevisionId ? this.getRevision(workingRevisionId) : Promise.resolve(null);
+    const publishedRevisionPromise = item.publishedRevisionId === workingRevisionId ? workingRevisionPromise : item.publishedRevisionId ? this.getRevision(item.publishedRevisionId) : Promise.resolve(null);
+    const [nodeRow, routeRow, workingRevision, publishedRevision] = await Promise.all([
+      this.#db.prepare("SELECT * FROM content_nodes WHERE content_item_id=?").bind(contentItemId).first(),
+      this.#db.prepare("SELECT * FROM routes WHERE content_item_id=? AND active=1 AND is_canonical=1 ORDER BY activated_at DESC LIMIT 1").bind(contentItemId).first(),
+      workingRevisionPromise,
+      publishedRevisionPromise
+    ]);
+    assertDomain(nodeRow && routeRow, "CONTENT_PROJECTION_MISSING", "Content node or route is missing", 500);
     return {
       item,
       node: mapNode(nodeRow),
       route: mapRoute(routeRow),
-      workingRevision: item.workingRevisionId ? await this.getRevision(item.workingRevisionId) : null,
-      publishedRevision: item.publishedRevisionId ? await this.getRevision(item.publishedRevisionId) : null
+      workingRevision,
+      publishedRevision
     };
+  }
+  async #resolveLatestRevisionId(contentItemId) {
+    const row = await this.#db.prepare("SELECT id FROM content_revisions WHERE content_item_id=? ORDER BY revision_number DESC LIMIT 1").bind(contentItemId).first();
+    return row ? asRevisionId(row.id) : null;
+  }
+  async #reconcileWorkingRevisionPointer(contentItemId, revisionId) {
+    const now = Date.now();
+    await this.#db.prepare(`UPDATE content_items
+       SET working_revision_id=?,
+           lock_version=(SELECT MAX(revision_number) FROM content_revisions WHERE content_item_id=?),
+           updated_at=?
+       WHERE id=? AND working_revision_id IS NULL`).bind(revisionId, contentItemId, now, contentItemId).run();
   }
   async getRevision(revisionId) {
     const row = await this.#db.prepare("SELECT r.*,d.document_json FROM content_revisions r JOIN revision_documents d ON d.revision_id=r.id WHERE r.id=?").bind(revisionId).first();
     return row ? mapRevision(row) : null;
   }
   async commitRevision(input) {
-    const snapshot = await this.#requireSnapshot(input.contentItemId);
+    const snapshot = input.snapshot ?? await this.#requireSnapshot(input.contentItemId);
     assertDomain(snapshot.item.state === "active", "CONTENT_TRASHED", "Trashed content cannot be revised", 409);
     assertDomain(snapshot.item.contentTypeKey !== "folder" && snapshot.item.contentTypeKey !== "alias", "CONTENT_NOT_EDITABLE", "This content type does not accept document revisions", 422);
     const previous = await this.getRevision(input.baseRevisionId);
@@ -2978,6 +3208,7 @@ class D1CmsStore {
       this.#db.prepare("INSERT INTO content_revisions(id,content_item_id,revision_number,based_on_revision_id,expected_lock_version,fields_json,content_hash,created_by,agent_run_id,change_summary,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)").bind(revisionId, input.contentItemId, previous.revisionNumber + 1, input.baseRevisionId, input.expectedLockVersion, JSON.stringify(input.fields), input.contentHash, input.actor.actorId, input.agentRunId, input.changeSummary, input.now),
       this.#db.prepare("INSERT INTO revision_documents(revision_id,format_version,document_json,byte_size,document_hash) VALUES(?,?,?,?,?)").bind(revisionId, input.document.formatVersion, documentJson, new TextEncoder().encode(documentJson).byteLength, input.contentHash),
       ...this.#assetReferenceStatements(revisionId, input.document),
+      this.#db.prepare("UPDATE content_items SET working_revision_id=?, lock_version=lock_version+1, updated_at=? WHERE id=? AND (working_revision_id IS NULL OR working_revision_id=?)").bind(revisionId, input.now, input.contentItemId, input.baseRevisionId),
       this.#auditStatement(createAudit(input.actor, snapshot.item.workspaceId, snapshot.item.siteId, "content.revise", "content-item", input.contentItemId, revisionId, input.now, "content.revise", { basedOnRevisionId: input.baseRevisionId }))
     ]);
     const revision = await this.getRevision(revisionId);
@@ -2985,7 +3216,7 @@ class D1CmsStore {
     return revision;
   }
   async relocateContent(input) {
-    const snapshot = await this.#requireSnapshot(input.contentItemId);
+    const snapshot = input.snapshot ?? await this.#requireSnapshot(input.contentItemId);
     assertDomain(snapshot.item.state === "active", "CONTENT_TRASHED", "Trashed content cannot be moved", 409);
     const parent = input.targetParentId ? await this.#requireParentForType(input.targetParentId, snapshot.item.siteId, snapshot.item.contentTypeKey) : null;
     assertDomain(!parent || !parent.cachedPath.startsWith(`${snapshot.node.cachedPath}/`), "TREE_CYCLE", "Content cannot be moved below itself", 422);
@@ -3019,21 +3250,22 @@ class D1CmsStore {
     return this.#requireSnapshot(input.contentItemId);
   }
   async reorderContent(input) {
-    const snapshot = await this.#requireSnapshot(input.contentItemId);
+    const snapshot = input.snapshot ?? await this.#requireSnapshot(input.contentItemId);
     assertDomain(snapshot.item.state === "active", "CONTENT_TRASHED", "Trashed content cannot be reordered", 409);
+    let fresh = snapshot;
     if (snapshot.node.parentId !== input.targetParentId) {
-      await this.relocateContent({
+      fresh = await this.relocateContent({
         actor: input.actor,
         contentItemId: input.contentItemId,
         targetParentId: input.targetParentId,
         newSlug: snapshot.node.slug,
         expectedTreeVersion: input.expectedTreeVersion,
-        now: input.now
+        now: input.now,
+        snapshot
       });
     } else {
       await this.#batch([this.#treeGuard(snapshot.node.id, input.expectedTreeVersion, input.now)]);
     }
-    const fresh = await this.#requireSnapshot(input.contentItemId);
     const parentClause = input.targetParentId === null ? "parent_id IS NULL" : "parent_id = ?";
     const siblingRows = (await this.#db.prepare(`SELECT * FROM content_nodes WHERE site_id=? AND ${parentClause} AND content_item_id != ?`).bind(...input.targetParentId === null ? [fresh.item.siteId, fresh.item.id] : [fresh.item.siteId, input.targetParentId, fresh.item.id]).all()).results.map(mapNode).sort((a, b) => compareSortKeys(a.sortKey, b.sortKey));
     if (input.insertAfterContentItemId) {
@@ -3244,6 +3476,7 @@ class D1CmsStore {
     const outboxId = newId("outbox");
     await this.#batch([
       this.#db.prepare("INSERT INTO publication_events(id,content_item_id,previous_revision_id,published_revision_id,approval_id,actor_principal_id,committed_at,verification_state) VALUES(?,?,?,?,?,?,?,'pending')").bind(publicationId, input.contentItemId, snapshot.item.publishedRevisionId, input.revisionId, input.approvalId, input.actor.actorId, input.now),
+      this.#db.prepare("UPDATE content_items SET published_revision_id=?, updated_at=? WHERE id=? AND (published_revision_id IS NULL OR published_revision_id=?)").bind(input.revisionId, input.now, input.contentItemId, snapshot.item.publishedRevisionId),
       this.#outboxStatement(outboxId, "content.published", input.contentItemId, { publicationId, revisionId: input.revisionId, siteId: snapshot.item.siteId }, input.now),
       this.#auditStatement(createAudit(input.actor, snapshot.item.workspaceId, snapshot.item.siteId, "content.publish", "content-item", input.contentItemId, input.revisionId, input.now, "content.publish", { publicationId, outboxEventId: outboxId }))
     ]);
@@ -3265,9 +3498,12 @@ class D1CmsStore {
   }
   async resolvePublicPath(siteId, path) {
     const normalized = normalizePath(path);
-    const route = await this.#db.prepare("SELECT * FROM routes WHERE site_id=? AND path=? AND active=1 LIMIT 1").bind(siteId, normalized).first();
-    if (route) {
-      const snapshot = await this.#resolvePublishableSnapshot(asContentItemId(route.content_item_id));
+    const item = await this.#db.prepare(`SELECT i.* FROM content_items i
+       INNER JOIN routes r ON r.content_item_id=i.id
+       WHERE r.site_id=? AND r.path=? AND r.active=1
+       LIMIT 1`).bind(siteId, normalized).first();
+    if (item) {
+      const snapshot = await this.#resolvePublishableSnapshotFromItem(item);
       return snapshot ? { kind: "content", snapshot } : null;
     }
     const redirect = await this.#db.prepare("SELECT * FROM redirects WHERE site_id=? AND source_path=? AND active=1 LIMIT 1").bind(siteId, normalized).first();
@@ -3371,6 +3607,23 @@ class D1CmsStore {
       WHERE r.asset_id=?`).bind(assetId).all();
     return rows.results.map((row) => ({ revisionId: asRevisionId(row.revision_id), assetId: asAssetId(row.asset_id), blockId: row.block_id, fieldPath: row.field_path, usage: row.usage, contentItemId: asContentItemId(row.content_item_id), siteId: asSiteId(row.site_id), path: row.cached_path }));
   }
+  async revisionReferencesAsset(revisionId, assetId) {
+    const row = await this.#db.prepare("SELECT 1 AS ok FROM revision_asset_references WHERE revision_id=? AND asset_id=? LIMIT 1").bind(revisionId, assetId).first();
+    return Boolean(row);
+  }
+  async isAssetDeliverableOnPublicSite(siteId, assetId, now) {
+    const row = await this.#db.prepare(`SELECT 1 AS ok WHERE EXISTS (
+        SELECT 1 FROM revision_asset_references r
+        JOIN content_revisions v ON v.id = r.revision_id
+        JOIN content_items c ON c.id = v.content_item_id AND c.published_revision_id = v.id AND c.state = 'active' AND c.site_id = ?
+        WHERE r.asset_id = ?
+      ) OR EXISTS (
+        SELECT 1 FROM revision_asset_references r
+        JOIN preview_sessions p ON p.revision_id = r.revision_id AND p.site_id = ? AND p.revoked_at IS NULL AND p.expires_at > ?
+        WHERE r.asset_id = ?
+      )`).bind(siteId, assetId, siteId, now, assetId).first();
+    return Boolean(row);
+  }
   async #createRoutable(input, contentType, routeType, aliasTarget) {
     const site = await this.#requireSite(input.siteId);
     if (input.parentId)
@@ -3394,12 +3647,16 @@ class D1CmsStore {
     ];
     if (aliasTarget)
       statements.push(this.#db.prepare("INSERT INTO content_aliases(alias_content_item_id,target_content_item_id,created_at) VALUES(?,?,?)").bind(contentId, aliasTarget, input.now));
+    statements.push(this.#db.prepare("UPDATE content_items SET working_revision_id=?, lock_version=1, updated_at=? WHERE id=? AND working_revision_id IS NULL").bind(revisionId, input.now, contentId));
     statements.push(this.#auditStatement(createAudit(input.actor, input.workspaceId, input.siteId, `${contentType}.create`, "content-item", contentId, revisionId, input.now, `${contentType}.create`, { path: input.path, aliasTarget: aliasTarget ?? null })));
     await this.#batch(statements);
     return this.#requireSnapshot(contentId);
   }
   async #resolvePublishableSnapshot(contentItemId) {
     let item = await this.#db.prepare("SELECT * FROM content_items WHERE id=?").bind(contentItemId).first();
+    return this.#resolvePublishableSnapshotFromItem(item);
+  }
+  async #resolvePublishableSnapshotFromItem(item) {
     const visited = /* @__PURE__ */ new Set();
     while (item?.content_type_key === "alias") {
       if (visited.has(item.id))
@@ -3412,7 +3669,7 @@ class D1CmsStore {
     }
     if (!item || item.state !== "active" || !item.published_revision_id)
       return null;
-    return this.getContentSnapshot(asContentItemId(item.id));
+    return this.#contentSnapshotFromItemRow(item);
   }
   async #managerEntry(contentItemId) {
     const snapshot = await this.#requireSnapshot(contentItemId);
@@ -3669,6 +3926,12 @@ class D1BlogStore {
   async createCollection(collection) {
     await this.#db.prepare("INSERT INTO blog_collections(id,workspace_id,site_id,content_item_id,page_size,feed_size,sort_direction,state,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?)").bind(collection.id, collection.workspaceId, collection.siteId, collection.contentItemId, collection.pageSize, collection.feedSize, collection.sortDirection, collection.state, collection.createdAt, collection.updatedAt).run();
   }
+  async createCollectionWithTaxonomies(collection, taxonomies) {
+    await this.#db.batch([
+      this.#db.prepare("INSERT INTO blog_collections(id,workspace_id,site_id,content_item_id,page_size,feed_size,sort_direction,state,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?)").bind(collection.id, collection.workspaceId, collection.siteId, collection.contentItemId, collection.pageSize, collection.feedSize, collection.sortDirection, collection.state, collection.createdAt, collection.updatedAt),
+      ...taxonomies.map((taxonomy) => this.#db.prepare("INSERT INTO taxonomies(id,collection_id,taxonomy_key,title,kind,hierarchical,state,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?)").bind(taxonomy.id, taxonomy.collectionId, taxonomy.key, taxonomy.title, taxonomy.kind, taxonomy.hierarchical ? 1 : 0, taxonomy.state, taxonomy.createdAt, taxonomy.updatedAt))
+    ]);
+  }
   async getCollection(id) {
     const row = await this.#db.prepare("SELECT * FROM blog_collections WHERE id=?").bind(id).first();
     return row ? mapBlogCollection(row) : null;
@@ -3695,6 +3958,169 @@ class D1BlogStore {
     const rows = await this.#db.prepare("SELECT * FROM blog_articles WHERE collection_id=? ORDER BY posted_at DESC").bind(collectionId).all();
     return rows.results.map(mapBlogArticle);
   }
+  async listPublishedArticles(collection, options) {
+    const requiredTermsJson = JSON.stringify(options.termIds);
+    const baseCte = `
+      WITH RECURSIVE
+      required_terms(term_id) AS (
+        SELECT CAST(value AS TEXT) FROM json_each(?)
+      ),
+      published AS (
+        SELECT
+          ba.collection_id,ba.content_item_id,ba.posted_at,ba.author_principal_id,ba.created_at,
+          ci.published_revision_id,
+          cr.based_on_revision_id
+        FROM blog_articles ba
+        INNER JOIN content_items ci
+          ON ci.id=ba.content_item_id
+         AND ci.state='active'
+         AND ci.published_revision_id IS NOT NULL
+        INNER JOIN content_revisions cr ON cr.id=ci.published_revision_id
+        WHERE ba.collection_id=?
+      ),
+      revision_chain(root_revision_id,revision_id,based_on_revision_id,depth) AS (
+        SELECT published_revision_id,published_revision_id,based_on_revision_id,0
+        FROM published
+        UNION ALL
+        SELECT rc.root_revision_id,parent.id,parent.based_on_revision_id,rc.depth+1
+        FROM revision_chain rc
+        INNER JOIN content_revisions parent ON parent.id=rc.based_on_revision_id
+      ),
+      ranked_values AS (
+        SELECT
+          rc.root_revision_id,
+          rtv.taxonomy_id,
+          rtv.term_ids_json,
+          ROW_NUMBER() OVER (
+            PARTITION BY rc.root_revision_id,rtv.taxonomy_id
+            ORDER BY rc.depth
+          ) AS value_rank
+        FROM revision_chain rc
+        INNER JOIN revision_taxonomy_values rtv ON rtv.revision_id=rc.revision_id
+      ),
+      eligible AS (
+        SELECT p.*
+        FROM published p
+        WHERE NOT EXISTS (
+          SELECT 1
+          FROM required_terms required
+          WHERE NOT EXISTS (
+            SELECT 1
+            FROM ranked_values rv
+            INNER JOIN json_each(rv.term_ids_json) selected
+              ON CAST(selected.value AS TEXT)=required.term_id
+            WHERE rv.root_revision_id=p.published_revision_id
+              AND rv.value_rank=1
+          )
+        )
+      )`;
+    const direction = collection.sortDirection === "asc" ? "ASC" : "DESC";
+    const [countRow, pageResult] = await Promise.all([
+      this.#db.prepare(`${baseCte} SELECT COUNT(*) AS total FROM eligible`).bind(requiredTermsJson, collection.id).first(),
+      this.#db.prepare(`${baseCte}
+         SELECT
+           e.collection_id,e.posted_at,e.author_principal_id,e.created_at,
+           json_object(
+             'id',i.id,'workspace_id',i.workspace_id,'site_id',i.site_id,
+             'content_type_key',i.content_type_key,'working_revision_id',i.working_revision_id,
+             'published_revision_id',i.published_revision_id,'lock_version',i.lock_version,
+             'state',i.state,'created_by',i.created_by,'created_at',i.created_at,'updated_at',i.updated_at
+           ) AS item_json,
+           json_object(
+             'id',n.id,'site_id',n.site_id,'content_item_id',n.content_item_id,
+             'parent_id',n.parent_id,'slug',n.slug,'sort_key',n.sort_key,
+             'cached_path',n.cached_path,'tree_version',n.tree_version,
+             'created_at',n.created_at,'updated_at',n.updated_at
+           ) AS node_json,
+           json_object(
+             'id',ro.id,'site_id',ro.site_id,'content_item_id',ro.content_item_id,
+             'hostname',ro.hostname,'path',ro.path,'route_type',ro.route_type,
+             'is_canonical',ro.is_canonical,'active',ro.active,
+             'activated_at',ro.activated_at,'deactivated_at',ro.deactivated_at
+           ) AS route_json,
+           json_object(
+             'id',cr.id,'content_item_id',cr.content_item_id,'revision_number',cr.revision_number,
+             'based_on_revision_id',cr.based_on_revision_id,'fields_json',cr.fields_json,
+             'content_hash',cr.content_hash,'created_by',cr.created_by,'agent_run_id',cr.agent_run_id,
+             'change_summary',cr.change_summary,'created_at',cr.created_at,'document_json',rd.document_json
+           ) AS revision_json
+         FROM eligible e
+         INNER JOIN content_items i ON i.id=e.content_item_id
+         INNER JOIN content_nodes n ON n.content_item_id=i.id
+         INNER JOIN routes ro ON ro.id=(
+           SELECT id FROM routes
+           WHERE content_item_id=i.id AND active=1 AND is_canonical=1
+           ORDER BY activated_at DESC LIMIT 1
+         )
+         INNER JOIN content_revisions cr ON cr.id=e.published_revision_id
+         INNER JOIN revision_documents rd ON rd.revision_id=cr.id
+         ORDER BY e.posted_at ${direction},e.content_item_id
+         LIMIT ? OFFSET ?`).bind(requiredTermsJson, collection.id, options.limit, options.offset).all()
+    ]);
+    const projectionRows = pageResult.results;
+    const revisionIds = projectionRows.map((row) => json(row.revision_json).id);
+    const termsByRevision = /* @__PURE__ */ new Map();
+    if (revisionIds.length) {
+      const placeholders = revisionIds.map(() => "?").join(",");
+      const termRows = (await this.#db.prepare(`WITH RECURSIVE revision_chain(root_revision_id,revision_id,based_on_revision_id,depth) AS (
+           SELECT id,id,based_on_revision_id,0
+           FROM content_revisions
+           WHERE id IN (${placeholders})
+           UNION ALL
+           SELECT rc.root_revision_id,parent.id,parent.based_on_revision_id,rc.depth+1
+           FROM revision_chain rc
+           INNER JOIN content_revisions parent ON parent.id=rc.based_on_revision_id
+         ),
+         ranked_values AS (
+           SELECT
+             rc.root_revision_id,
+             rtv.taxonomy_id,
+             rtv.term_ids_json,
+             ROW_NUMBER() OVER (
+               PARTITION BY rc.root_revision_id,rtv.taxonomy_id
+               ORDER BY rc.depth
+             ) AS value_rank
+           FROM revision_chain rc
+           INNER JOIN revision_taxonomy_values rtv ON rtv.revision_id=rc.revision_id
+         )
+         SELECT
+           rv.root_revision_id,
+           t.id,t.taxonomy_id,t.parent_id,t.slug,t.title,t.state,t.created_at,t.updated_at
+         FROM ranked_values rv
+         INNER JOIN json_each(rv.term_ids_json) selected
+         INNER JOIN taxonomy_terms t ON t.id=CAST(selected.value AS TEXT)
+         WHERE rv.value_rank=1 AND t.state='active'
+         ORDER BY t.title`).bind(...revisionIds).all()).results;
+      for (const row of termRows) {
+        const list = termsByRevision.get(row.root_revision_id) ?? [];
+        list.push(mapTerm(row));
+        termsByRevision.set(row.root_revision_id, list);
+      }
+    }
+    const items = projectionRows.map((row) => {
+      const item = mapItem(json(row.item_json));
+      const revision = mapRevision(json(row.revision_json));
+      return {
+        collectionId: asCollectionId(row.collection_id),
+        postedAt: row.posted_at,
+        authorPrincipalId: asPrincipalId(row.author_principal_id),
+        terms: termsByRevision.get(revision.id) ?? [],
+        snapshot: {
+          item,
+          node: mapNode(json(row.node_json)),
+          route: mapRoute(json(row.route_json)),
+          workingRevision: item.workingRevisionId === revision.id ? revision : null,
+          publishedRevision: revision
+        }
+      };
+    });
+    return {
+      items,
+      total: Number(countRow?.total ?? 0),
+      limit: options.limit,
+      offset: options.offset
+    };
+  }
   async updateArticlePostedAt(contentItemId, postedAt) {
     const existing = await this.getArticle(contentItemId);
     assertDomain(existing, "ARTICLE_NOT_FOUND", "Article is not registered in a blog", 404);
@@ -3719,12 +4145,24 @@ class D1BlogStore {
     const row = await this.#db.prepare("SELECT * FROM taxonomy_terms WHERE id=?").bind(id).first();
     return row ? mapTerm(row) : null;
   }
+  async getTerms(ids) {
+    if (!ids.length)
+      return [];
+    const placeholders = ids.map(() => "?").join(",");
+    const rows = await this.#db.prepare(`SELECT * FROM taxonomy_terms WHERE id IN (${placeholders})`).bind(...ids).all();
+    return rows.results.map(mapTerm);
+  }
   async listTerms(taxonomyId) {
     const rows = await this.#db.prepare("SELECT * FROM taxonomy_terms WHERE taxonomy_id=? ORDER BY title").bind(taxonomyId).all();
     return rows.results.map(mapTerm);
   }
   async setRevisionTaxonomyValue(value) {
     await this.#db.prepare("INSERT INTO revision_taxonomy_values(revision_id,taxonomy_id,term_ids_json) VALUES(?,?,?) ON CONFLICT(revision_id,taxonomy_id) DO UPDATE SET term_ids_json=excluded.term_ids_json").bind(value.revisionId, value.taxonomyId, JSON.stringify(value.termIds)).run();
+  }
+  async setRevisionTaxonomyValues(values) {
+    if (!values.length)
+      return;
+    await this.#db.batch(values.map((value) => this.#db.prepare("INSERT INTO revision_taxonomy_values(revision_id,taxonomy_id,term_ids_json) VALUES(?,?,?) ON CONFLICT(revision_id,taxonomy_id) DO UPDATE SET term_ids_json=excluded.term_ids_json").bind(value.revisionId, value.taxonomyId, JSON.stringify(value.termIds))));
   }
   async getRevisionTaxonomyValue(revisionId, taxonomyId) {
     const row = await this.#db.prepare("SELECT * FROM revision_taxonomy_values WHERE revision_id=? AND taxonomy_id=?").bind(revisionId, taxonomyId).first();
@@ -3822,6 +4260,74 @@ class D1PreviewStore {
     const row = await this.#db.prepare("SELECT * FROM preview_sessions WHERE id=?").bind(id).first();
     return row ? mapPreview(row) : null;
   }
+  async resolve(id) {
+    const row = await this.#db.prepare(`SELECT
+         json_object(
+           'id',p.id,'workspace_id',p.workspace_id,'site_id',p.site_id,
+           'content_item_id',p.content_item_id,'revision_id',p.revision_id,
+           'revision_hash',p.revision_hash,'theme_release',p.theme_release,
+           'token_version',p.token_version,'created_by',p.created_by,
+           'created_at',p.created_at,'expires_at',p.expires_at,
+           'revoked_at',p.revoked_at,'last_accessed_at',p.last_accessed_at
+         ) AS preview_json,
+         json_object(
+           'id',i.id,'workspace_id',i.workspace_id,'site_id',i.site_id,
+           'content_type_key',i.content_type_key,'working_revision_id',i.working_revision_id,
+           'published_revision_id',i.published_revision_id,'lock_version',i.lock_version,
+           'state',i.state,'created_by',i.created_by,'created_at',i.created_at,'updated_at',i.updated_at
+         ) AS item_json,
+         json_object(
+           'id',n.id,'site_id',n.site_id,'content_item_id',n.content_item_id,
+           'parent_id',n.parent_id,'slug',n.slug,'sort_key',n.sort_key,
+           'cached_path',n.cached_path,'tree_version',n.tree_version,
+           'created_at',n.created_at,'updated_at',n.updated_at
+         ) AS node_json,
+         json_object(
+           'id',ro.id,'site_id',ro.site_id,'content_item_id',ro.content_item_id,
+           'hostname',ro.hostname,'path',ro.path,'route_type',ro.route_type,
+           'is_canonical',ro.is_canonical,'active',ro.active,
+           'activated_at',ro.activated_at,'deactivated_at',ro.deactivated_at
+         ) AS route_json,
+         json_object(
+           'id',cr.id,'content_item_id',cr.content_item_id,'revision_number',cr.revision_number,
+           'based_on_revision_id',cr.based_on_revision_id,'fields_json',cr.fields_json,
+           'content_hash',cr.content_hash,'created_by',cr.created_by,'agent_run_id',cr.agent_run_id,
+           'change_summary',cr.change_summary,'created_at',cr.created_at,'document_json',rd.document_json
+         ) AS revision_json,
+         json_object(
+           'id',s.id,'workspace_id',s.workspace_id,'name',s.name,'hostname',s.hostname,
+           'locale',s.locale,'state',s.state,'created_at',s.created_at,'updated_at',s.updated_at
+         ) AS site_json
+       FROM preview_sessions p
+       INNER JOIN content_items i ON i.id=p.content_item_id AND i.site_id=p.site_id
+       INNER JOIN content_nodes n ON n.content_item_id=i.id
+       INNER JOIN routes ro ON ro.id=(
+         SELECT id FROM routes
+         WHERE content_item_id=i.id AND active=1 AND is_canonical=1
+         ORDER BY activated_at DESC LIMIT 1
+       )
+       INNER JOIN content_revisions cr ON cr.id=p.revision_id AND cr.content_item_id=i.id
+       INNER JOIN revision_documents rd ON rd.revision_id=cr.id
+       INNER JOIN sites s ON s.id=p.site_id
+       WHERE p.id=?`).bind(id).first();
+    if (!row)
+      return null;
+    const session = mapPreview(json(row.preview_json));
+    const item = mapItem(json(row.item_json));
+    const revision = mapRevision(json(row.revision_json));
+    return {
+      session,
+      revision,
+      site: mapSite(json(row.site_json)),
+      snapshot: {
+        item,
+        node: mapNode(json(row.node_json)),
+        route: mapRoute(json(row.route_json)),
+        workingRevision: item.workingRevisionId === revision.id ? revision : null,
+        publishedRevision: item.publishedRevisionId === revision.id ? revision : null
+      }
+    };
+  }
   async revoke(id, now) {
     await this.#db.prepare("UPDATE preview_sessions SET revoked_at=? WHERE id=? AND revoked_at IS NULL").bind(now, id).run();
     const session = await this.get(id);
@@ -3830,6 +4336,10 @@ class D1PreviewStore {
   }
   async touch(id, now) {
     await this.#db.prepare("UPDATE preview_sessions SET last_accessed_at=? WHERE id=?").bind(now, id).run();
+  }
+  async listActiveSessionsForSite(siteId, now) {
+    const rows = await this.#db.prepare("SELECT * FROM preview_sessions WHERE site_id=? AND revoked_at IS NULL AND expires_at > ?").bind(siteId, now).all();
+    return rows.results.map(mapPreview);
   }
 }
 class R2AssetObjectStore {
@@ -3917,7 +4427,8 @@ class PreviewService {
     this.#clock = input.clock ?? systemClock;
   }
   async create(actor, input) {
-    const snapshot = await this.#cms.getContent(actor, input.contentItemId);
+    const snapshot = input.snapshot ?? await this.#cms.getContent(actor, input.contentItemId);
+    assertDomain(snapshot.item.id === input.contentItemId, "PREVIEW_CONTENT_MISMATCH", "Preview content does not match the requested item", 422);
     await this.#security.authorize(actor, Capabilities.PreviewCreate, {
       workspaceId: snapshot.item.workspaceId,
       siteId: snapshot.item.siteId,
@@ -3925,7 +4436,7 @@ class PreviewService {
       path: snapshot.route.path,
       risk: "low"
     }, "preview.create", "content-item", snapshot.item.id);
-    const revision = await this.#cms.getRevisionForPreview(actor, input.contentItemId, input.revisionId);
+    const revision = await this.#cms.getRevisionForPreview(actor, input.contentItemId, input.revisionId, snapshot);
     const now = this.#clock.now();
     const expiresAt = now + Math.max(60, Math.min(input.expiresInSeconds ?? 1800, 24 * 60 * 60)) * 1e3;
     const session = {
@@ -3968,23 +4479,29 @@ class PreviewService {
     });
     return { session, previewUrl };
   }
-  async resolve(token) {
+  async resolve(token, options = {}) {
     const payload = await verifyCompactToken(token, this.#secret);
     assertDomain(payload?.typ === "content-preview", "INVALID_PREVIEW_TOKEN", "Preview token is invalid", 403);
     const now = this.#clock.now();
     assertDomain(typeof payload.expiresAt === "number" && payload.expiresAt > now, "PREVIEW_EXPIRED", "Preview has expired", 410);
-    const session = await this.#store.get(asPreviewSessionId(String(payload.sessionId)));
+    const previewId = asPreviewSessionId(String(payload.sessionId));
+    const projected = this.#store.resolve ? await this.#store.resolve(previewId) : null;
+    const session = projected?.session ?? await this.#store.get(previewId);
     assertDomain(session, "PREVIEW_NOT_FOUND", "Preview session not found", 404);
     assertDomain(session.revokedAt === null, "PREVIEW_REVOKED", "Preview session has been revoked", 410);
     assertDomain(session.expiresAt > now, "PREVIEW_EXPIRED", "Preview has expired", 410);
     assertDomain(session.contentItemId === payload.contentItemId && session.revisionId === payload.revisionId && session.siteId === payload.siteId && session.revisionHash === payload.revisionHash && session.themeRelease === payload.themeRelease && session.tokenVersion === payload.tokenVersion, "PREVIEW_TOKEN_MISMATCH", "Preview token no longer matches the stored session", 403);
-    const snapshot = await this.#cms.store.getContentSnapshot(asContentItemId(String(payload.contentItemId)));
+    const snapshot = projected?.snapshot ?? await this.#cms.store.getContentSnapshot(asContentItemId(String(payload.contentItemId)));
     assertDomain(snapshot && snapshot.item.siteId === asSiteId(String(payload.siteId)), "PREVIEW_CONTENT_NOT_FOUND", "Preview content was not found", 404);
-    const revision = await this.#cms.store.getRevision(asRevisionId(String(payload.revisionId)));
+    const revision = projected?.revision ?? await this.#cms.store.getRevision(asRevisionId(String(payload.revisionId)));
     assertDomain(revision && revision.contentItemId === snapshot.item.id, "PREVIEW_REVISION_NOT_FOUND", "Preview revision was not found", 404);
     assertDomain(revision.contentHash === session.revisionHash, "PREVIEW_REVISION_CHANGED", "Preview revision integrity check failed", 409);
-    await this.#store.touch(session.id, now);
-    return { session, snapshot, revision };
+    const touch = this.#store.touch(session.id, now);
+    if (options.deferTouch)
+      options.deferTouch(touch);
+    else
+      await touch;
+    return { session, snapshot, revision, ...projected?.site ? { site: projected.site } : {} };
   }
   async revoke(actor, previewId) {
     const session = await this.#store.get(previewId);
@@ -4006,6 +4523,9 @@ class PreviewService {
     });
     return revoked;
   }
+  listActiveSessionsForSite(siteId, now = this.#clock.now()) {
+    return this.#store.listActiveSessionsForSite(siteId, now);
+  }
 }
 class MemoryPreviewStore {
   sessions = /* @__PURE__ */ new Map();
@@ -4025,6 +4545,9 @@ class MemoryPreviewStore {
     const session = this.sessions.get(id);
     if (session)
       session.lastAccessedAt = now;
+  }
+  async listActiveSessionsForSite(siteId, now) {
+    return [...this.sessions.values()].filter((session) => session.siteId === siteId && session.revokedAt === null && session.expiresAt > now).map((session) => structuredClone(session));
   }
 }
 class ThemeService {
@@ -4154,6 +4677,9 @@ class ThemeService {
     return this.resolveActive(siteId);
   }
   async resolveActive(siteId) {
+    if (this.store.resolveActivePresentation) {
+      return await this.store.resolveActivePresentation(siteId) ?? builtinTheme();
+    }
     const activation = await this.store.getActiveActivation(siteId);
     if (!activation)
       return builtinTheme();
@@ -4162,6 +4688,11 @@ class ThemeService {
   async resolveRelease(releaseId, siteId, knownActivation) {
     if (String(releaseId) === BUILTIN_RELEASE_ID || String(releaseId) === "default@1")
       return builtinTheme();
+    if (!knownActivation && this.store.resolveReleasePresentation) {
+      const resolved = await this.store.resolveReleasePresentation(asThemeReleaseId(String(releaseId)), siteId);
+      if (resolved)
+        return resolved;
+    }
     const release = await this.#requireRelease(asThemeReleaseId(String(releaseId)));
     const theme = await this.#requireTheme(release.themeId);
     const tokenRevision = await this.store.getTokenRevision(release.designTokenRevisionId);
@@ -4740,9 +5271,14 @@ class BlogService {
       createdAt: now,
       updatedAt: now
     };
-    await this.#store.createCollection(collection);
-    const category = await this.#createTaxonomyRecord(collection, { key: "category", title: "カテゴリ", kind: "category", hierarchical: true }, now);
-    const tag = await this.#createTaxonomyRecord(collection, { key: "tag", title: "タグ", kind: "tag", hierarchical: false }, now);
+    const category = this.#buildTaxonomyRecord(collection, { key: "category", title: "カテゴリ", kind: "category", hierarchical: true }, now);
+    const tag = this.#buildTaxonomyRecord(collection, { key: "tag", title: "タグ", kind: "tag", hierarchical: false }, now);
+    if (this.#store.createCollectionWithTaxonomies) {
+      await this.#store.createCollectionWithTaxonomies(collection, [category, tag]);
+    } else {
+      await this.#store.createCollection(collection);
+      await Promise.all([this.#store.createTaxonomy(category), this.#store.createTaxonomy(tag)]);
+    }
     await this.#cms.recordSuccessfulOperation(actor, {
       workspaceId: collection.workspaceId,
       siteId: collection.siteId,
@@ -4766,15 +5302,17 @@ class BlogService {
       document: input.document
     });
     const now = this.#clock.now();
-    await this.#store.addArticle({
+    const article = {
       collectionId: collection.id,
       contentItemId: snapshot.item.id,
       postedAt: input.postedAt ?? now,
       authorPrincipalId: actor.onBehalfOf ?? actor.actorId,
       createdAt: now
-    });
-    if (input.termIds)
-      await this.classifyRevision(actor, snapshot.item.id, snapshot.workingRevision.id, input.termIds);
+    };
+    await this.#store.addArticle(article);
+    if (input.termIds) {
+      await this.#classifyRevision(actor, article, snapshot.workingRevision, input.termIds);
+    }
     await this.#cms.recordSuccessfulOperation(actor, {
       workspaceId: collection.workspaceId,
       siteId: collection.siteId,
@@ -4787,8 +5325,9 @@ class BlogService {
     });
     return snapshot;
   }
-  async getArticleMetadata(actor, contentItemId) {
-    const snapshot = await this.#cms.getContent(actor, contentItemId);
+  async getArticleMetadata(actor, contentItemId, knownSnapshot) {
+    const snapshot = knownSnapshot ?? await this.#cms.getContent(actor, contentItemId);
+    assertDomain(snapshot.item.id === contentItemId, "ARTICLE_CONTENT_MISMATCH", "Content is not the requested article", 422);
     assertDomain(snapshot.item.contentTypeKey === "article", "ARTICLE_CONTENT_MISMATCH", "Content is not an article", 422);
     const article = await this.#requireArticle(contentItemId);
     return { article, snapshot };
@@ -4819,9 +5358,8 @@ class BlogService {
     const article = await this.#requireArticle(input.contentItemId);
     const revision = await this.#cms.commitRevision(actor, input);
     if (input.termIdsByTaxonomy) {
-      for (const [taxonomyId, termIds] of Object.entries(input.termIdsByTaxonomy)) {
-        await this.#setTaxonomyValue(actor, article.collectionId, revision.id, asTaxonomyId(taxonomyId), termIds);
-      }
+      const requested = new Map(Object.entries(input.termIdsByTaxonomy).map(([taxonomyId, termIds]) => [asTaxonomyId(taxonomyId), unique(termIds)]));
+      await this.#setTaxonomyValues(actor, article, revision, requested, false);
     }
     return revision;
   }
@@ -4865,17 +5403,9 @@ class BlogService {
   }
   async classifyRevision(actor, articleContentItemId, revisionId, termIds) {
     const article = await this.#requireArticle(articleContentItemId);
-    const taxonomies = await this.#store.listTaxonomies(article.collectionId);
-    const grouped = /* @__PURE__ */ new Map();
-    for (const termId of unique(termIds)) {
-      const term = await this.#store.getTerm(termId);
-      assertDomain(term && term.state === "active", "TERM_NOT_FOUND", "Term not found", 404);
-      const taxonomy = taxonomies.find((item) => item.id === term.taxonomyId);
-      assertDomain(taxonomy, "TERM_COLLECTION_MISMATCH", "Term belongs to another blog", 422);
-      grouped.set(taxonomy.id, [...grouped.get(taxonomy.id) ?? [], term.id]);
-    }
-    for (const taxonomy of taxonomies)
-      await this.#setTaxonomyValue(actor, article.collectionId, revisionId, taxonomy.id, grouped.get(taxonomy.id) ?? []);
+    const revision = await this.#cms.store.getRevision(revisionId);
+    assertDomain(revision, "REVISION_NOT_FOUND", "Revision not found", 404);
+    await this.#classifyRevision(actor, article, revision, termIds);
   }
   async listTaxonomies(collectionId) {
     const taxonomies = await this.#store.listTaxonomies(collectionId);
@@ -4892,6 +5422,11 @@ class BlogService {
   async listPublishedArticles(collectionId, options = {}) {
     const collection = await this.#requireCollection(collectionId);
     const requiredTermIds = unique(options.termIds ?? []);
+    const limit = clamp$2(options.limit ?? collection.pageSize, 1, 100);
+    const offset = Math.max(0, options.offset ?? 0);
+    if (this.#store.listPublishedArticles) {
+      return this.#store.listPublishedArticles(collection, { limit, offset, termIds: requiredTermIds });
+    }
     const records = await this.#store.listArticles(collection.id);
     const published = [];
     for (const record of records) {
@@ -4904,8 +5439,6 @@ class BlogService {
       published.push({ snapshot, collectionId: collection.id, postedAt: record.postedAt, authorPrincipalId: record.authorPrincipalId, terms });
     }
     published.sort((a, b) => collection.sortDirection === "desc" ? b.postedAt - a.postedAt : a.postedAt - b.postedAt);
-    const limit = clamp$2(options.limit ?? collection.pageSize, 1, 100);
-    const offset = Math.max(0, options.offset ?? 0);
     return { items: published.slice(offset, offset + limit), total: published.length, limit, offset };
   }
   async getCollectionByContentItem(contentItemId) {
@@ -4931,7 +5464,12 @@ class BlogService {
     return `<?xml version="1.0" encoding="UTF-8"?><rss version="2.0"><channel><title>${xml(title)}</title><link>${xml(`${base}${blog.route.path}`)}</link><description>${xml(description)}</description><lastBuildDate>${new Date(this.#clock.now()).toUTCString()}</lastBuildDate>${items}</channel></rss>`;
   }
   async #createTaxonomyRecord(collection, input, now) {
-    const taxonomy = {
+    const taxonomy = this.#buildTaxonomyRecord(collection, input, now);
+    await this.#store.createTaxonomy(taxonomy);
+    return taxonomy;
+  }
+  #buildTaxonomyRecord(collection, input, now) {
+    return {
       id: asTaxonomyId(newId("taxonomy")),
       collectionId: collection.id,
       key: input.key,
@@ -4942,27 +5480,65 @@ class BlogService {
       createdAt: now,
       updatedAt: now
     };
-    await this.#store.createTaxonomy(taxonomy);
-    return taxonomy;
   }
-  async #setTaxonomyValue(actor, collectionId, revisionId, taxonomyId, termIds) {
-    const collection = await this.#requireCollection(collectionId);
-    const taxonomy = await this.#requireTaxonomy(taxonomyId);
-    assertDomain(taxonomy.collectionId === collection.id, "TAXONOMY_COLLECTION_MISMATCH", "Taxonomy belongs to another blog", 422);
-    await this.#cms.authorizeOperation(actor, Capabilities.ArticleClassify, { workspaceId: collection.workspaceId, siteId: collection.siteId, contentType: "article", risk: "low" }, "article.classify", "revision", revisionId);
-    const revision = await this.#cms.store.getRevision(revisionId);
-    assertDomain(revision, "REVISION_NOT_FOUND", "Revision not found", 404);
-    const article = await this.#requireArticle(revision.contentItemId);
-    assertDomain(article.collectionId === collection.id, "ARTICLE_COLLECTION_MISMATCH", "Revision belongs to another blog", 422);
-    const valid = [];
-    for (const termId of unique(termIds)) {
-      const term = await this.#store.getTerm(termId);
-      assertDomain(term && term.taxonomyId === taxonomy.id && term.state === "active", "INVALID_TERM", "Term is invalid for taxonomy", 422);
-      valid.push(term.id);
+  async #classifyRevision(actor, article, revision, termIds) {
+    const taxonomies = await this.#store.listTaxonomies(article.collectionId);
+    const taxonomyIds = new Set(taxonomies.map((taxonomy) => taxonomy.id));
+    const terms = await this.#loadTerms(unique(termIds));
+    const grouped = /* @__PURE__ */ new Map();
+    for (const term of terms) {
+      assertDomain(taxonomyIds.has(term.taxonomyId), "TERM_COLLECTION_MISMATCH", "Term belongs to another blog", 422);
+      grouped.set(term.taxonomyId, [...grouped.get(term.taxonomyId) ?? [], term.id]);
     }
-    const value = { revisionId, taxonomyId, termIds: valid };
-    await this.#store.setRevisionTaxonomyValue(value);
-    await this.#cms.recordSuccessfulOperation(actor, { workspaceId: collection.workspaceId, siteId: collection.siteId, action: "article.classify", resourceType: "revision", resourceId: revisionId, revisionId, capability: Capabilities.ArticleClassify, details: { taxonomyId, termIds: valid } });
+    for (const taxonomy of taxonomies)
+      grouped.set(taxonomy.id, grouped.get(taxonomy.id) ?? []);
+    await this.#setTaxonomyValues(actor, article, revision, grouped, true, taxonomies, terms);
+  }
+  async #setTaxonomyValues(actor, article, revision, requested, clearMissing, knownTaxonomies, knownTerms) {
+    const collection = await this.#requireCollection(article.collectionId);
+    const taxonomies = knownTaxonomies ?? await this.#store.listTaxonomies(collection.id);
+    const taxonomyById = new Map(taxonomies.map((taxonomy) => [taxonomy.id, taxonomy]));
+    for (const taxonomyId of requested.keys()) {
+      assertDomain(taxonomyById.has(taxonomyId), "TAXONOMY_COLLECTION_MISMATCH", "Taxonomy belongs to another blog", 422);
+    }
+    assertDomain(revision.contentItemId === article.contentItemId, "ARTICLE_COLLECTION_MISMATCH", "Revision belongs to another article", 422);
+    await this.#cms.authorizeOperation(actor, Capabilities.ArticleClassify, { workspaceId: collection.workspaceId, siteId: collection.siteId, contentType: "article", risk: "low" }, "article.classify", "revision", revision.id);
+    const requestedTaxonomies = clearMissing ? taxonomies : [...requested.keys()].map((id) => taxonomyById.get(id));
+    const allTermIds = unique(requestedTaxonomies.flatMap((taxonomy) => requested.get(taxonomy.id) ?? []));
+    const terms = knownTerms ?? await this.#loadTerms(allTermIds);
+    const termById = new Map(terms.map((term) => [term.id, term]));
+    const values = requestedTaxonomies.map((taxonomy) => {
+      const valid = unique(requested.get(taxonomy.id) ?? []);
+      for (const termId of valid) {
+        const term = termById.get(termId);
+        assertDomain(term?.taxonomyId === taxonomy.id, "INVALID_TERM", "Term is invalid for taxonomy", 422);
+      }
+      return { revisionId: revision.id, taxonomyId: taxonomy.id, termIds: valid };
+    });
+    if (this.#store.setRevisionTaxonomyValues) {
+      await this.#store.setRevisionTaxonomyValues(values);
+    } else {
+      await Promise.all(values.map((value) => this.#store.setRevisionTaxonomyValue(value)));
+    }
+    await this.#cms.recordSuccessfulOperation(actor, {
+      workspaceId: collection.workspaceId,
+      siteId: collection.siteId,
+      action: "article.classify",
+      resourceType: "revision",
+      resourceId: revision.id,
+      revisionId: revision.id,
+      capability: Capabilities.ArticleClassify,
+      details: { values: values.map(({ taxonomyId, termIds }) => ({ taxonomyId, termIds })) }
+    });
+  }
+  async #loadTerms(ids) {
+    if (!ids.length)
+      return [];
+    const terms = this.#store.getTerms ? await this.#store.getTerms(ids) : (await Promise.all(ids.map((id) => this.#store.getTerm(id)))).filter((term) => Boolean(term));
+    const active = new Map(terms.filter((term) => term.state === "active").map((term) => [term.id, term]));
+    for (const id of ids)
+      assertDomain(active.has(id), "TERM_NOT_FOUND", "Term not found", 404);
+    return ids.map((id) => active.get(id));
   }
   async #resolveTerms(collectionId, revisionId) {
     const taxonomies = await this.#store.listTaxonomies(collectionId);
@@ -6153,6 +6729,23 @@ function serveBuiltinAssetByRawId(request, rawAssetId) {
   }
   return serveBuiltinAssetRequest(request, BUILTIN_STARTER_HOME_HERO_PATH);
 }
+async function isAssetDeliverableOnPublicSite(cms, previews, siteId, assetId, now) {
+  const store = cms.store;
+  if (typeof store.isAssetDeliverableOnPublicSite === "function") {
+    return store.isAssetDeliverableOnPublicSite(siteId, assetId, now);
+  }
+  const published = await store.listPublishedAssetReferences(assetId);
+  if (published.some((reference) => reference.siteId === siteId))
+    return true;
+  if (!previews)
+    return false;
+  const activeSessions = await previews.listActiveSessionsForSite(siteId, now);
+  for (const session of activeSessions) {
+    if (await store.revisionReferencesAsset(session.revisionId, assetId))
+      return true;
+  }
+  return false;
+}
 const defaultPublicAssetUrl = createPublicAssetUrlResolver("/assets");
 const memoryCms = new CmsService(new MemoryCmsStore());
 const memoryPreviews = new MemoryPreviewStore();
@@ -6166,9 +6759,9 @@ const noopSecurity = {
   success: async () => {
   }
 };
-function createPublicWorker(resolveCms = (env) => env.DB ? new CmsService(new D1CmsStore(env.DB)) : memoryCms, options = {}) {
+function createPublicWorkerCore(resolveCms = (env) => env.DB ? new CmsService(new D1CmsStore(env.DB)) : memoryCms, options = {}) {
   return {
-    async fetch(request, env) {
+    async fetch(request, env, context) {
       try {
         if (request.method !== "GET" && request.method !== "HEAD" && request.method !== "POST")
           return new Response("Method Not Allowed", { status: 405 });
@@ -6187,15 +6780,22 @@ function createPublicWorker(resolveCms = (env) => env.DB ? new CmsService(new D1
           const builtinById = serveBuiltinAssetByRawId(request, assetMatch[1]);
           if (builtinById)
             return builtinById;
-          return serveAsset(request, assets, assetMatch[1]);
+          const previews = options.resolvePreview?.(env, cms) ?? (env.PREVIEW_SECRET || env.DB ? createPreviewService(env, cms) : void 0);
+          return serveAsset(request, assets, cms, previews, env, assetMatch[1]);
         }
         const previewMatch = url.pathname.match(/^\/_preview\/(.+)$/);
         if (previewMatch?.[1]) {
           const previews = options.resolvePreview?.(env, cms) ?? createPreviewService(env, cms);
-          const resolved = await previews.resolve(decodeURIComponent(previewMatch[1]));
+          const resolved = await previews.resolve(decodeURIComponent(previewMatch[1]), context ? {
+            deferTouch: (promise) => context.waitUntil(promise.catch((error) => {
+              console.warn("preview access timestamp update failed", error);
+            }))
+          } : {});
           const title2 = typeof resolved.revision.fields.title === "string" ? resolved.revision.fields.title : "";
-          const theme = await themes.resolveRelease(resolved.session.themeRelease, resolved.session.siteId);
-          const previewSite = await cms.store.getSite(resolved.session.siteId);
+          const [theme, previewSite] = await Promise.all([
+            themes.resolveRelease(resolved.session.themeRelease, resolved.session.siteId),
+            resolved.site ? Promise.resolve(resolved.site) : cms.store.getSite(resolved.session.siteId)
+          ]);
           let html2 = renderPage(resolved.revision.document, {
             assetUrl: createPublicAssetUrlResolver("/assets"),
             contentUrl: (contentId) => `/content/${encodeURIComponent(contentId)}`
@@ -6234,10 +6834,6 @@ function createPublicWorker(resolveCms = (env) => env.DB ? new CmsService(new D1
         if (!env.SITE_ID)
           return new Response("SITE_ID is not configured", { status: 503 });
         const siteId = asSiteId(env.SITE_ID);
-        const activeTheme = await themes.resolveActive(siteId);
-        const site = await cms.store.getSite(siteId);
-        const siteName = site?.name ?? "";
-        const siteLocale = site?.locale ?? "ja";
         if (url.pathname === "/robots.txt") {
           const body = renderRobotsTxt(url.origin);
           return new Response(request.method === "HEAD" ? null : body, {
@@ -6281,6 +6877,12 @@ function createPublicWorker(resolveCms = (env) => env.DB ? new CmsService(new D1
           const submission = await mailForms.submitConfirmation({ confirmationId: asMailConfirmationId(String(data.get("confirmationId") ?? "")), token: String(data.get("token") ?? "") });
           return renderMailThanks(request, root.snapshot, submission.id);
         }
+        const [activeTheme, site] = await Promise.all([
+          themes.resolveActive(siteId),
+          cms.store.getSite(siteId)
+        ]);
+        const siteName = site?.name ?? "";
+        const siteLocale = site?.locale ?? "ja";
         const customDetailMatch = url.pathname.match(/^(.*)\/view\/([^/]+)\/?$/);
         if (customDetailMatch) {
           const rootPath = customDetailMatch[1] || "/";
@@ -6320,8 +6922,8 @@ function createPublicWorker(resolveCms = (env) => env.DB ? new CmsService(new D1
             return new Response("Not Found", { status: 404 });
           return renderBlogResponse(request, root.snapshot, blog, collection.id, assets, url, activeTheme, siteName, siteLocale, [term.id], `${term.title}`);
         }
-        const resolution = await cms.resolvePublicPath(siteId, url.pathname);
-        if (!resolution && url.pathname === "/") {
+        const resolution = url.pathname === "/" ? null : await cms.resolvePublicPath(siteId, url.pathname);
+        if (url.pathname === "/") {
           const homepage = await cms.resolvePublicPath(siteId, "/home");
           if (homepage?.kind === "content" && homepage.snapshot.publishedRevision) {
             return new Response(null, {
@@ -6413,6 +7015,80 @@ function createPublicWorker(resolveCms = (env) => env.DB ? new CmsService(new D1
     }
   };
 }
+function createPublicWorker(resolveCms = (env) => env.DB ? new CmsService(new D1CmsStore(env.DB)) : memoryCms, options = {}) {
+  const core = createPublicWorkerCore(resolveCms, options);
+  return {
+    async fetch(request, env, context) {
+      const startedAt = performance.now();
+      const cache = options.cache === void 0 ? defaultPublicCache() : options.cache;
+      const cacheableRequest = shouldUsePublicResponseCache(request);
+      if (cacheableRequest && cache) {
+        const cached = await cache.match(request);
+        if (cached)
+          return withPerformanceHeaders(cached, "HIT", startedAt);
+      }
+      const requestEnv = shouldUseReplicaSession(request) && env.DB?.withSession ? { ...env, DB: env.DB.withSession("first-unconstrained") } : env;
+      const response = await core.fetch(request, requestEnv, context);
+      if (cacheableRequest && cache && isCacheablePublicResponse(response)) {
+        const write = cache.put(request, responseForPublicCache(response)).catch((error) => {
+          console.warn("public response cache write failed", error);
+        });
+        if (context)
+          context.waitUntil(write);
+        else
+          await write;
+      }
+      return withPerformanceHeaders(response, cacheableRequest && cache ? "MISS" : "BYPASS", startedAt);
+    }
+  };
+}
+function defaultPublicCache() {
+  const runtime = globalThis;
+  return runtime.caches?.default ?? null;
+}
+function responseForPublicCache(response) {
+  const headers = new Headers(response.headers);
+  headers.set("cache-control", "public, max-age=60, s-maxage=60");
+  return new Response(response.clone().body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers
+  });
+}
+function shouldUsePublicResponseCache(request) {
+  if (request.method !== "GET")
+    return false;
+  const url = new URL(request.url);
+  if (url.search)
+    return false;
+  if (url.pathname.startsWith("/_preview/") || url.pathname.startsWith("/assets/"))
+    return false;
+  return !/\/(?:confirm|submit)\/?$/.test(url.pathname);
+}
+function shouldUseReplicaSession(request) {
+  if (request.method !== "GET" && request.method !== "HEAD")
+    return false;
+  const pathname = new URL(request.url).pathname;
+  return !pathname.startsWith("/_preview/");
+}
+function isCacheablePublicResponse(response) {
+  if (response.status !== 200 && response.status !== 301 && response.status !== 302 && response.status !== 307 && response.status !== 308)
+    return false;
+  if (response.headers.has("set-cookie"))
+    return false;
+  const cacheControl = response.headers.get("cache-control")?.toLowerCase() ?? "";
+  return cacheControl.includes("public") && !cacheControl.includes("no-store");
+}
+function withPerformanceHeaders(response, cacheState, startedAt) {
+  const headers = new Headers(response.headers);
+  headers.set("x-baser-edge-cache", cacheState);
+  headers.append("server-timing", `baser;dur=${Math.max(0, performance.now() - startedAt).toFixed(1)}`);
+  return new Response(response.body, {
+    status: response.status,
+    statusText: response.statusText,
+    headers
+  });
+}
 function createAssetService(env) {
   const bindings = resolveAssetBindings(env);
   return new AssetService({
@@ -6497,8 +7173,15 @@ function extractBody(html) {
 function escapeHtml(value) {
   return value.replace(/[&<>"']/g, (character) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[character]);
 }
-async function serveAsset(request, service, rawId) {
-  const result = await service.getPublicAsset(asAssetId(rawId));
+async function serveAsset(request, service, cms, previews, env, rawId) {
+  const assetId = asAssetId(rawId);
+  if (env.SITE_ID) {
+    const siteId = asSiteId(env.SITE_ID);
+    const deliverable = await isAssetDeliverableOnPublicSite(cms, previews, siteId, assetId, Date.now());
+    if (!deliverable)
+      return new Response("Not Found", { status: 404 });
+  }
+  const result = await service.getPublicAsset(assetId);
   if (!result)
     return new Response("Not Found", { status: 404 });
   const headers = new Headers({

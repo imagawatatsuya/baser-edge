@@ -33,6 +33,7 @@ Living inventory of **existing** `/v1/*` routes against [validation-policy.md](.
 | Route | Methods | Domain | API | −T | Status | Notes |
 |-------|---------|--------|-----|-----|--------|-------|
 | `/health` | GET | — | — | — | OK | No body |
+| `/console/*` | GET | — | — | Y | OK | Nested Static Assets are served before CMS/D1 initialization (`api-worker.test.mjs`) |
 | `/v1/console/capabilities` | GET | — | — | Y | OK | R2 → `r2`; `d1-inline` → `trialInlineMedia` |
 | `/v1/dev/local-login-hint` | GET | — | — | — | Partial | Dev-only; no abuse tests |
 
@@ -81,6 +82,7 @@ Living inventory of **existing** `/v1/*` routes against [validation-policy.md](.
 | `/v1/sites/:siteId/content-tree` | GET | Y | Y | Y | OK | `sitePathId` (`site_` + UUID) |
 | `/v1/sites/:siteId/trash` | GET | Y | Y | Partial | Partial | `sitePathId` |
 | `/v1/content/:id` | GET | Y | — | Partial | Partial | |
+| `/v1/content/:id/editor` | GET | Y | Y | Y | OK | Content snapshotと任意Article metadataの集約read; `api-worker.test.mjs` |
 | `/v1/content/:id/revisions` | POST | Y | Y | Y | OK | Golden path: missing `expectedLockVersion` |
 | `/v1/content/:id/approvals` | POST | Y | Y | Y | OK | `revisionId` required; closed `riskLevel`; tests in `api-validation.test.mjs` |
 | `/v1/sites/:siteId/pending-approvals` | GET | Y | — | Partial | Partial | Console approvals inbox |
@@ -106,7 +108,7 @@ Living inventory of **existing** `/v1/*` routes against [validation-policy.md](.
 | `/v1/blogs/:id/taxonomies` | GET, POST | Y | Y | Partial | Partial | |
 | `/v1/taxonomies/:id/terms` | POST | Y | Y | Partial | Partial | |
 | `/v1/articles/:id/revisions/:rev/terms` | PUT | Y | Y | Y | OK | `termIds` string array; tests in `api-worker.test.mjs` |
-| `/v1/sites/:siteId/blogs` | GET | Y | — | Partial | Partial | |
+| `/v1/sites/:siteId/blogs` | GET | Y | Y | Y | OK | `sitePathId`; content-tree projectionからsnapshotを再利用; `api-worker.test.mjs` |
 
 ---
 
@@ -152,7 +154,8 @@ Public mail submit (renderer, not api-worker) — see `tests/mail-form.test.mjs`
 | `/v1/assets/uploads/:id` | PUT | Y | Partial | Partial | Partial | Token query required |
 | `/v1/assets` | GET | Y | Partial | Partial | Partial | |
 | `/v1/assets/:id` | GET, DELETE | Y | — | Partial | Partial | DELETE mirrored in `MediaLibraryPage` (`ASSET_IN_USE` UI) |
-| `/v1/assets/:id/content` | GET | Y | — | Partial | OK | Authenticated binary; console thumbnails (`consoleAssetContentUrl`) |
+| `/v1/assets/:id/content` | GET | Y | — | Partial | OK | Authenticated original binary; immutable private browser cache |
+| `/v1/assets/:id/thumbnail` | GET, PUT | Y | Y | Y | OK | Authenticated 256px WebP derivative; original fallback/backfill; MIME/content/256KiB validation in `assets-preview.test.mjs` and `api-worker.test.mjs` |
 | Public `GET /assets/:id` | GET | — | Y (D1) | Partial | OK | Fail-closed: published revision or active preview session refs ([ADR-0024](../adr/0024-public-asset-delivery-fail-closed.md)) |
 
 ---

@@ -153,13 +153,12 @@ export interface ApiWorkerOptions {
   verifyCloudflareAccessJwt?: import("./cloudflare-auth-routes.js").VerifyCloudflareAccessJwtFn;
 }
 
-/** Map public /console/* URL to wrangler assets path (dist root is not under /console). */
+/** Map /console bundles literally and SPA navigations to root /index.html. */
 export function mapConsoleUrlToAssetPath(pathname: string): string | null {
-  if (pathname === "/console") return "/";
+  if (pathname === "/console" || pathname === "/console/") return "/";
   if (!pathname.startsWith("/console/")) return null;
-  const rest = pathname.slice("/console".length);
-  if (!rest || rest === "/") return "/";
-  return rest;
+  if (pathname.startsWith("/console/assets/")) return pathname;
+  return "/";
 }
 
 async function tryServeConsole(request: Request, env: Env): Promise<Response | null> {
@@ -202,17 +201,6 @@ export async function createInitialHomepage(
   });
 }
 
-async function ensureTrialHomepage(cms: CmsService, env: Env): Promise<void> {
-  if (!instantLoginEnabled(env)) return;
-  const hint = parseInstantOwnerHint(env.BASER_INSTANT_OWNER_HINT);
-  if (!hint) return;
-  await createInitialHomepage(cms, {
-    siteId: hint.siteId,
-    ownerPrincipalId: hint.ownerPrincipalId,
-    siteName: hint.siteName ?? "マイサイト",
-  });
-}
-
 export function createApiWorker(resolveCms: (env: Env) => CmsService = defaultResolver, options: ApiWorkerOptions = {}) {
   return {
     async fetch(request: Request, env: Env): Promise<Response> {
@@ -220,6 +208,11 @@ export function createApiWorker(resolveCms: (env: Env) => CmsService = defaultRe
       const withCors = (response: Response) => applyCors(response, corsContext);
       const json = (value: unknown, status = 200) =>
         withCors(new Response(JSON.stringify(value), { status, headers: { "content-type": "application/json; charset=utf-8" } }));
+      const timedJson = (value: unknown, status: number, metric: string, startedAt: number) => {
+        const response = json(value, status);
+        response.headers.append("server-timing", `${metric};dur=${Math.max(0, performance.now() - startedAt).toFixed(1)}`);
+        return response;
+      };
       const errorResponse = (error: unknown): Response => {
         if (error instanceof DomainError) {
           return json({ error: { code: error.code, message: error.message, details: error.details ?? {} } }, error.status);
@@ -233,12 +226,9 @@ export function createApiWorker(resolveCms: (env: Env) => CmsService = defaultRe
       if (request.method === "GET" && url.pathname === "/") {
         return Response.redirect(`${url.origin}/console/`, 302);
       }
-      const cms = resolveCms(env);
-      if (request.method === "GET" && (url.pathname === "/console" || url.pathname === "/console/")) {
-        await ensureTrialHomepage(cms, env);
-      }
       const consoleResponse = await tryServeConsole(request, env);
       if (consoleResponse) return consoleResponse;
+      const cms = resolveCms(env);
       const auth = options.resolveAuth?.(env, cms) ?? createAuthService(env, cms);
       cms.attachSecurityHooks({ assertStepUp: (actor, input) => auth.assertStepUp(actor, input) });
       const cfOAuthChallenges = env.DB
@@ -627,10 +617,15 @@ export function createApiWorker(resolveCms: (env: Env) => CmsService = defaultRe
         }
         const blogsListMatch = url.pathname.match(/^\/v1\/sites\/([^/]+)\/blogs$/);
         if (request.method === "GET" && blogsListMatch?.[1]) {
+          const startedAt = performance.now();
           const siteId = sitePathId(blogsListMatch[1]);
-          await cms.listContentTree(context, siteId);
+          const tree = await cms.listContentTree(context, siteId);
+          const snapshots = new Map(tree.map((entry) => [entry.snapshot.item.id, entry.snapshot]));
           const collections = await blog.listCollections(siteId);
-          return json(await Promise.all(collections.map(async (collection) => ({ collection, snapshot: await cms.getContent(context, collection.contentItemId) }))));
+          return timedJson(collections.flatMap((collection) => {
+            const snapshot = snapshots.get(collection.contentItemId);
+            return snapshot ? [{ collection, snapshot }] : [];
+          }), 200, "blog-index", startedAt);
         }
         const customContentsListMatch = url.pathname.match(/^\/v1\/sites\/([^/]+)\/custom-contents$/);
         if (request.method === "GET" && customContentsListMatch?.[1]) {
@@ -723,6 +718,20 @@ export function createApiWorker(resolveCms: (env: Env) => CmsService = defaultRe
           return json(await cms.getContent(context, asContentItemId(contentMatch[1])));
         }
 
+        const contentEditorMatch = url.pathname.match(/^\/v1\/content\/([^/]+)\/editor$/);
+        if (request.method === "GET" && contentEditorMatch?.[1]) {
+          const startedAt = performance.now();
+          const contentItemId = asContentItemId(contentEditorMatch[1]);
+          const snapshot = await cms.getContent(context, contentItemId);
+          const articleMeta = snapshot.item.contentTypeKey === "article"
+            ? await blog.getArticleMetadata(context, contentItemId, snapshot).then(({ article }) => ({
+              postedAt: article.postedAt,
+              createdAt: article.createdAt,
+            }))
+            : null;
+          return timedJson({ snapshot, articleMeta }, 200, "content-editor", startedAt);
+        }
+
         const revisionsMatch = url.pathname.match(/^\/v1\/content\/([^/]+)\/revisions$/);
         if (request.method === "POST" && revisionsMatch?.[1]) {
           const body = await readJson(request);
@@ -794,14 +803,13 @@ export function createApiWorker(resolveCms: (env: Env) => CmsService = defaultRe
         if (request.method === "POST" && reorderMatch?.[1]) {
           const body = await readJson(request);
           const contentItemId = asContentItemId(reorderMatch[1]);
-          const snapshot = await cms.getContent(context, contentItemId);
           return json(await cms.reorderContent(context, {
             contentItemId,
             targetParentId: body.targetParentId === null
               ? null
               : typeof body.targetParentId === "string"
                 ? asContentNodeId(body.targetParentId)
-                : snapshot.node.parentId,
+                : invalid("targetParentId must be a content node id or null"),
             insertAfterContentItemId: body.insertAfterContentItemId === null
               ? null
               : typeof body.insertAfterContentItemId === "string"
@@ -889,7 +897,37 @@ export function createApiWorker(resolveCms: (env: Env) => CmsService = defaultRe
           const headers = new Headers({
             "content-type": delivered.asset.mediaType,
             "content-length": String(delivered.asset.byteSize ?? delivered.object.size),
-            "cache-control": "private, no-store",
+            "cache-control": "private, max-age=31536000, immutable",
+            "vary": "Cookie",
+            "x-content-type-options": "nosniff",
+          });
+          const etag = delivered.object.httpEtag ?? `"${delivered.object.etag}"`;
+          headers.set("etag", etag);
+          if (request.headers.get("if-none-match") === etag) return new Response(null, { status: 304, headers });
+          return new Response(delivered.object.body, { headers });
+        }
+
+        const assetThumbnailMatch = url.pathname.match(/^\/v1\/assets\/([^/]+)\/thumbnail$/);
+        if (request.method === "PUT" && assetThumbnailMatch?.[1]) {
+          if (!request.body) invalid("thumbnail body is required");
+          const contentLengthHeader = request.headers.get("content-length");
+          const contentLength = contentLengthHeader === null ? undefined : Number(contentLengthHeader);
+          const stored = await assets.putAuthenticatedAssetThumbnail(context, asAssetId(assetThumbnailMatch[1]), {
+            mediaType: request.headers.get("content-type") ?? "application/octet-stream",
+            ...(contentLength !== undefined && Number.isFinite(contentLength) ? { contentLength } : {}),
+            body: request.body,
+          });
+          return json(stored, 201);
+        }
+        if (request.method === "GET" && assetThumbnailMatch?.[1]) {
+          const delivered = await assets.getAuthenticatedAssetThumbnail(context, asAssetId(assetThumbnailMatch[1]));
+          const isDerivative = delivered.source === "thumbnail";
+          const headers = new Headers({
+            "content-type": delivered.object.mediaType ?? delivered.asset.mediaType,
+            "content-length": String(delivered.object.size),
+            "cache-control": isDerivative ? "private, max-age=31536000, immutable" : "private, no-store",
+            "vary": "Cookie",
+            "x-baser-thumbnail-source": delivered.source,
             "x-content-type-options": "nosniff",
           });
           const etag = delivered.object.httpEtag ?? `"${delivered.object.etag}"`;
@@ -900,17 +938,19 @@ export function createApiWorker(resolveCms: (env: Env) => CmsService = defaultRe
 
         const previewCreateMatch = url.pathname.match(/^\/v1\/content\/([^/]+)\/previews$/);
         if (request.method === "POST" && previewCreateMatch?.[1]) {
+          const startedAt = performance.now();
           const body = await readJson(request);
           const contentItemId = asContentItemId(previewCreateMatch[1]);
           const snapshot = await cms.getContent(context, contentItemId);
           const themeRelease = typeof body.themeRelease === "string" ? body.themeRelease : (await themes.resolveActive(snapshot.item.siteId)).release.id;
-          return json(await previews.create(context, {
+          return timedJson(await previews.create(context, {
             contentItemId,
             revisionId: asRevisionId(stringField(body, "revisionId")),
             previewBaseUrl: typeof body.previewBaseUrl === "string" ? body.previewBaseUrl : resolvePreviewBaseUrl(env, url),
             ...(typeof body.expiresInSeconds === "number" ? { expiresInSeconds: body.expiresInSeconds } : {}),
             themeRelease,
-          }), 201);
+            snapshot,
+          }), 201, "preview-create", startedAt);
         }
         const previewRevokeMatch = url.pathname.match(/^\/v1\/previews\/([^/]+)\/revoke$/);
         if (request.method === "POST" && previewRevokeMatch?.[1]) return json(await previews.revoke(context, asPreviewSessionId(previewRevokeMatch[1])));

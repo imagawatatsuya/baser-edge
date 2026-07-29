@@ -14,7 +14,7 @@ import {
   trashContent,
 } from "../components/tree/TreeModals";
 import { TreeRowMenu } from "../components/tree/TreeRowMenu";
-import { canDropOnFolder, reorderContentInTree } from "../lib/treeMove";
+import { applyReorderToContentTree, canDropOnFolder, reorderContentInTree } from "../lib/treeMove";
 import { compareTreeEntries } from "../lib/treeSort";
 import { formatDateTime } from "../lib/dates";
 import { prefetchContentEditor } from "../lib/contentSnapshotCache";
@@ -41,7 +41,7 @@ type DropTarget = ContentTreeEntry | "root";
 
 export function ContentLayout() {
   const contentTree = useContentTree();
-  const { entries, error, isReloading, reload } = contentTree;
+  const { entries, error, isReloading, reload, updateEntries } = contentTree;
   const { contentId } = useParams();
   const navigate = useNavigate();
   const [createParentId, setCreateParentId] = useState<string | null>(null);
@@ -94,6 +94,25 @@ export function ContentLayout() {
     return [...(byParent.get(parentKey) ?? [])].sort(compareTreeEntries);
   }
 
+  async function reorderEntry(
+    entry: ContentTreeEntry,
+    targetParentId: string | null,
+    insertAfterContentItemId: string | null,
+  ) {
+    const next = await reorderContentInTree(
+      entry.snapshot,
+      targetParentId,
+      insertAfterContentItemId,
+    );
+    updateEntries((current) => applyReorderToContentTree(
+      current,
+      entry.snapshot,
+      next,
+      targetParentId,
+      insertAfterContentItemId,
+    ));
+  }
+
   async function moveEntryUp(entry: ContentTreeEntry) {
     const parentKey = entry.snapshot.node.parentId ?? "root";
     const siblings = sortedSiblings(parentKey);
@@ -102,9 +121,8 @@ export function ContentLayout() {
     setTreeError("");
     try {
       const insertAfter = siblings[index - 2]?.snapshot.item.id ?? null;
-      await reorderContentInTree(entry.snapshot, entry.snapshot.node.parentId, insertAfter);
+      await reorderEntry(entry, entry.snapshot.node.parentId, insertAfter);
       setTreeAnnounce(`${displayTitle(entry)}を上へ移動しました`);
-      await reload();
     } catch (e) {
       setTreeError(e instanceof Error ? e.message : String(e));
     }
@@ -117,9 +135,8 @@ export function ContentLayout() {
     if (index < 0 || index >= siblings.length - 1) return;
     setTreeError("");
     try {
-      await reorderContentInTree(entry.snapshot, entry.snapshot.node.parentId, siblings[index + 1].snapshot.item.id);
+      await reorderEntry(entry, entry.snapshot.node.parentId, siblings[index + 1].snapshot.item.id);
       setTreeAnnounce(`${displayTitle(entry)}を下へ移動しました`);
-      await reload();
     } catch (e) {
       setTreeError(e instanceof Error ? e.message : String(e));
     }
@@ -132,9 +149,8 @@ export function ContentLayout() {
     if (!parentEntry) return;
     setTreeError("");
     try {
-      await reorderContentInTree(entry.snapshot, parentEntry.snapshot.node.parentId, parentEntry.snapshot.item.id);
+      await reorderEntry(entry, parentEntry.snapshot.node.parentId, parentEntry.snapshot.item.id);
       setTreeAnnounce(`${displayTitle(entry)}を親フォルダの直後へ移動しました`);
-      await reload();
     } catch (e) {
       setTreeError(e instanceof Error ? e.message : String(e));
     }
@@ -155,8 +171,7 @@ export function ContentLayout() {
       const parentKey = targetParentId ?? "root";
       const siblings = (byParent.get(parentKey) ?? []).filter((e) => e.snapshot.item.id !== dragEntry.snapshot.item.id);
       const last = [...siblings].sort(compareTreeEntries).at(-1)?.snapshot.item.id ?? null;
-      await reorderContentInTree(dragEntry.snapshot, targetParentId, last);
-      await reload();
+      await reorderEntry(dragEntry, targetParentId, last);
     } catch (e) {
       setTreeError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -173,15 +188,14 @@ export function ContentLayout() {
       if (targetType === "folder" || targetType === "blog") {
         const kids = (byParent.get(target.snapshot.node.id) ?? []).filter((e) => e.snapshot.item.id !== dragEntry.snapshot.item.id);
         const last = [...kids].sort(compareTreeEntries).at(-1)?.snapshot.item.id ?? null;
-        await reorderContentInTree(dragEntry.snapshot, target.snapshot.node.id, last);
+        await reorderEntry(dragEntry, target.snapshot.node.id, last);
       } else {
-        await reorderContentInTree(
-          dragEntry.snapshot,
+        await reorderEntry(
+          dragEntry,
           target.snapshot.node.parentId,
           target.snapshot.item.id,
         );
       }
-      await reload();
     } catch (e) {
       setTreeError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -249,6 +263,12 @@ export function ContentLayout() {
                 navigate(`/content/${id}`);
               }}
               onPointerEnter={() => {
+                if (canEdit) prefetchContentEditor(id, entry.snapshot.item.contentTypeKey === "article");
+              }}
+              onPointerDown={() => {
+                if (canEdit) prefetchContentEditor(id, entry.snapshot.item.contentTypeKey === "article");
+              }}
+              onFocus={() => {
                 if (canEdit) prefetchContentEditor(id, entry.snapshot.item.contentTypeKey === "article");
               }}
               disabled={!canEdit}

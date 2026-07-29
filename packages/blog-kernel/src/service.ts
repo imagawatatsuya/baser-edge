@@ -21,6 +21,7 @@ import type { StructuredDocument } from "@baser-edge/structured-document";
 import type {
   ArticleListOptions,
   ArticleListResult,
+  BlogArticleRecord,
   BlogCollection,
   PublishedArticle,
   RevisionTaxonomyValue,
@@ -77,9 +78,14 @@ export class BlogService {
       createdAt: now,
       updatedAt: now,
     };
-    await this.#store.createCollection(collection);
-    const category = await this.#createTaxonomyRecord(collection, { key: "category", title: "カテゴリ", kind: "category", hierarchical: true }, now);
-    const tag = await this.#createTaxonomyRecord(collection, { key: "tag", title: "タグ", kind: "tag", hierarchical: false }, now);
+    const category = this.#buildTaxonomyRecord(collection, { key: "category", title: "カテゴリ", kind: "category", hierarchical: true }, now);
+    const tag = this.#buildTaxonomyRecord(collection, { key: "tag", title: "タグ", kind: "tag", hierarchical: false }, now);
+    if (this.#store.createCollectionWithTaxonomies) {
+      await this.#store.createCollectionWithTaxonomies(collection, [category, tag]);
+    } else {
+      await this.#store.createCollection(collection);
+      await Promise.all([this.#store.createTaxonomy(category), this.#store.createTaxonomy(tag)]);
+    }
     await this.#cms.recordSuccessfulOperation(actor, {
       workspaceId: collection.workspaceId,
       siteId: collection.siteId,
@@ -104,14 +110,17 @@ export class BlogService {
       document: input.document,
     });
     const now = this.#clock.now();
-    await this.#store.addArticle({
+    const article: BlogArticleRecord = {
       collectionId: collection.id,
       contentItemId: snapshot.item.id,
       postedAt: input.postedAt ?? now,
       authorPrincipalId: actor.onBehalfOf ?? actor.actorId,
       createdAt: now,
-    });
-    if (input.termIds) await this.classifyRevision(actor, snapshot.item.id, snapshot.workingRevision!.id, input.termIds);
+    };
+    await this.#store.addArticle(article);
+    if (input.termIds) {
+      await this.#classifyRevision(actor, article, snapshot.workingRevision!, input.termIds);
+    }
     await this.#cms.recordSuccessfulOperation(actor, {
       workspaceId: collection.workspaceId,
       siteId: collection.siteId,
@@ -125,8 +134,9 @@ export class BlogService {
     return snapshot;
   }
 
-  async getArticleMetadata(actor: ActorContext, contentItemId: ContentItemId) {
-    const snapshot = await this.#cms.getContent(actor, contentItemId);
+  async getArticleMetadata(actor: ActorContext, contentItemId: ContentItemId, knownSnapshot?: ContentSnapshot) {
+    const snapshot = knownSnapshot ?? await this.#cms.getContent(actor, contentItemId);
+    assertDomain(snapshot.item.id === contentItemId, "ARTICLE_CONTENT_MISMATCH", "Content is not the requested article", 422);
     assertDomain(snapshot.item.contentTypeKey === "article", "ARTICLE_CONTENT_MISMATCH", "Content is not an article", 422);
     const article = await this.#requireArticle(contentItemId);
     return { article, snapshot };
@@ -159,9 +169,10 @@ export class BlogService {
     const article = await this.#requireArticle(input.contentItemId);
     const revision = await this.#cms.commitRevision(actor, input);
     if (input.termIdsByTaxonomy) {
-      for (const [taxonomyId, termIds] of Object.entries(input.termIdsByTaxonomy)) {
-        await this.#setTaxonomyValue(actor, article.collectionId, revision.id, asTaxonomyId(taxonomyId), termIds);
-      }
+      const requested = new Map(
+        Object.entries(input.termIdsByTaxonomy).map(([taxonomyId, termIds]) => [asTaxonomyId(taxonomyId), unique(termIds)]),
+      );
+      await this.#setTaxonomyValues(actor, article, revision, requested, false);
     }
     return revision;
   }
@@ -208,16 +219,9 @@ export class BlogService {
 
   async classifyRevision(actor: ActorContext, articleContentItemId: ContentItemId, revisionId: RevisionId, termIds: TermId[]): Promise<void> {
     const article = await this.#requireArticle(articleContentItemId);
-    const taxonomies = await this.#store.listTaxonomies(article.collectionId);
-    const grouped = new Map<TaxonomyId, TermId[]>();
-    for (const termId of unique(termIds)) {
-      const term = await this.#store.getTerm(termId);
-      assertDomain(term && term.state === "active", "TERM_NOT_FOUND", "Term not found", 404);
-      const taxonomy = taxonomies.find((item) => item.id === term.taxonomyId);
-      assertDomain(taxonomy, "TERM_COLLECTION_MISMATCH", "Term belongs to another blog", 422);
-      grouped.set(taxonomy.id, [...(grouped.get(taxonomy.id) ?? []), term.id]);
-    }
-    for (const taxonomy of taxonomies) await this.#setTaxonomyValue(actor, article.collectionId, revisionId, taxonomy.id, grouped.get(taxonomy.id) ?? []);
+    const revision = await this.#cms.store.getRevision(revisionId);
+    assertDomain(revision, "REVISION_NOT_FOUND", "Revision not found", 404);
+    await this.#classifyRevision(actor, article, revision, termIds);
   }
 
   async listTaxonomies(collectionId: CollectionId): Promise<Array<{ taxonomy: Taxonomy; terms: Term[] }>> {
@@ -236,6 +240,11 @@ export class BlogService {
   async listPublishedArticles(collectionId: CollectionId, options: ArticleListOptions = {}): Promise<ArticleListResult> {
     const collection = await this.#requireCollection(collectionId);
     const requiredTermIds = unique(options.termIds ?? []);
+    const limit = clamp(options.limit ?? collection.pageSize, 1, 100);
+    const offset = Math.max(0, options.offset ?? 0);
+    if (this.#store.listPublishedArticles) {
+      return this.#store.listPublishedArticles(collection, { limit, offset, termIds: requiredTermIds });
+    }
     const records = await this.#store.listArticles(collection.id);
     const published: PublishedArticle[] = [];
     for (const record of records) {
@@ -246,8 +255,6 @@ export class BlogService {
       published.push({ snapshot, collectionId: collection.id, postedAt: record.postedAt, authorPrincipalId: record.authorPrincipalId, terms });
     }
     published.sort((a, b) => collection.sortDirection === "desc" ? b.postedAt - a.postedAt : a.postedAt - b.postedAt);
-    const limit = clamp(options.limit ?? collection.pageSize, 1, 100);
-    const offset = Math.max(0, options.offset ?? 0);
     return { items: published.slice(offset, offset + limit), total: published.length, limit, offset };
   }
 
@@ -272,7 +279,13 @@ export class BlogService {
   }
 
   async #createTaxonomyRecord(collection: BlogCollection, input: { key: string; title: string; kind: "category" | "tag"; hierarchical: boolean }, now: number): Promise<Taxonomy> {
-    const taxonomy: Taxonomy = {
+    const taxonomy = this.#buildTaxonomyRecord(collection, input, now);
+    await this.#store.createTaxonomy(taxonomy);
+    return taxonomy;
+  }
+
+  #buildTaxonomyRecord(collection: BlogCollection, input: { key: string; title: string; kind: "category" | "tag"; hierarchical: boolean }, now: number): Taxonomy {
+    return {
       id: asTaxonomyId(newId("taxonomy")),
       collectionId: collection.id,
       key: input.key,
@@ -283,28 +296,80 @@ export class BlogService {
       createdAt: now,
       updatedAt: now,
     };
-    await this.#store.createTaxonomy(taxonomy);
-    return taxonomy;
   }
 
-  async #setTaxonomyValue(actor: ActorContext, collectionId: CollectionId, revisionId: RevisionId, taxonomyId: TaxonomyId, termIds: TermId[]): Promise<void> {
-    const collection = await this.#requireCollection(collectionId);
-    const taxonomy = await this.#requireTaxonomy(taxonomyId);
-    assertDomain(taxonomy.collectionId === collection.id, "TAXONOMY_COLLECTION_MISMATCH", "Taxonomy belongs to another blog", 422);
-    await this.#cms.authorizeOperation(actor, Capabilities.ArticleClassify, { workspaceId: collection.workspaceId, siteId: collection.siteId, contentType: "article", risk: "low" }, "article.classify", "revision", revisionId);
-    const revision = await this.#cms.store.getRevision(revisionId);
-    assertDomain(revision, "REVISION_NOT_FOUND", "Revision not found", 404);
-    const article = await this.#requireArticle(revision.contentItemId);
-    assertDomain(article.collectionId === collection.id, "ARTICLE_COLLECTION_MISMATCH", "Revision belongs to another blog", 422);
-    const valid: TermId[] = [];
-    for (const termId of unique(termIds)) {
-      const term = await this.#store.getTerm(termId);
-      assertDomain(term && term.taxonomyId === taxonomy.id && term.state === "active", "INVALID_TERM", "Term is invalid for taxonomy", 422);
-      valid.push(term.id);
+  async #classifyRevision(
+    actor: ActorContext,
+    article: BlogArticleRecord,
+    revision: ContentRevision,
+    termIds: TermId[],
+  ): Promise<void> {
+    const taxonomies = await this.#store.listTaxonomies(article.collectionId);
+    const taxonomyIds = new Set(taxonomies.map((taxonomy) => taxonomy.id));
+    const terms = await this.#loadTerms(unique(termIds));
+    const grouped = new Map<TaxonomyId, TermId[]>();
+    for (const term of terms) {
+      assertDomain(taxonomyIds.has(term.taxonomyId), "TERM_COLLECTION_MISMATCH", "Term belongs to another blog", 422);
+      grouped.set(term.taxonomyId, [...(grouped.get(term.taxonomyId) ?? []), term.id]);
     }
-    const value: RevisionTaxonomyValue = { revisionId, taxonomyId, termIds: valid };
-    await this.#store.setRevisionTaxonomyValue(value);
-    await this.#cms.recordSuccessfulOperation(actor, { workspaceId: collection.workspaceId, siteId: collection.siteId, action: "article.classify", resourceType: "revision", resourceId: revisionId, revisionId, capability: Capabilities.ArticleClassify, details: { taxonomyId, termIds: valid } });
+    for (const taxonomy of taxonomies) grouped.set(taxonomy.id, grouped.get(taxonomy.id) ?? []);
+    await this.#setTaxonomyValues(actor, article, revision, grouped, true, taxonomies, terms);
+  }
+
+  async #setTaxonomyValues(
+    actor: ActorContext,
+    article: BlogArticleRecord,
+    revision: ContentRevision,
+    requested: Map<TaxonomyId, TermId[]>,
+    clearMissing: boolean,
+    knownTaxonomies?: Taxonomy[],
+    knownTerms?: Term[],
+  ): Promise<void> {
+    const collection = await this.#requireCollection(article.collectionId);
+    const taxonomies = knownTaxonomies ?? await this.#store.listTaxonomies(collection.id);
+    const taxonomyById = new Map(taxonomies.map((taxonomy) => [taxonomy.id, taxonomy]));
+    for (const taxonomyId of requested.keys()) {
+      assertDomain(taxonomyById.has(taxonomyId), "TAXONOMY_COLLECTION_MISMATCH", "Taxonomy belongs to another blog", 422);
+    }
+    assertDomain(revision.contentItemId === article.contentItemId, "ARTICLE_COLLECTION_MISMATCH", "Revision belongs to another article", 422);
+    await this.#cms.authorizeOperation(actor, Capabilities.ArticleClassify, { workspaceId: collection.workspaceId, siteId: collection.siteId, contentType: "article", risk: "low" }, "article.classify", "revision", revision.id);
+    const requestedTaxonomies = clearMissing ? taxonomies : [...requested.keys()].map((id) => taxonomyById.get(id)!);
+    const allTermIds = unique(requestedTaxonomies.flatMap((taxonomy) => requested.get(taxonomy.id) ?? []));
+    const terms = knownTerms ?? await this.#loadTerms(allTermIds);
+    const termById = new Map(terms.map((term) => [term.id, term]));
+    const values = requestedTaxonomies.map((taxonomy): RevisionTaxonomyValue => {
+      const valid = unique(requested.get(taxonomy.id) ?? []);
+      for (const termId of valid) {
+        const term = termById.get(termId);
+        assertDomain(term?.taxonomyId === taxonomy.id, "INVALID_TERM", "Term is invalid for taxonomy", 422);
+      }
+      return { revisionId: revision.id, taxonomyId: taxonomy.id, termIds: valid };
+    });
+    if (this.#store.setRevisionTaxonomyValues) {
+      await this.#store.setRevisionTaxonomyValues(values);
+    } else {
+      await Promise.all(values.map((value) => this.#store.setRevisionTaxonomyValue(value)));
+    }
+    await this.#cms.recordSuccessfulOperation(actor, {
+      workspaceId: collection.workspaceId,
+      siteId: collection.siteId,
+      action: "article.classify",
+      resourceType: "revision",
+      resourceId: revision.id,
+      revisionId: revision.id,
+      capability: Capabilities.ArticleClassify,
+      details: { values: values.map(({ taxonomyId, termIds }) => ({ taxonomyId, termIds })) },
+    });
+  }
+
+  async #loadTerms(ids: TermId[]): Promise<Term[]> {
+    if (!ids.length) return [];
+    const terms = this.#store.getTerms
+      ? await this.#store.getTerms(ids)
+      : (await Promise.all(ids.map((id) => this.#store.getTerm(id)))).filter((term): term is Term => Boolean(term));
+    const active = new Map(terms.filter((term) => term.state === "active").map((term) => [term.id, term]));
+    for (const id of ids) assertDomain(active.has(id), "TERM_NOT_FOUND", "Term not found", 404);
+    return ids.map((id) => active.get(id)!);
   }
 
   async #resolveTerms(collectionId: CollectionId, revisionId: RevisionId): Promise<Term[]> {

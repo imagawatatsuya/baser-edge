@@ -8,6 +8,7 @@ import {
   decryptTrialProvisionToken,
   encryptTrialProvisionToken,
   expectedMigrationSchemaObjects,
+  ensureD1Database,
   parseConsoleUrlFromLog,
   parseTrialProvisionQueueMessage,
   parseWorkerSubdomainUrl,
@@ -337,7 +338,7 @@ describe("cf-trial-provision log parse", () => {
       assert.equal(assetSessionCount, 3);
       assert.equal(apiUploads.length, 3);
       assert.equal(apiUploads[0].assets.jwt, "assets-jwt-2");
-      assert.equal(apiUploads[0].assets.config.run_worker_first, true);
+      assert.deepEqual(apiUploads[0].assets.config.run_worker_first, ["/", "/health", "/v1/*", "/console"]);
       assert.deepEqual(
         apiUploads[0].bindings.find(({ type }) => type === "assets"),
         { type: "assets", name: "STATIC_ASSETS" },
@@ -345,7 +346,7 @@ describe("cf-trial-provision log parse", () => {
       assert.equal(apiUploads[0].keep_assets, undefined);
       assert.equal(apiUploads[1].assets.jwt, "assets-jwt-3");
       assert.notEqual(apiUploads[1].assets.jwt, apiUploads[0].assets.jwt);
-      assert.equal(apiUploads[1].assets.config.run_worker_first, true);
+      assert.deepEqual(apiUploads[1].assets.config.run_worker_first, ["/", "/health", "/v1/*", "/console"]);
       assert.equal(apiUploads[1].keep_assets, undefined);
       assert.equal(apiUploads[2].assets, undefined);
       assert.equal(apiUploads[2].keep_assets, true);
@@ -734,6 +735,83 @@ describe("cf-trial-provision log parse", () => {
       encryptedApiToken: "c".repeat(64),
     };
     assert.deepEqual(parseTrialProvisionQueueMessage(body), body);
+  });
+
+  it("accepts a closed D1 location hint and rejects wrong type or unknown values", () => {
+    const body = {
+      version: 1,
+      sessionId: "a".repeat(24),
+      accountId: "b".repeat(32),
+      requestOrigin: "https://baser-edge-trial-host.example.workers.dev",
+      encryptedApiToken: "c".repeat(64),
+      d1PrimaryLocationHint: "apac",
+    };
+    assert.deepEqual(parseTrialProvisionQueueMessage(body), body);
+    assert.throws(
+      () => parseTrialProvisionQueueMessage({ ...body, d1PrimaryLocationHint: 1 }),
+      (error) => error?.code === "INVALID_TRIAL_PROVISION_QUEUE_MESSAGE",
+    );
+    assert.throws(
+      () => parseTrialProvisionQueueMessage({ ...body, d1PrimaryLocationHint: "asia" }),
+      (error) => error?.code === "INVALID_TRIAL_PROVISION_QUEUE_MESSAGE",
+    );
+  });
+
+  it("creates nearby replicated D1 and upgrades an existing non-replicated D1", async () => {
+    const originalFetch = globalThis.fetch;
+    const requests = [];
+    try {
+      globalThis.fetch = async (input, init) => {
+        const request = input instanceof Request ? input : new Request(input, init);
+        requests.push({
+          method: request.method,
+          url: request.url,
+          body: request.method === "GET" ? null : await request.clone().json(),
+        });
+        if (request.method === "GET") {
+          return Response.json({ success: true, result: [] });
+        }
+        return Response.json({ success: true, result: { uuid: "new-db" } });
+      };
+      assert.equal(
+        await ensureD1Database("token", "account", { spend() {} }, { primaryLocationHint: "apac" }),
+        "new-db",
+      );
+      assert.deepEqual(requests[1].body, {
+        name: "baser-edge-trial",
+        primary_location_hint: "apac",
+        read_replication: { mode: "auto" },
+      });
+
+      requests.length = 0;
+      globalThis.fetch = async (input, init) => {
+        const request = input instanceof Request ? input : new Request(input, init);
+        requests.push({
+          method: request.method,
+          url: request.url,
+          body: request.method === "GET" ? null : await request.clone().json(),
+        });
+        if (request.method === "GET") {
+          return Response.json({
+            success: true,
+            result: [{
+              uuid: "existing-db",
+              name: "baser-edge-trial",
+              read_replication: { mode: "disabled" },
+            }],
+          });
+        }
+        return Response.json({ success: true, result: { uuid: "existing-db" } });
+      };
+      assert.equal(
+        await ensureD1Database("token", "account", { spend() {} }),
+        "existing-db",
+      );
+      assert.equal(requests[1].method, "PUT");
+      assert.deepEqual(requests[1].body, { read_replication: { mode: "auto" } });
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
   });
 
   it("accepts encrypted resumable state and rejects malformed state", () => {

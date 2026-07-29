@@ -1,3 +1,8 @@
+import {
+  D1_PRIMARY_LOCATION_HINTS,
+  type D1PrimaryLocationHint,
+} from "./cloudflare-builds.js";
+
 export type TrialProvisionQueueMessage = {
   version: 1;
   sessionId: string;
@@ -5,6 +10,7 @@ export type TrialProvisionQueueMessage = {
   requestOrigin: string;
   encryptedApiToken: string;
   encryptedState?: string;
+  d1PrimaryLocationHint?: D1PrimaryLocationHint;
 };
 
 export class TrialProvisionQueueMessageError extends Error {
@@ -77,6 +83,17 @@ export function parseTrialProvisionQueueMessage(input: unknown): TrialProvisionQ
     fail("Queue message encryptedState is invalid");
   }
 
+  const d1PrimaryLocationHint = body.d1PrimaryLocationHint;
+  if (
+    d1PrimaryLocationHint !== undefined
+    && (
+      typeof d1PrimaryLocationHint !== "string"
+      || !D1_PRIMARY_LOCATION_HINTS.includes(d1PrimaryLocationHint as D1PrimaryLocationHint)
+    )
+  ) {
+    fail("Queue message d1PrimaryLocationHint is invalid");
+  }
+
   return {
     version: 1,
     sessionId,
@@ -84,5 +101,8 @@ export function parseTrialProvisionQueueMessage(input: unknown): TrialProvisionQ
     requestOrigin,
     encryptedApiToken,
     ...(encryptedState ? { encryptedState } : {}),
+    ...(d1PrimaryLocationHint
+      ? { d1PrimaryLocationHint: d1PrimaryLocationHint as D1PrimaryLocationHint }
+      : {}),
   };
 }

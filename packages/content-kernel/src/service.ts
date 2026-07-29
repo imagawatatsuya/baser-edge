@@ -165,10 +165,19 @@ export class CmsService {
     );
   }
 
-  async getRevisionForPreview(actor: ActorContext, contentItemId: ContentItemId, revisionId: RevisionId): Promise<ContentRevision> {
-    const snapshot = await this.#requireSnapshot(contentItemId);
+  async getRevisionForPreview(
+    actor: ActorContext,
+    contentItemId: ContentItemId,
+    revisionId: RevisionId,
+    knownSnapshot?: ContentSnapshot,
+  ): Promise<ContentRevision> {
+    const snapshot = knownSnapshot ?? await this.#requireSnapshot(contentItemId);
     await this.#authorize(actor, Capabilities.ContentRead, this.#resource(snapshot, "low"), "preview.revision-read", "content-item", contentItemId);
-    const revision = await this.#requireRevision(revisionId);
+    const revision = snapshot.workingRevision?.id === revisionId
+      ? snapshot.workingRevision
+      : snapshot.publishedRevision?.id === revisionId
+        ? snapshot.publishedRevision
+        : await this.#requireRevision(revisionId);
     assertDomain(revision.contentItemId === contentItemId, "REVISION_CONTENT_MISMATCH", "Revision belongs to another content item", 422);
     return revision;
   }
@@ -370,6 +379,7 @@ export class CmsService {
       changeSummary: input.changeSummary,
       agentRunId: input.agentRunId ?? null,
       now: this.#clock.now(),
+      snapshot,
     });
   }
 
@@ -403,6 +413,7 @@ export class CmsService {
       newSlug: normalizeSlug(input.newSlug),
       expectedTreeVersion: input.expectedTreeVersion,
       now: this.#clock.now(),
+      snapshot,
     });
   }
 
@@ -424,6 +435,7 @@ export class CmsService {
       insertAfterContentItemId: input.insertAfterContentItemId,
       expectedTreeVersion: input.expectedTreeVersion,
       now: this.#clock.now(),
+      snapshot,
     });
   }
 

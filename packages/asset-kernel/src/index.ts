@@ -171,6 +171,13 @@ const defaultAllowedMediaTypes = new Set([
   "application/zip",
 ]);
 
+export const ASSET_THUMBNAIL_MEDIA_TYPE = "image/webp";
+export const ASSET_THUMBNAIL_MAX_BYTES = 256 * 1024;
+
+export function assetThumbnailObjectKey(asset: Pick<Asset, "objectKey">): string {
+  return `${asset.objectKey}.thumbnail.webp`;
+}
+
 export class AssetService {
   readonly #metadata: AssetMetadataStore;
   readonly #objects: AssetObjectStore;
@@ -355,6 +362,74 @@ export class AssetService {
     return { asset, object };
   }
 
+  async getAuthenticatedAssetThumbnail(actor: ActorContext, assetId: AssetId): Promise<{
+    asset: Asset;
+    object: AssetObject;
+    source: "thumbnail" | "original";
+  }> {
+    const asset = await this.getAsset(actor, assetId);
+    assertDomain(asset.state === "ready" && asset.deletedAt === null, "ASSET_NOT_READY", "Asset is not ready for download", 404);
+    const thumbnail = await this.#objects.get(assetThumbnailObjectKey(asset));
+    if (thumbnail) return { asset, object: thumbnail, source: "thumbnail" };
+    const original = await this.#objects.get(asset.objectKey);
+    assertDomain(original, "ASSET_OBJECT_MISSING", "Asset object not found", 404);
+    return { asset, object: original, source: "original" };
+  }
+
+  async putAuthenticatedAssetThumbnail(
+    actor: ActorContext,
+    assetId: AssetId,
+    input: { mediaType: string; contentLength?: number; body: AssetObjectBody },
+  ): Promise<AssetObjectMetadata> {
+    const asset = await this.#requireAsset(assetId);
+    await this.#security.authorize(
+      actor,
+      Capabilities.AssetUpload,
+      { workspaceId: asset.workspaceId, risk: "low" },
+      "asset.thumbnail.write",
+      "asset",
+      asset.id,
+    );
+    assertDomain(asset.state === "ready" && asset.deletedAt === null, "ASSET_NOT_READY", "Asset is not ready", 404);
+    const mediaType = normalizeMediaType(input.mediaType);
+    assertDomain(
+      mediaType === ASSET_THUMBNAIL_MEDIA_TYPE,
+      "THUMBNAIL_MEDIA_TYPE_NOT_ALLOWED",
+      "Thumbnail Content-Type must be image/webp",
+      422,
+    );
+    if (input.contentLength !== undefined) {
+      assertDomain(
+        Number.isInteger(input.contentLength) && input.contentLength > 0 && input.contentLength <= ASSET_THUMBNAIL_MAX_BYTES,
+        "THUMBNAIL_TOO_LARGE",
+        "Thumbnail exceeds the size limit",
+        413,
+      );
+    }
+    const bytes = await toBytes(input.body);
+    assertDomain(bytes.byteLength > 0, "UPLOAD_EMPTY", "Thumbnail body is empty", 422);
+    assertDomain(bytes.byteLength <= ASSET_THUMBNAIL_MAX_BYTES, "THUMBNAIL_TOO_LARGE", "Thumbnail exceeds the size limit", 413);
+    assertDomain(
+      isSniffedTrialInlineImage(bytes, mediaType),
+      "UPLOAD_CONTENT_MISMATCH",
+      "Thumbnail content does not match image/webp",
+      422,
+    );
+    const stored = await this.#objects.put(assetThumbnailObjectKey(asset), bytes, {
+      mediaType,
+      customMetadata: { assetId: asset.id, derivative: "thumbnail" },
+    });
+    await this.#security.success(actor, {
+      workspaceId: asset.workspaceId,
+      action: "asset.thumbnail.write",
+      resourceType: "asset",
+      resourceId: asset.id,
+      capability: Capabilities.AssetUpload,
+      details: { byteSize: stored.size, mediaType },
+    });
+    return stored;
+  }
+
   async deleteAsset(actor: ActorContext, assetId: AssetId): Promise<Asset> {
     const asset = await this.#requireAsset(assetId);
     await this.#security.authorize(actor, Capabilities.AssetDelete, { workspaceId: asset.workspaceId, risk: "high" }, "asset.delete", "asset", asset.id);
@@ -363,6 +438,7 @@ export class AssetService {
     const deleted = await this.#metadata.softDeleteAsset({ assetId, now: this.#clock.now() });
     try {
       await this.#objects.delete(asset.objectKey);
+      await this.#objects.delete(assetThumbnailObjectKey(asset));
     } catch {
       /* object store cleanup is best-effort */
     }

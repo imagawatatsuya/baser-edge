@@ -105,9 +105,14 @@ class Statement {
   async run() { return this.db.prepare(this.sql).run(...this.values); }
 }
 class D1Shim {
-  constructor(db) { this.db = db; }
-  prepare(sql) { return new Statement(this.db, sql); }
-  async batch(statements) { this.db.exec("BEGIN"); try { const results=[]; for (const statement of statements) results.push(await statement.run()); this.db.exec("COMMIT"); return results; } catch (error) { this.db.exec("ROLLBACK"); throw error; } }
+  constructor(db) { this.db = db; this.queryCount = 0; this.batchCount = 0; }
+  prepare(sql) { this.queryCount += 1; return new Statement(this.db, sql); }
+  async batch(statements) {
+    this.batchCount += 1;
+    this.db.exec("BEGIN");
+    try { const results=[]; for (const statement of statements) results.push(await statement.run()); this.db.exec("COMMIT"); return results; }
+    catch (error) { this.db.exec("ROLLBACK"); throw error; }
+  }
 }
 function migrate(db) {
   const dir = new URL("../migrations/", import.meta.url);
@@ -131,6 +136,25 @@ test("D1 blog store persists collections, taxonomy and revision classification",
   await publish(cms, owner, article);
   const listed = await blog.listPublishedArticles(created.collection.id, { termIds: [moonbit.id] });
   assert.equal(listed.total, 1);
+  for (let index = 2; index <= 12; index += 1) {
+    const extra = await blog.createArticle(owner, {
+      collectionId: created.collection.id,
+      slug: `entry-${index}`,
+      title: `記事${index}`,
+      document: documentWith(`記事${index}`),
+      postedAt: index,
+    });
+    await publish(cms, owner, extra);
+  }
+  shim.queryCount = 0;
+  const bounded = await blog.listPublishedArticles(created.collection.id, { limit: 10 });
+  assert.equal(bounded.total, 12);
+  assert.equal(bounded.items.length, 10);
+  assert.ok(shim.queryCount <= 4, `12-article listing used ${shim.queryCount} D1 statements`);
+  shim.queryCount = 0;
+  shim.batchCount = 0;
+  await blog.classifyRevision(owner, article.item.id, article.workingRevision.id, [moonbit.id]);
+  assert.equal(shim.batchCount, 1, "all taxonomy values should be written in one D1 batch");
   assert.equal(db.prepare("SELECT count(*) AS count FROM blog_collections").get().count, 1);
   assert.equal(db.prepare("SELECT count(*) AS count FROM revision_taxonomy_values").get().count, 2);
   db.close();

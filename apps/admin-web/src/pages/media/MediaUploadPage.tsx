@@ -8,6 +8,7 @@ import { useConsoleCapabilities } from "../../hooks/useConsoleCapabilities";
 import { useMediaAssetsContext } from "../../hooks/useMediaAssets";
 import type { AssetRow } from "../../lib/assets";
 import { assetLabel } from "../../lib/assets";
+import { createAssetThumbnail, persistAssetThumbnail } from "../../lib/assetThumbnail";
 import { canShowPublicImagePreview, publicAssetUrl } from "../../lib/assetUrl";
 import { compressImageForTrialUpload, TrialImageCompressError } from "../../lib/clientImageCompress";
 import {
@@ -87,6 +88,7 @@ export function MediaUploadPage() {
       let uploadBody: Blob = file;
       let filename = file.name;
       let mediaType = file.type;
+      let thumbnailBody: Blob | null = null;
 
       if (trialInline) {
         if (!isAllowedImageMediaType(file.type)) {
@@ -108,6 +110,11 @@ export function MediaUploadPage() {
         }
       }
 
+      try {
+        thumbnailBody = await createAssetThumbnail(uploadBody);
+      } catch {
+        // Upload remains usable; AssetThumbnail will retry derivative generation after first display.
+      }
       setStatus("アップロード中…");
       const sessionRes = await apiFetch<UploadSessionResponse>("/v1/assets/upload-sessions", {
         method: "POST",
@@ -132,6 +139,13 @@ export function MediaUploadPage() {
         mediaType: uploaded.mediaType ?? mediaType,
         state: uploaded.state ?? "ready",
       };
+      if (thumbnailBody) {
+        try {
+          await persistAssetThumbnail(confirmed.id, thumbnailBody);
+        } catch {
+          // The original upload succeeded. Legacy backfill will retry without blocking the user.
+        }
+      }
       setLastUploaded(confirmed);
       await reload();
       onFileChange(null);

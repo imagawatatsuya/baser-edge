@@ -46,6 +46,13 @@ function migrate(db) {
   }
 }
 
+function migrateThrough(db, lastMigration) {
+  const dir = new URL("../migrations/", import.meta.url);
+  for (const file of readdirSync(dir).filter((name) => name.endsWith(".sql") && name <= lastMigration).sort()) {
+    db.exec(readFileSync(new URL(file, dir), "utf8"));
+  }
+}
+
 function security(cms) {
   return {
     authorize: cms.authorizeOperation.bind(cms),
@@ -164,6 +171,50 @@ test("D1 inline blob is served from public worker /assets/:id", async () => {
   assert.equal(response.headers.get("content-type"), "image/png");
   const bytes = new Uint8Array(await response.arrayBuffer());
   assert.equal(bytes.length, PNG_1X1.length);
+  db.close();
+});
+
+test("D1 inline stores thumbnail derivatives without consuming another asset slot", async () => {
+  const db = new DatabaseSync(":memory:");
+  migrate(db);
+  const shim = new D1Shim(db);
+  const cms = new CmsService(new D1CmsStore(shim));
+  const boot = await cms.bootstrap({ workspaceName: "Trial", siteName: "Site", hostname: "thumb.test", ownerName: "Owner" });
+  const owner = actor(boot.ownerPrincipalId, "human");
+  const assets = await trialAssetService(shim, cms);
+  const ready = await uploadPng(assets, owner, boot.workspaceId);
+  const webp = new Uint8Array([0x52, 0x49, 0x46, 0x46, 0, 0, 0, 0, 0x57, 0x45, 0x42, 0x50]);
+  await assets.putAuthenticatedAssetThumbnail(owner, ready.id, {
+    mediaType: "image/webp",
+    body: webp,
+  });
+  const thumbnail = await assets.getAuthenticatedAssetThumbnail(owner, ready.id);
+  assert.equal(thumbnail.source, "thumbnail");
+  assert.equal(thumbnail.object.size, webp.byteLength);
+  assert.equal(await assets.listAssets(owner, boot.workspaceId).then((listed) => listed.length), 1);
+  assert.equal(db.prepare("SELECT COUNT(*) AS count FROM asset_object_blobs").get().count, 1);
+  assert.equal(db.prepare("SELECT COUNT(*) AS count FROM asset_thumbnail_blobs").get().count, 1);
+  db.close();
+});
+
+test("thumbnail migration upgrades an existing 0011 inline database without rewriting originals", async () => {
+  const db = new DatabaseSync(":memory:");
+  migrateThrough(db, "0011_asset_object_blobs.sql");
+  const shim = new D1Shim(db);
+  const cms = new CmsService(new D1CmsStore(shim));
+  const boot = await cms.bootstrap({ workspaceName: "Upgrade", siteName: "Site", hostname: "upgrade.test", ownerName: "Owner" });
+  const owner = actor(boot.ownerPrincipalId, "human");
+  const assets = await trialAssetService(shim, cms);
+  const ready = await uploadPng(assets, owner, boot.workspaceId);
+  const originalCount = db.prepare("SELECT COUNT(*) AS count FROM asset_object_blobs").get().count;
+
+  db.exec(readFileSync(new URL("../migrations/0012_asset_thumbnail_blobs.sql", import.meta.url), "utf8"));
+  const webp = new Uint8Array([0x52, 0x49, 0x46, 0x46, 0, 0, 0, 0, 0x57, 0x45, 0x42, 0x50]);
+  await assets.putAuthenticatedAssetThumbnail(owner, ready.id, { mediaType: "image/webp", body: webp });
+
+  assert.equal(db.prepare("SELECT COUNT(*) AS count FROM asset_object_blobs").get().count, originalCount);
+  assert.equal(db.prepare("SELECT COUNT(*) AS count FROM asset_thumbnail_blobs").get().count, 1);
+  assert.equal((await assets.getAuthenticatedAssetContent(owner, ready.id)).object.size, PNG_1X1.byteLength);
   db.close();
 });
 

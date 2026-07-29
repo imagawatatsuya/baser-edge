@@ -169,7 +169,11 @@ export async function runTrialProvisionReleaseStep(
 
   switch (state.stage) {
     case "prepare": {
-      const databaseId = await ensureD1Database(token, accountId, budget);
+      const databaseId = await ensureD1Database(token, accountId, budget, {
+        ...(config.d1PrimaryLocationHint
+          ? { primaryLocationHint: config.d1PrimaryLocationHint }
+          : {}),
+      });
       return {
         done: false,
         state: { stage: "prepare-migrations", databaseId },

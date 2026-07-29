@@ -1,5 +1,6 @@
 import type { ApiError, ContentSnapshot, LocalLoginHint, SessionState } from "./types";
 import { buildTestAuthenticationResponse } from "./webauthn";
+import { invalidateConsoleQuery } from "../lib/consoleQueryCache";
 import { cacheDevPublicUrl, devStackConsoleUrl } from "../lib/localDevUrls";
 
 const CSRF_HEADER = "x-baser-csrf-token";
@@ -47,6 +48,7 @@ function authRequiredMessage(apiMessage?: string): string {
 
 function failAuth() {
   clearSession();
+  invalidateConsoleQuery();
   window.dispatchEvent(new Event(AUTH_EXPIRED_EVENT));
 }
 

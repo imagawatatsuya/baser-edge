@@ -5,6 +5,7 @@ import { useAuth } from "../auth/AuthProvider";
 import type { ContentTreeEntry } from "../api/types";
 import type { CustomEntrySnapshot } from "../hooks/useCustomEntries";
 import { StatusMessage } from "../components/ui/StatusMessage";
+import { peekContentTreeCache } from "../lib/contentTreeCache";
 import {
   isContentTreeEntryLiveOutOfSync,
   isCustomEntryLiveOutOfSync,
@@ -27,25 +28,30 @@ export function LiveSiteOutOfSyncPage() {
     setLoading(true);
     setStatus("");
     try {
-      const tree = await apiFetch<ContentTreeEntry[]>(`/v1/sites/${session.siteId}/content-tree`);
+      const cachedTree = peekContentTreeCache(session.siteId);
+      const [tree, defs] = await Promise.all([
+        cachedTree
+          ? Promise.resolve(cachedTree)
+          : apiFetch<ContentTreeEntry[]>(`/v1/sites/${session.siteId}/content-tree`),
+        apiFetch<CustomDefinitionRow[]>(`/v1/sites/${session.siteId}/custom-contents`),
+      ]);
       setContentRows(tree.filter(isContentTreeEntryLiveOutOfSync));
-      const defs = await apiFetch<CustomDefinitionRow[]>(`/v1/sites/${session.siteId}/custom-contents`);
-      const customOut: typeof customRows = [];
-      for (const def of defs) {
+      const customGroups = await Promise.all(defs.map(async (def) => {
         const entries = await apiFetch<CustomEntrySnapshot[]>(
           `/v1/custom-contents/${encodeURIComponent(def.definition.id)}/entries`,
         );
-        for (const entry of entries) {
+        return entries.flatMap((entry) => {
           if (isCustomEntryLiveOutOfSync(entry)) {
-            customOut.push({
+            return [{
               definitionId: def.definition.id,
               definitionPath: def.snapshot.route.path,
               entry,
-            });
+            }];
           }
-        }
-      }
-      setCustomRows(customOut);
+          return [];
+        });
+      }));
+      setCustomRows(customGroups.flat());
     } catch (error) {
       setStatus(error instanceof Error ? error.message : String(error));
     } finally {

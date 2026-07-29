@@ -4,9 +4,10 @@ export const PUBLIC_PREVIEW_TAB = "baser-edge-public-preview";
 
 export { buildPublicLiveUrl, type BuildPublicLiveUrlOptions } from "@baser-edge/baser-domain";
 
-export function openNamedBrowserTab(url: string, windowName: string): void {
+export function openNamedBrowserTab(url: string, windowName: string): Window | null {
   const tab = window.open(url, windowName);
   tab?.focus();
+  return tab;
 }
 
 export function shortRevisionId(revisionId: string | undefined): string {

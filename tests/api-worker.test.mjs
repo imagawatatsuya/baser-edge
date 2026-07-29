@@ -6,6 +6,31 @@ import { CmsService, MemoryCmsStore } from "@baser-edge/content-kernel";
 const cms = new CmsService(new MemoryCmsStore());
 const worker = createApiWorker(() => cms);
 
+test("console Static Assets are served before CMS or D1 initialization", async () => {
+  let resolverCalls = 0;
+  const localWorker = createApiWorker(() => {
+    resolverCalls += 1;
+    throw new Error("CMS must not initialize for console assets");
+  });
+  const requested = [];
+  const response = await localWorker.fetch(
+    new Request("https://api.test/console/"),
+    {
+      STATIC_ASSETS: {
+        async fetch(request) {
+          requested.push(new URL(request.url).pathname);
+          return new Response("<!doctype html>", {
+            headers: { "content-type": "text/html; charset=utf-8" },
+          });
+        },
+      },
+    },
+  );
+  assert.equal(response.status, 200);
+  assert.equal(resolverCalls, 0);
+  assert.deepEqual(requested, ["/"]);
+});
+
 test("bootstrap requires the provision secret when configured", async () => {
   const localCms = new CmsService(new MemoryCmsStore());
   const localWorker = createApiWorker(() => localCms);
@@ -283,11 +308,86 @@ test("API issues signed upload sessions and revocable preview sessions", async (
     body: JSON.stringify({ revisionId: page.workingRevision.id }),
   }), {});
   assert.equal(previewResponse.status, 201);
+  assert.match(previewResponse.headers.get("server-timing"), /preview-create;dur=/);
   const preview = await previewResponse.json();
   assert.match(preview.previewUrl, /\/_preview\//);
   const revokeResponse = await localWorker.fetch(new Request(`https://api.test/v1/previews/${preview.session.id}/revoke`, { method: "POST", headers: authHeaders }), {});
   assert.equal(revokeResponse.status, 200);
   assert.ok((await revokeResponse.json()).revokedAt);
+});
+
+test("API stores authenticated WebP thumbnails, caches derivatives, and rejects invalid input", async () => {
+  const localCms = new CmsService(new MemoryCmsStore());
+  const localWorker = createApiWorker(() => localCms);
+  const bootstrapResponse = await localWorker.fetch(new Request("https://api.test/v1/bootstrap", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ workspaceName: "Thumbnails", siteName: "Media", hostname: "thumbnail.test", ownerName: "Owner" }),
+  }), {});
+  const boot = await bootstrapResponse.json();
+  const authHeaders = {
+    "content-type": "application/json",
+    "x-baser-principal-id": boot.ownerPrincipalId,
+    "x-baser-principal-type": "human",
+  };
+  const sessionResponse = await localWorker.fetch(new Request("https://api.test/v1/assets/upload-sessions", {
+    method: "POST",
+    headers: authHeaders,
+    body: JSON.stringify({ workspaceId: boot.workspaceId, filename: "source.png", mediaType: "image/png", maximumBytes: 16 }),
+  }), {});
+  const upload = await sessionResponse.json();
+  const uploadedResponse = await localWorker.fetch(new Request(upload.uploadUrl, {
+    method: "PUT",
+    headers: { "content-type": "image/png" },
+    body: new Uint8Array([137, 80, 78, 71]),
+  }), {});
+  const asset = await uploadedResponse.json();
+
+  const fallback = await localWorker.fetch(new Request(`https://api.test/v1/assets/${asset.id}/thumbnail`, {
+    headers: authHeaders,
+  }), {});
+  assert.equal(fallback.status, 200);
+  assert.equal(fallback.headers.get("x-baser-thumbnail-source"), "original");
+  assert.equal(fallback.headers.get("cache-control"), "private, no-store");
+
+  const webp = new Uint8Array([0x52, 0x49, 0x46, 0x46, 0, 0, 0, 0, 0x57, 0x45, 0x42, 0x50]);
+  const stored = await localWorker.fetch(new Request(`https://api.test/v1/assets/${asset.id}/thumbnail`, {
+    method: "PUT",
+    headers: { ...authHeaders, "content-type": "image/webp" },
+    body: webp,
+  }), {});
+  assert.equal(stored.status, 201);
+  const thumbnail = await localWorker.fetch(new Request(`https://api.test/v1/assets/${asset.id}/thumbnail`, {
+    headers: authHeaders,
+  }), {});
+  assert.equal(thumbnail.status, 200);
+  assert.equal(thumbnail.headers.get("content-type"), "image/webp");
+  assert.equal(thumbnail.headers.get("x-baser-thumbnail-source"), "thumbnail");
+  assert.match(thumbnail.headers.get("cache-control"), /immutable/);
+  assert.equal(thumbnail.headers.get("vary"), "Cookie");
+  assert.equal((await thumbnail.arrayBuffer()).byteLength, webp.byteLength);
+
+  const original = await localWorker.fetch(new Request(`https://api.test/v1/assets/${asset.id}/content`, {
+    headers: authHeaders,
+  }), {});
+  assert.match(original.headers.get("cache-control"), /immutable/);
+  assert.equal(original.headers.get("vary"), "Cookie");
+
+  const wrongType = await localWorker.fetch(new Request(`https://api.test/v1/assets/${asset.id}/thumbnail`, {
+    method: "PUT",
+    headers: { ...authHeaders, "content-type": "image/png" },
+    body: new Uint8Array([137, 80, 78, 71, 13, 10, 26, 10]),
+  }), {});
+  assert.equal(wrongType.status, 422);
+  assert.equal((await wrongType.json()).error.code, "THUMBNAIL_MEDIA_TYPE_NOT_ALLOWED");
+
+  const tooLarge = await localWorker.fetch(new Request(`https://api.test/v1/assets/${asset.id}/thumbnail`, {
+    method: "PUT",
+    headers: { ...authHeaders, "content-type": "image/webp", "content-length": String(256 * 1024 + 1) },
+    body: webp,
+  }), {});
+  assert.equal(tooLarge.status, 413);
+  assert.equal((await tooLarge.json()).error.code, "THUMBNAIL_TOO_LARGE");
 });
 
 test("API exposes baser-style blog, article, taxonomy and listing operations", async () => {
@@ -325,6 +425,16 @@ test("API exposes baser-style blog, article, taxonomy and listing operations", a
   assert.equal(articleResponse.status, 201);
   const article = await articleResponse.json();
   assert.equal(article.route.path, "/news/first");
+  const editorResponse = await localWorker.fetch(new Request(`https://api.test/v1/content/${article.item.id}/editor`, { headers }), {});
+  assert.equal(editorResponse.status, 200);
+  assert.match(editorResponse.headers.get("server-timing"), /content-editor;dur=/);
+  const editor = await editorResponse.json();
+  assert.equal(editor.snapshot.item.id, article.item.id);
+  assert.equal(editor.articleMeta.createdAt > 0, true);
+  const blogsResponse = await localWorker.fetch(new Request(`https://api.test/v1/sites/${boot.siteId}/blogs`, { headers }), {});
+  assert.equal(blogsResponse.status, 200);
+  assert.match(blogsResponse.headers.get("server-timing"), /blog-index;dur=/);
+  assert.equal((await blogsResponse.json())[0].snapshot.item.id, created.snapshot.item.id);
   const listResponse = await localWorker.fetch(new Request(`https://api.test/v1/blogs/${created.collection.id}/articles`, { headers }), {});
   assert.equal(listResponse.status, 200);
   assert.equal((await listResponse.json()).total, 0, "unpublished articles must not appear in public listing");

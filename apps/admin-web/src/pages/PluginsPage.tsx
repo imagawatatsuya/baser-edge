@@ -5,6 +5,7 @@ import { useAuth } from "../auth/AuthProvider";
 import { Button } from "../components/ui/Button";
 import { Field } from "../components/ui/Field";
 import { StatusMessage } from "../components/ui/StatusMessage";
+import { invalidateConsoleQuery, loadConsoleQuery } from "../lib/consoleQueryCache";
 
 type PluginRow = { id: string; key: string; name: string; trust: string };
 type ReleaseRow = { id: string; version: string; manifest: { capabilities?: string[] } };
@@ -26,22 +27,28 @@ export function PluginsPage() {
 
   async function loadActivations() {
     if (!session) return;
-    const list = await apiFetch<ActivationRow[]>(
-      `/v1/workspaces/${session.workspaceId}/plugin-activations?siteId=${session.siteId}`,
+    const path = `/v1/workspaces/${session.workspaceId}/plugin-activations?siteId=${session.siteId}`;
+    const list = await loadConsoleQuery(
+      path,
+      () => apiFetch<ActivationRow[]>(path),
     );
     setActivations(list);
   }
 
   useEffect(() => {
     if (!session) return;
-    void apiFetch<PluginRow[]>(`/v1/workspaces/${session.workspaceId}/plugins`)
+    const path = `/v1/workspaces/${session.workspaceId}/plugins`;
+    void loadConsoleQuery(path, () => apiFetch<PluginRow[]>(path), { maxAgeMs: 5 * 60_000 })
       .then((list) => { setPlugins(list); if (list[0]) setPluginId(list[0].id); })
       .catch((e) => setStatus(e instanceof Error ? e.message : String(e)));
   }, [session]);
 
   useEffect(() => {
     if (!session || !pluginId) return;
-    void apiFetch<ReleaseRow[]>(`/v1/plugins/${pluginId}/releases`).then(setReleases).catch(() => setReleases([]));
+    const path = `/v1/plugins/${pluginId}/releases`;
+    void loadConsoleQuery(path, () => apiFetch<ReleaseRow[]>(path), { maxAgeMs: 5 * 60_000 })
+      .then(setReleases)
+      .catch(() => setReleases([]));
   }, [session, pluginId]);
 
   async function activate(release: ReleaseRow) {
@@ -59,6 +66,7 @@ export function PluginsPage() {
           allowedHosts: [],
         },
       });
+      invalidateConsoleQuery(`/v1/workspaces/${session.workspaceId}/plugin-activations`);
       await loadActivations();
       setStatus("有効化しました。");
     } catch (e) {
@@ -72,6 +80,7 @@ export function PluginsPage() {
     setStatus("無効化中…");
     try {
       await apiFetch(`/v1/plugin-activations/${encodeURIComponent(activationId)}`, { method: "DELETE" });
+      invalidateConsoleQuery(`/v1/workspaces/${session.workspaceId}/plugin-activations`);
       await loadActivations();
       setStatus("無効化しました。");
     } catch (e) {

@@ -68,7 +68,7 @@ export function MediaLibraryPage() {
           </p>
         ) : null}
         <ul className="media-grid">
-          {assets.map((asset) => {
+          {assets.map((asset, index) => {
             const label = assetLabel(asset);
             const openUrl = publicAssetUrl(publicBase, asset.id);
             const isRecent = highlightId === asset.id;
@@ -81,10 +81,10 @@ export function MediaLibraryPage() {
                 <div className="media-card-thumb">
                   {asset.state === "ready" && canShowPublicImagePreview(asset.mediaType, asset.state) ? (
                     <a href={openUrl} target="_blank" rel="noopener noreferrer" className="media-card-thumb-link">
-                      <AssetThumbnail assetId={asset.id} mediaType={asset.mediaType} state={asset.state} alt={label} />
+                      <AssetThumbnail assetId={asset.id} mediaType={asset.mediaType} state={asset.state} alt={label} eager={index < 12} />
                     </a>
                   ) : (
-                    <AssetThumbnail assetId={asset.id} mediaType={asset.mediaType} state={asset.state} alt={label} />
+                    <AssetThumbnail assetId={asset.id} mediaType={asset.mediaType} state={asset.state} alt={label} eager={index < 12} />
                   )}
                 </div>
                 <div className="media-card-body">

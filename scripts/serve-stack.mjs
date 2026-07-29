@@ -122,8 +122,9 @@ function redirectLegacyAdmin(url) {
 }
 
 async function serveConsoleApp(pathname) {
-  const base = "/console/";
-  let relative = pathname === "/console" || pathname === "/console/" ? "index.html" : pathname.slice(base.length);
+  let relative = pathname.startsWith("/console/assets/")
+    ? pathname.slice(1)
+    : "index.html";
   if (!relative.includes(".") && !relative.endsWith(".html")) relative = "index.html";
   const safe = relative.replace(/^(\.\.(\/|\\|$))+/, "");
   try {

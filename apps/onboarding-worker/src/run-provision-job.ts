@@ -1,4 +1,9 @@
-import { runTrialProvision, runTrialProvisionRelease, type TrialProvisionConfig } from "@baser-edge/cf-trial-provision";
+import {
+  runTrialProvision,
+  runTrialProvisionRelease,
+  type D1PrimaryLocationHint,
+  type TrialProvisionConfig,
+} from "@baser-edge/cf-trial-provision";
 
 type ProvisionEnv = {
   BASER_TRIAL_PROVISION_MODE?: string;
@@ -40,11 +45,16 @@ export function trialReleaseBaseUrl(env: ProvisionEnv, requestOrigin: string): s
   return `${requestOrigin.replace(/\/$/, "")}/trial-release`;
 }
 
-export function trialBuildsConfig(env: ProvisionEnv, accountId: string): TrialProvisionConfig {
+export function trialBuildsConfig(
+  env: ProvisionEnv,
+  accountId: string,
+  d1PrimaryLocationHint?: D1PrimaryLocationHint,
+): TrialProvisionConfig {
   const repo = env.BASER_TRIAL_BUILDS_REPO?.trim() || env.GITHUB_REPO?.trim() || "imagawatatsuya/baser-edge";
   const branch = env.BASER_TRIAL_BUILDS_BRANCH?.trim() || "main";
   return {
     accountId,
+    ...(d1PrimaryLocationHint ? { d1PrimaryLocationHint } : {}),
     buildsRepo: repo,
     buildsBranch: branch,
     buildsRootDirectory: env.BASER_TRIAL_BUILDS_ROOT?.trim() || "/",
@@ -73,6 +83,7 @@ export async function runCloudflareProvisionJob(
   requestOrigin: string,
   patch: (body: SessionPatch) => Promise<void>,
   releaseFetch?: typeof fetch,
+  d1PrimaryLocationHint?: D1PrimaryLocationHint,
 ): Promise<void> {
   try {
     await patch({ status: "running", step: "connect", message: "Cloudflare に接続しました" });
@@ -82,6 +93,7 @@ export async function runCloudflareProvisionJob(
         apiToken,
         {
           accountId,
+          ...(d1PrimaryLocationHint ? { d1PrimaryLocationHint } : {}),
           releaseBaseUrl: trialReleaseBaseUrl(env, requestOrigin),
           httpFetch: releaseFetch,
         },
@@ -96,7 +108,7 @@ export async function runCloudflareProvisionJob(
         },
       );
     } else {
-      await runTrialProvision(apiToken, trialBuildsConfig(env, accountId), async (event) => {
+      await runTrialProvision(apiToken, trialBuildsConfig(env, accountId, d1PrimaryLocationHint), async (event) => {
         await patch({
           status: event.step === "succeeded" ? "succeeded" : "running",
           step: event.step,

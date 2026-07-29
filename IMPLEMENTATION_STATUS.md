@@ -79,9 +79,9 @@ GitHub ActionsとDeployボタンは一般ユーザー向け開設の標準経路
 
 ## 自動検証
 
-- **151テスト成功**
-- **68 tables/views**
-- **9 D1 migrations**
+- **290テスト成功**
+- **71 tables/views**
+- **12 D1 migrations**
 - TypeScript build、D1 schema verification、onboarding Worker、cloud operations Workerの型チェック
 
 実行コマンド:

@@ -37,6 +37,14 @@ async function digest(bytes: Uint8Array): Promise<string> {
   return [...new Uint8Array(hash)].map((byte) => byte.toString(16).padStart(2, "0")).join("");
 }
 
+const THUMBNAIL_OBJECT_SUFFIX = ".thumbnail.webp";
+
+function originalKeyForThumbnail(key: string): string | null {
+  return key.endsWith(THUMBNAIL_OBJECT_SUFFIX)
+    ? key.slice(0, -THUMBNAIL_OBJECT_SUFFIX.length)
+    : null;
+}
+
 export function workspaceIdFromAssetObjectKey(objectKey: string): WorkspaceId {
   const match = /^workspaces\/([^/]+)\/assets\//.exec(objectKey);
   assertDomain(match?.[1], "INVALID_OBJECT_KEY", "Asset object key is invalid", 500);
@@ -74,6 +82,32 @@ export class D1AssetObjectStore implements AssetObjectStore {
     const checksum = await digest(bytes);
     const workspaceId = workspaceIdFromAssetObjectKey(key);
     const now = Date.now();
+    const originalKey = originalKeyForThumbnail(key);
+    if (originalKey) {
+      const asset = await this.#db.prepare(
+        "SELECT id FROM assets WHERE object_key = ? AND deleted_at IS NULL",
+      ).bind(originalKey).first<{ id: string }>();
+      assertDomain(asset, "ASSET_NOT_FOUND", "Thumbnail asset not found", 404);
+      await this.#db.prepare(
+        `INSERT INTO asset_thumbnail_blobs (asset_id, object_key, workspace_id, media_type, byte_size, checksum, body, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+         ON CONFLICT(asset_id) DO UPDATE SET
+           object_key = excluded.object_key,
+           workspace_id = excluded.workspace_id,
+           media_type = excluded.media_type,
+           byte_size = excluded.byte_size,
+           checksum = excluded.checksum,
+           body = excluded.body,
+           created_at = excluded.created_at`,
+      ).bind(asset.id, key, workspaceId, options.mediaType, bytes.byteLength, checksum, bytes, now).run();
+      return {
+        key,
+        size: bytes.byteLength,
+        etag: checksum,
+        uploadedAt: now,
+        mediaType: options.mediaType,
+      };
+    }
     await this.#db.prepare(
       `INSERT INTO asset_object_blobs (object_key, workspace_id, media_type, byte_size, checksum, body, created_at)
        VALUES (?, ?, ?, ?, ?, ?, ?)
@@ -94,8 +128,9 @@ export class D1AssetObjectStore implements AssetObjectStore {
   }
 
   async head(key: string): Promise<AssetObjectMetadata | null> {
+    const table = originalKeyForThumbnail(key) ? "asset_thumbnail_blobs" : "asset_object_blobs";
     const row = await this.#db.prepare(
-      "SELECT media_type, byte_size, checksum, created_at FROM asset_object_blobs WHERE object_key = ?",
+      `SELECT media_type, byte_size, checksum, created_at FROM ${table} WHERE object_key = ?`,
     ).bind(key).first<{ media_type: string; byte_size: number; checksum: string; created_at: number }>();
     if (!row) return null;
     return {
@@ -108,8 +143,9 @@ export class D1AssetObjectStore implements AssetObjectStore {
   }
 
   async get(key: string): Promise<AssetObject | null> {
+    const table = originalKeyForThumbnail(key) ? "asset_thumbnail_blobs" : "asset_object_blobs";
     const row = await this.#db.prepare(
-      "SELECT media_type, byte_size, checksum, created_at, body FROM asset_object_blobs WHERE object_key = ?",
+      `SELECT media_type, byte_size, checksum, created_at, body FROM ${table} WHERE object_key = ?`,
     ).bind(key).first<{
       media_type: string;
       byte_size: number;
@@ -130,7 +166,8 @@ export class D1AssetObjectStore implements AssetObjectStore {
   }
 
   async delete(key: string): Promise<void> {
-    await this.#db.prepare("DELETE FROM asset_object_blobs WHERE object_key = ?").bind(key).run();
+    const table = originalKeyForThumbnail(key) ? "asset_thumbnail_blobs" : "asset_object_blobs";
+    await this.#db.prepare(`DELETE FROM ${table} WHERE object_key = ?`).bind(key).run();
   }
 }
 

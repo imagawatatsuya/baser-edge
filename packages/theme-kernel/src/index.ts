@@ -126,6 +126,10 @@ export interface ResolvedThemePresentation {
 }
 
 export interface ThemeStore {
+  /** Optional read-optimized projection used by edge renderers. */
+  resolveActivePresentation?(siteId: SiteId): Promise<ResolvedThemePresentation | null>;
+  /** Optional read-optimized immutable release projection used by previews. */
+  resolveReleasePresentation?(releaseId: ThemeReleaseId, siteId?: SiteId): Promise<ResolvedThemePresentation | null>;
   createTheme(theme: Theme): Promise<void>;
   getTheme(id: ThemeId): Promise<Theme | null>;
   listThemes(workspaceId: WorkspaceId): Promise<Theme[]>;
@@ -273,6 +277,9 @@ export class ThemeService {
   }
 
   async resolveActive(siteId: SiteId): Promise<ResolvedThemePresentation> {
+    if (this.store.resolveActivePresentation) {
+      return (await this.store.resolveActivePresentation(siteId)) ?? builtinTheme();
+    }
     const activation = await this.store.getActiveActivation(siteId);
     if (!activation) return builtinTheme();
     return this.resolveRelease(activation.themeReleaseId, siteId, activation);
@@ -280,6 +287,10 @@ export class ThemeService {
 
   async resolveRelease(releaseId: ThemeReleaseId | string, siteId?: SiteId, knownActivation?: SiteThemeActivation | null): Promise<ResolvedThemePresentation> {
     if (String(releaseId) === BUILTIN_RELEASE_ID || String(releaseId) === "default@1") return builtinTheme();
+    if (!knownActivation && this.store.resolveReleasePresentation) {
+      const resolved = await this.store.resolveReleasePresentation(asThemeReleaseId(String(releaseId)), siteId);
+      if (resolved) return resolved;
+    }
     const release = await this.#requireRelease(asThemeReleaseId(String(releaseId)));
     const theme = await this.#requireTheme(release.themeId);
     const tokenRevision = await this.store.getTokenRevision(release.designTokenRevisionId);

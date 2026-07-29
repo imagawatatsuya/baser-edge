@@ -211,7 +211,7 @@ export async function putWorkerScript(
       config: {
         not_found_handling: "single-page-application",
         html_handling: "auto-trailing-slash",
-        run_worker_first: true,
+        run_worker_first: ["/", "/health", "/v1/*", "/console"],
       },
     };
     metadata.bindings = [

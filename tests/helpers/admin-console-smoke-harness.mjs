@@ -22,6 +22,7 @@ import {
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 const adminDistIndex = join(root, "apps", "admin-web", "dist", "index.html");
+const systemChrome = "C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe";
 
 export function assertAdminWebBuilt() {
   assert.ok(
@@ -45,10 +46,16 @@ export async function runAdminConsoleSmoke({ consolePath, assertLoaded }) {
 
   const { server } = createAdminDistServer();
   const baseUrl = await listenAdminDistServer(server);
-  const browser = await chromium.launch({ headless: true });
+  let browser;
   const pageErrors = [];
 
   try {
+    const executablePath = process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH
+      ?? (existsSync(systemChrome) ? systemChrome : undefined);
+    browser = await chromium.launch({
+      headless: true,
+      ...(executablePath ? { executablePath } : {}),
+    });
     const page = await browser.newPage();
     page.on("pageerror", (err) => pageErrors.push(String(err)));
 
@@ -65,6 +72,9 @@ export async function runAdminConsoleSmoke({ consolePath, assertLoaded }) {
       if (path === "/v1/console/capabilities") return json(smokeCapabilities);
       if (path === `/v1/sites/${SMOKE_SITE_ID}/content-tree`) return json(smokeContentTree);
       if (path === `/v1/content/${SMOKE_CONTENT_ID}`) return json(smokeSnapshot);
+      if (path === `/v1/content/${SMOKE_CONTENT_ID}/editor`) {
+        return json({ snapshot: smokeSnapshot, articleMeta: null });
+      }
       if (path === `/v1/custom-contents/${SMOKE_DEFINITION_ID}/entries`) {
         return json(smokeCustomEntriesList);
       }
@@ -87,7 +97,7 @@ export async function runAdminConsoleSmoke({ consolePath, assertLoaded }) {
 
     await assertLoaded(page);
   } finally {
-    await browser.close();
+    if (browser) await browser.close();
     await new Promise((resolve, reject) => server.close((err) => (err ? reject(err) : resolve())));
   }
 }

@@ -7,6 +7,9 @@ export {
   getBuildStatus,
   parseConsoleUrlFromLog,
   parseWorkerSubdomainUrl,
+  D1_PRIMARY_LOCATION_HINTS,
+  type D1PrimaryLocationHint,
+  type EnsureD1DatabaseOptions,
   type ProgressEvent,
   type TrialProvisionConfig,
 } from "./cloudflare-builds.js";

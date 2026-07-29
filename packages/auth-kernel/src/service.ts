@@ -47,10 +47,13 @@ export interface AuthServiceOptions {
   webauthn: WebAuthnGateway;
   clock?: Clock;
   sessionTtlMs?: number;
+  sessionTouchIntervalMs?: number;
   stepUpTtlMs?: number;
   secureCookies?: boolean;
   bootstrapSecret?: string | null;
 }
+
+export const DEFAULT_SESSION_TOUCH_INTERVAL_MS = 5 * 60_000;
 
 export class AuthService {
   readonly #store: AuthStore;
@@ -58,6 +61,7 @@ export class AuthService {
   readonly #webauthn: WebAuthnGateway;
   readonly #clock: Clock;
   readonly #sessionTtlMs: number;
+  readonly #sessionTouchIntervalMs: number;
   readonly #stepUpTtlMs: number;
   readonly #secureCookies: boolean;
   readonly #bootstrapSecret: string | null;
@@ -68,6 +72,7 @@ export class AuthService {
     this.#webauthn = options.webauthn;
     this.#clock = options.clock ?? systemClock;
     this.#sessionTtlMs = options.sessionTtlMs ?? SESSION_TTL_MS;
+    this.#sessionTouchIntervalMs = options.sessionTouchIntervalMs ?? DEFAULT_SESSION_TOUCH_INTERVAL_MS;
     this.#stepUpTtlMs = options.stepUpTtlMs ?? STEP_UP_TTL_MS;
     this.#secureCookies = options.secureCookies ?? false;
     this.#bootstrapSecret = options.bootstrapSecret ?? null;
@@ -302,9 +307,12 @@ export class AuthService {
     if (!token) return null;
     const tokenHash = await hashSecret(token);
     const session = await this.#store.getSessionByTokenHash(tokenHash);
-    if (!session || session.revokedAt !== null || session.expiresAt <= this.#clock.now()) return null;
-    session.lastSeenAt = this.#clock.now();
-    await this.#store.updateSession(session);
+    const now = this.#clock.now();
+    if (!session || session.revokedAt !== null || session.expiresAt <= now) return null;
+    if (now - session.lastSeenAt >= this.#sessionTouchIntervalMs) {
+      session.lastSeenAt = now;
+      await this.#store.updateSession(session);
+    }
     return session;
   }
 

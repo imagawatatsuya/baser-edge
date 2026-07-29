@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { apiFetch } from "../api/client";
 import type { BlogListEntry } from "../api/types";
@@ -11,12 +11,29 @@ export function ContentPageToolbar({ onRefresh }: { onRefresh: () => void }) {
   const [showNewBlog, setShowNewBlog] = useState(false);
   const [showNewArticle, setShowNewArticle] = useState(false);
   const [blogs, setBlogs] = useState<BlogListEntry[]>([]);
+  const blogsLoaded = useRef(false);
+  const blogsRequest = useRef<Promise<BlogListEntry[]> | null>(null);
   const { session } = useAuth();
 
+  async function loadBlogs(): Promise<BlogListEntry[]> {
+    if (!session) return [];
+    if (blogsLoaded.current) return blogs;
+    if (blogsRequest.current) return blogsRequest.current;
+    const request = apiFetch<BlogListEntry[]>(`/v1/sites/${session.siteId}/blogs`)
+      .then((list) => {
+        setBlogs(list);
+        blogsLoaded.current = true;
+        return list;
+      })
+      .finally(() => {
+        if (blogsRequest.current === request) blogsRequest.current = null;
+      });
+    blogsRequest.current = request;
+    return request;
+  }
+
   async function openNewArticle() {
-    if (!session) return;
-    const list = await apiFetch<BlogListEntry[]>(`/v1/sites/${session.siteId}/blogs`);
-    setBlogs(list);
+    await loadBlogs();
     setShowNewArticle(true);
   }
 
@@ -25,12 +42,24 @@ export function ContentPageToolbar({ onRefresh }: { onRefresh: () => void }) {
       <div className="toolbar">
         <button type="button" className="btn" onClick={onRefresh}>更新</button>
         <button type="button" className="btn" onClick={() => setShowNewBlog(true)}>ブログを追加</button>
-        <button type="button" className="btn btn-primary" onClick={() => void openNewArticle()}>記事を追加</button>
+        <button
+          type="button"
+          className="btn btn-primary"
+          onPointerEnter={() => { void loadBlogs().catch(() => undefined); }}
+          onFocus={() => { void loadBlogs().catch(() => undefined); }}
+          onClick={() => void openNewArticle()}
+        >
+          記事を追加
+        </button>
       </div>
       {showNewBlog ? (
         <NewBlogModal
           onClose={() => setShowNewBlog(false)}
-          onCreated={() => { setShowNewBlog(false); onRefresh(); }}
+          onCreated={() => {
+            blogsLoaded.current = false;
+            setShowNewBlog(false);
+            onRefresh();
+          }}
         />
       ) : null}
       {showNewArticle ? (

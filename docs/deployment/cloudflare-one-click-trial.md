@@ -27,7 +27,7 @@
 
 開設は一つの長いWorker処理ではなく、Cloudflare Queueのチェックポイントに分けて実行します。
 
-1. D1の作成
+1. 利用者の接続地域をヒントにD1を作成し、Global Read Replicationを有効化
 2. D1 Migration
 3. 管理画面Assetsの準備
 4. API Workerと公開Workerの配置
@@ -45,6 +45,14 @@
 - 公開サイトのルートURLから公開済み`/home`を表示できる
 
 Workerの`/health`だけでは開設成功と判定しません。管理画面のHTMLが200で配信されることと、D1の初期化完了を確認します。
+
+## 配信性能の契約
+
+- 新規D1のprimary locationは開設リクエストのCloudflare地域から決めます。日本を含むAsiaは`apac`です。
+- D1は`read_replication.mode=auto`で作成し、既存のお試しD1も再開設工程で`auto`へ更新します。
+- 公開RendererのGETはD1 Sessions APIを使い、同一リクエスト内の読み取りを同じ整合性セッションへ固定します。
+- 公開レスポンスはCache APIへ保存します。管理画面の「公開を見る」クエリ付きURL、Preview、Mail Form、Assetはキャッシュ対象外です。
+- 管理画面の`/console/*`はStatic Assetsから直接配信し、`/v1/*`、`/health`、入口RedirectだけをAPI Workerへ通します。
 
 ## お試しをやめる
 

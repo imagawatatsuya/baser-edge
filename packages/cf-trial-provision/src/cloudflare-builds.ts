@@ -12,6 +12,7 @@ export type ProgressEvent = {
 
 export type TrialProvisionConfig = {
   accountId: string;
+  d1PrimaryLocationHint?: D1PrimaryLocationHint;
   /** GitHub repo for Workers Builds seed (owner/name) */
   buildsRepo: string;
   buildsBranch: string;
@@ -19,6 +20,14 @@ export type TrialProvisionConfig = {
   buildsRootDirectory: string;
   buildCommand: string;
   deployCommand: string;
+};
+
+export const D1_PRIMARY_LOCATION_HINTS = ["wnam", "enam", "weur", "eeur", "apac", "oc"] as const;
+export type D1PrimaryLocationHint = typeof D1_PRIMARY_LOCATION_HINTS[number];
+
+export type EnsureD1DatabaseOptions = {
+  primaryLocationHint?: D1PrimaryLocationHint;
+  readReplication?: "auto" | "disabled";
 };
 
 export type TrialProvisionResult = {
@@ -61,20 +70,44 @@ export async function ensureD1Database(
   token: string,
   accountId: string,
   budget: ReturnType<typeof createApiBudget>,
+  options: EnsureD1DatabaseOptions = {},
 ): Promise<string> {
-  const list = await cfJson<{ uuid: string; name: string }[]>(
+  const readReplication = options.readReplication ?? "auto";
+  const list = await cfJson<{ uuid: string; name: string; read_replication?: { mode?: string } }[]>(
     token,
     `/accounts/${accountId}/d1/database`,
     { method: "GET" },
     budget,
   );
   const hit = list?.find((db) => db.name === TRIAL_D1_NAME);
-  if (hit?.uuid) return hit.uuid;
+  if (hit?.uuid) {
+    if (hit.read_replication?.mode !== readReplication) {
+      await cfJson(
+        token,
+        `/accounts/${accountId}/d1/database/${hit.uuid}`,
+        {
+          method: "PUT",
+          body: JSON.stringify({ read_replication: { mode: readReplication } }),
+        },
+        budget,
+      );
+    }
+    return hit.uuid;
+  }
 
   const created = await cfJson<{ uuid: string }>(
     token,
     `/accounts/${accountId}/d1/database`,
-    { method: "POST", body: JSON.stringify({ name: TRIAL_D1_NAME }) },
+    {
+      method: "POST",
+      body: JSON.stringify({
+        name: TRIAL_D1_NAME,
+        ...(options.primaryLocationHint
+          ? { primary_location_hint: options.primaryLocationHint }
+          : {}),
+        read_replication: { mode: readReplication },
+      }),
+    },
     budget,
   );
   if (!created?.uuid) throw new CfApiCallError("D1 create returned no uuid", 500);

@@ -74,9 +74,11 @@ import type {
 } from "@baser-edge/content-kernel";
 import { buildSortKey, childPath, compareSortKeys, normalizePath } from "@baser-edge/baser-domain";
 import type {
+  ArticleListResult,
   BlogArticleRecord,
   BlogCollection,
   BlogStore,
+  PublishedArticle,
   RevisionTaxonomyValue,
   Taxonomy,
   Term,
@@ -97,7 +99,7 @@ import {
   TRIAL_INLINE_MEDIA_POLICY,
   type TrialInlineMediaPolicy,
 } from "@baser-edge/asset-kernel";
-import type { PreviewSession, PreviewStore } from "@baser-edge/preview-kernel";
+import type { PreviewSession, PreviewStore, ResolvedPreview } from "@baser-edge/preview-kernel";
 import { D1AssetObjectStore, isD1InlineAssetStorageEnabled } from "./d1-asset-object-store.js";
 
 const memoryMetadataSingleton = new MemoryAssetMetadataStore();
@@ -113,6 +115,7 @@ export interface D1PreparedStatementLike {
 export interface D1DatabaseLike {
   prepare(sql: string): D1PreparedStatementLike;
   batch(statements: D1PreparedStatementLike[]): Promise<unknown[]>;
+  withSession?(constraint?: string): D1DatabaseLike;
 }
 
 type RoutableCreateInput = CreatePageRecordInput | CreateFolderRecordInput | CreateBlogRecordInput | CreateCustomContentRecordInput | CreateMailFormRecordInput | CreateArticleRecordInput | CreateAliasRecordInput;
@@ -187,9 +190,11 @@ export class D1CmsStore implements CmsStore {
   async getContentSnapshot(contentItemId: ContentItemId): Promise<ContentSnapshot | null> {
     const itemRow = await this.#db.prepare("SELECT * FROM content_items WHERE id=?").bind(contentItemId).first<ItemRow>();
     if (!itemRow) return null;
-    const nodeRow = await this.#db.prepare("SELECT * FROM content_nodes WHERE content_item_id=?").bind(contentItemId).first<NodeRow>();
-    const routeRow = await this.#db.prepare("SELECT * FROM routes WHERE content_item_id=? AND active=1 AND is_canonical=1 ORDER BY activated_at DESC LIMIT 1").bind(contentItemId).first<RouteRow>();
-    assertDomain(nodeRow && routeRow, "CONTENT_PROJECTION_MISSING", "Content node or route is missing", 500);
+    return this.#contentSnapshotFromItemRow(itemRow);
+  }
+
+  async #contentSnapshotFromItemRow(itemRow: ItemRow): Promise<ContentSnapshot> {
+    const contentItemId = asContentItemId(itemRow.id);
     const item = mapItem(itemRow);
     let workingRevisionId = item.workingRevisionId;
     if (!workingRevisionId) {
@@ -201,12 +206,27 @@ export class D1CmsStore implements CmsStore {
         if (refreshed) item.lockVersion = refreshed.lock_version;
       }
     }
+    const workingRevisionPromise = workingRevisionId
+      ? this.getRevision(workingRevisionId)
+      : Promise.resolve(null);
+    const publishedRevisionPromise = item.publishedRevisionId === workingRevisionId
+      ? workingRevisionPromise
+      : item.publishedRevisionId
+        ? this.getRevision(item.publishedRevisionId)
+        : Promise.resolve(null);
+    const [nodeRow, routeRow, workingRevision, publishedRevision] = await Promise.all([
+      this.#db.prepare("SELECT * FROM content_nodes WHERE content_item_id=?").bind(contentItemId).first<NodeRow>(),
+      this.#db.prepare("SELECT * FROM routes WHERE content_item_id=? AND active=1 AND is_canonical=1 ORDER BY activated_at DESC LIMIT 1").bind(contentItemId).first<RouteRow>(),
+      workingRevisionPromise,
+      publishedRevisionPromise,
+    ]);
+    assertDomain(nodeRow && routeRow, "CONTENT_PROJECTION_MISSING", "Content node or route is missing", 500);
     return {
       item,
       node: mapNode(nodeRow),
       route: mapRoute(routeRow),
-      workingRevision: workingRevisionId ? await this.getRevision(workingRevisionId) : null,
-      publishedRevision: item.publishedRevisionId ? await this.getRevision(item.publishedRevisionId) : null,
+      workingRevision,
+      publishedRevision,
     };
   }
 
@@ -234,7 +254,7 @@ export class D1CmsStore implements CmsStore {
   }
 
   async commitRevision(input: CommitRevisionRecordInput): Promise<ContentRevision> {
-    const snapshot = await this.#requireSnapshot(input.contentItemId);
+    const snapshot = input.snapshot ?? await this.#requireSnapshot(input.contentItemId);
     assertDomain(snapshot.item.state === "active", "CONTENT_TRASHED", "Trashed content cannot be revised", 409);
     assertDomain(snapshot.item.contentTypeKey !== "folder" && snapshot.item.contentTypeKey !== "alias", "CONTENT_NOT_EDITABLE", "This content type does not accept document revisions", 422);
     const previous = await this.getRevision(input.baseRevisionId);
@@ -258,7 +278,7 @@ export class D1CmsStore implements CmsStore {
   }
 
   async relocateContent(input: RelocateContentRecordInput): Promise<ContentSnapshot> {
-    const snapshot = await this.#requireSnapshot(input.contentItemId);
+    const snapshot = input.snapshot ?? await this.#requireSnapshot(input.contentItemId);
     assertDomain(snapshot.item.state === "active", "CONTENT_TRASHED", "Trashed content cannot be moved", 409);
     const parent = input.targetParentId ? await this.#requireParentForType(input.targetParentId, snapshot.item.siteId, snapshot.item.contentTypeKey) : null;
     assertDomain(!parent || !parent.cachedPath.startsWith(`${snapshot.node.cachedPath}/`), "TREE_CYCLE", "Content cannot be moved below itself", 422);
@@ -297,21 +317,22 @@ export class D1CmsStore implements CmsStore {
   }
 
   async reorderContent(input: ReorderContentRecordInput): Promise<ContentSnapshot> {
-    const snapshot = await this.#requireSnapshot(input.contentItemId);
+    const snapshot = input.snapshot ?? await this.#requireSnapshot(input.contentItemId);
     assertDomain(snapshot.item.state === "active", "CONTENT_TRASHED", "Trashed content cannot be reordered", 409);
+    let fresh = snapshot;
     if (snapshot.node.parentId !== input.targetParentId) {
-      await this.relocateContent({
+      fresh = await this.relocateContent({
         actor: input.actor,
         contentItemId: input.contentItemId,
         targetParentId: input.targetParentId,
         newSlug: snapshot.node.slug,
         expectedTreeVersion: input.expectedTreeVersion,
         now: input.now,
+        snapshot,
       });
     } else {
       await this.#batch([this.#treeGuard(snapshot.node.id, input.expectedTreeVersion, input.now)]);
     }
-    const fresh = await this.#requireSnapshot(input.contentItemId);
     const parentClause = input.targetParentId === null
       ? "parent_id IS NULL"
       : "parent_id = ?";
@@ -590,10 +611,14 @@ export class D1CmsStore implements CmsStore {
 
   async resolvePublicPath(siteId: SiteId, path: string): Promise<PublicPathResolution | null> {
     const normalized = normalizePath(path);
-    const route = await this.#db.prepare("SELECT * FROM routes WHERE site_id=? AND path=? AND active=1 LIMIT 1")
-      .bind(siteId, normalized).first<RouteRow>();
-    if (route) {
-      const snapshot = await this.#resolvePublishableSnapshot(asContentItemId(route.content_item_id));
+    const item = await this.#db.prepare(
+      `SELECT i.* FROM content_items i
+       INNER JOIN routes r ON r.content_item_id=i.id
+       WHERE r.site_id=? AND r.path=? AND r.active=1
+       LIMIT 1`,
+    ).bind(siteId, normalized).first<ItemRow>();
+    if (item) {
+      const snapshot = await this.#resolvePublishableSnapshotFromItem(item);
       return snapshot ? { kind: "content", snapshot } : null;
     }
     const redirect = await this.#db.prepare("SELECT * FROM redirects WHERE site_id=? AND source_path=? AND active=1 LIMIT 1")
@@ -764,6 +789,10 @@ export class D1CmsStore implements CmsStore {
 
   async #resolvePublishableSnapshot(contentItemId: ContentItemId): Promise<ContentSnapshot | null> {
     let item: ItemRow | null = await this.#db.prepare("SELECT * FROM content_items WHERE id=?").bind(contentItemId).first<ItemRow>();
+    return this.#resolvePublishableSnapshotFromItem(item);
+  }
+
+  async #resolvePublishableSnapshotFromItem(item: ItemRow | null): Promise<ContentSnapshot | null> {
     const visited = new Set<string>();
     while (item?.content_type_key === "alias") {
       if (visited.has(item.id)) throw new DomainError("ALIAS_CYCLE", "Alias cycle detected", 500);
@@ -773,7 +802,7 @@ export class D1CmsStore implements CmsStore {
       item = await this.#db.prepare("SELECT * FROM content_items WHERE id=?").bind(relation.target_content_item_id).first<ItemRow>();
     }
     if (!item || item.state !== "active" || !item.published_revision_id) return null;
-    return this.getContentSnapshot(asContentItemId(item.id));
+    return this.#contentSnapshotFromItemRow(item);
   }
 
   async #managerEntry(contentItemId: ContentItemId): Promise<ContentManagerEntry> {
@@ -1040,6 +1069,14 @@ export class D1BlogStore implements BlogStore {
     await this.#db.prepare("INSERT INTO blog_collections(id,workspace_id,site_id,content_item_id,page_size,feed_size,sort_direction,state,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?)")
       .bind(collection.id, collection.workspaceId, collection.siteId, collection.contentItemId, collection.pageSize, collection.feedSize, collection.sortDirection, collection.state, collection.createdAt, collection.updatedAt).run();
   }
+  async createCollectionWithTaxonomies(collection: BlogCollection, taxonomies: Taxonomy[]): Promise<void> {
+    await this.#db.batch([
+      this.#db.prepare("INSERT INTO blog_collections(id,workspace_id,site_id,content_item_id,page_size,feed_size,sort_direction,state,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?)")
+        .bind(collection.id, collection.workspaceId, collection.siteId, collection.contentItemId, collection.pageSize, collection.feedSize, collection.sortDirection, collection.state, collection.createdAt, collection.updatedAt),
+      ...taxonomies.map((taxonomy) => this.#db.prepare("INSERT INTO taxonomies(id,collection_id,taxonomy_key,title,kind,hierarchical,state,created_at,updated_at) VALUES(?,?,?,?,?,?,?,?,?)")
+        .bind(taxonomy.id, taxonomy.collectionId, taxonomy.key, taxonomy.title, taxonomy.kind, taxonomy.hierarchical ? 1 : 0, taxonomy.state, taxonomy.createdAt, taxonomy.updatedAt)),
+    ]);
+  }
   async getCollection(id: CollectionId): Promise<BlogCollection | null> {
     const row = await this.#db.prepare("SELECT * FROM blog_collections WHERE id=?").bind(id).first<BlogCollectionRow>();
     return row ? mapBlogCollection(row) : null;
@@ -1069,6 +1106,179 @@ export class D1BlogStore implements BlogStore {
     const rows = await this.#db.prepare("SELECT * FROM blog_articles WHERE collection_id=? ORDER BY posted_at DESC").bind(collectionId).all<BlogArticleRow>();
     return rows.results.map(mapBlogArticle);
   }
+  async listPublishedArticles(
+    collection: BlogCollection,
+    options: { limit: number; offset: number; termIds: TermId[] },
+  ): Promise<ArticleListResult> {
+    const requiredTermsJson = JSON.stringify(options.termIds);
+    const baseCte = `
+      WITH RECURSIVE
+      required_terms(term_id) AS (
+        SELECT CAST(value AS TEXT) FROM json_each(?)
+      ),
+      published AS (
+        SELECT
+          ba.collection_id,ba.content_item_id,ba.posted_at,ba.author_principal_id,ba.created_at,
+          ci.published_revision_id,
+          cr.based_on_revision_id
+        FROM blog_articles ba
+        INNER JOIN content_items ci
+          ON ci.id=ba.content_item_id
+         AND ci.state='active'
+         AND ci.published_revision_id IS NOT NULL
+        INNER JOIN content_revisions cr ON cr.id=ci.published_revision_id
+        WHERE ba.collection_id=?
+      ),
+      revision_chain(root_revision_id,revision_id,based_on_revision_id,depth) AS (
+        SELECT published_revision_id,published_revision_id,based_on_revision_id,0
+        FROM published
+        UNION ALL
+        SELECT rc.root_revision_id,parent.id,parent.based_on_revision_id,rc.depth+1
+        FROM revision_chain rc
+        INNER JOIN content_revisions parent ON parent.id=rc.based_on_revision_id
+      ),
+      ranked_values AS (
+        SELECT
+          rc.root_revision_id,
+          rtv.taxonomy_id,
+          rtv.term_ids_json,
+          ROW_NUMBER() OVER (
+            PARTITION BY rc.root_revision_id,rtv.taxonomy_id
+            ORDER BY rc.depth
+          ) AS value_rank
+        FROM revision_chain rc
+        INNER JOIN revision_taxonomy_values rtv ON rtv.revision_id=rc.revision_id
+      ),
+      eligible AS (
+        SELECT p.*
+        FROM published p
+        WHERE NOT EXISTS (
+          SELECT 1
+          FROM required_terms required
+          WHERE NOT EXISTS (
+            SELECT 1
+            FROM ranked_values rv
+            INNER JOIN json_each(rv.term_ids_json) selected
+              ON CAST(selected.value AS TEXT)=required.term_id
+            WHERE rv.root_revision_id=p.published_revision_id
+              AND rv.value_rank=1
+          )
+        )
+      )`;
+    const direction = collection.sortDirection === "asc" ? "ASC" : "DESC";
+    const [countRow, pageResult] = await Promise.all([
+      this.#db.prepare(`${baseCte} SELECT COUNT(*) AS total FROM eligible`)
+        .bind(requiredTermsJson, collection.id)
+        .first<{ total: number }>(),
+      this.#db.prepare(
+        `${baseCte}
+         SELECT
+           e.collection_id,e.posted_at,e.author_principal_id,e.created_at,
+           json_object(
+             'id',i.id,'workspace_id',i.workspace_id,'site_id',i.site_id,
+             'content_type_key',i.content_type_key,'working_revision_id',i.working_revision_id,
+             'published_revision_id',i.published_revision_id,'lock_version',i.lock_version,
+             'state',i.state,'created_by',i.created_by,'created_at',i.created_at,'updated_at',i.updated_at
+           ) AS item_json,
+           json_object(
+             'id',n.id,'site_id',n.site_id,'content_item_id',n.content_item_id,
+             'parent_id',n.parent_id,'slug',n.slug,'sort_key',n.sort_key,
+             'cached_path',n.cached_path,'tree_version',n.tree_version,
+             'created_at',n.created_at,'updated_at',n.updated_at
+           ) AS node_json,
+           json_object(
+             'id',ro.id,'site_id',ro.site_id,'content_item_id',ro.content_item_id,
+             'hostname',ro.hostname,'path',ro.path,'route_type',ro.route_type,
+             'is_canonical',ro.is_canonical,'active',ro.active,
+             'activated_at',ro.activated_at,'deactivated_at',ro.deactivated_at
+           ) AS route_json,
+           json_object(
+             'id',cr.id,'content_item_id',cr.content_item_id,'revision_number',cr.revision_number,
+             'based_on_revision_id',cr.based_on_revision_id,'fields_json',cr.fields_json,
+             'content_hash',cr.content_hash,'created_by',cr.created_by,'agent_run_id',cr.agent_run_id,
+             'change_summary',cr.change_summary,'created_at',cr.created_at,'document_json',rd.document_json
+           ) AS revision_json
+         FROM eligible e
+         INNER JOIN content_items i ON i.id=e.content_item_id
+         INNER JOIN content_nodes n ON n.content_item_id=i.id
+         INNER JOIN routes ro ON ro.id=(
+           SELECT id FROM routes
+           WHERE content_item_id=i.id AND active=1 AND is_canonical=1
+           ORDER BY activated_at DESC LIMIT 1
+         )
+         INNER JOIN content_revisions cr ON cr.id=e.published_revision_id
+         INNER JOIN revision_documents rd ON rd.revision_id=cr.id
+         ORDER BY e.posted_at ${direction},e.content_item_id
+         LIMIT ? OFFSET ?`,
+      ).bind(requiredTermsJson, collection.id, options.limit, options.offset)
+        .all<PublishedArticleProjectionRow>(),
+    ]);
+    const projectionRows = pageResult.results;
+    const revisionIds = projectionRows.map((row) => json<RevisionRow>(row.revision_json).id);
+    const termsByRevision = new Map<string, Term[]>();
+    if (revisionIds.length) {
+      const placeholders = revisionIds.map(() => "?").join(",");
+      const termRows = (await this.#db.prepare(
+        `WITH RECURSIVE revision_chain(root_revision_id,revision_id,based_on_revision_id,depth) AS (
+           SELECT id,id,based_on_revision_id,0
+           FROM content_revisions
+           WHERE id IN (${placeholders})
+           UNION ALL
+           SELECT rc.root_revision_id,parent.id,parent.based_on_revision_id,rc.depth+1
+           FROM revision_chain rc
+           INNER JOIN content_revisions parent ON parent.id=rc.based_on_revision_id
+         ),
+         ranked_values AS (
+           SELECT
+             rc.root_revision_id,
+             rtv.taxonomy_id,
+             rtv.term_ids_json,
+             ROW_NUMBER() OVER (
+               PARTITION BY rc.root_revision_id,rtv.taxonomy_id
+               ORDER BY rc.depth
+             ) AS value_rank
+           FROM revision_chain rc
+           INNER JOIN revision_taxonomy_values rtv ON rtv.revision_id=rc.revision_id
+         )
+         SELECT
+           rv.root_revision_id,
+           t.id,t.taxonomy_id,t.parent_id,t.slug,t.title,t.state,t.created_at,t.updated_at
+         FROM ranked_values rv
+         INNER JOIN json_each(rv.term_ids_json) selected
+         INNER JOIN taxonomy_terms t ON t.id=CAST(selected.value AS TEXT)
+         WHERE rv.value_rank=1 AND t.state='active'
+         ORDER BY t.title`,
+      ).bind(...revisionIds).all<PublishedArticleTermRow>()).results;
+      for (const row of termRows) {
+        const list = termsByRevision.get(row.root_revision_id) ?? [];
+        list.push(mapTerm(row));
+        termsByRevision.set(row.root_revision_id, list);
+      }
+    }
+    const items: PublishedArticle[] = projectionRows.map((row) => {
+      const item = mapItem(json<ItemRow>(row.item_json));
+      const revision = mapRevision(json<RevisionRow>(row.revision_json));
+      return {
+        collectionId: asCollectionId(row.collection_id),
+        postedAt: row.posted_at,
+        authorPrincipalId: asPrincipalId(row.author_principal_id),
+        terms: termsByRevision.get(revision.id) ?? [],
+        snapshot: {
+          item,
+          node: mapNode(json<NodeRow>(row.node_json)),
+          route: mapRoute(json<RouteRow>(row.route_json)),
+          workingRevision: item.workingRevisionId === revision.id ? revision : null,
+          publishedRevision: revision,
+        },
+      };
+    });
+    return {
+      items,
+      total: Number(countRow?.total ?? 0),
+      limit: options.limit,
+      offset: options.offset,
+    };
+  }
   async updateArticlePostedAt(contentItemId: ContentItemId, postedAt: number): Promise<BlogArticleRecord> {
     const existing = await this.getArticle(contentItemId);
     assertDomain(existing, "ARTICLE_NOT_FOUND", "Article is not registered in a blog", 404);
@@ -1097,6 +1307,12 @@ export class D1BlogStore implements BlogStore {
     const row = await this.#db.prepare("SELECT * FROM taxonomy_terms WHERE id=?").bind(id).first<TermRow>();
     return row ? mapTerm(row) : null;
   }
+  async getTerms(ids: TermId[]): Promise<Term[]> {
+    if (!ids.length) return [];
+    const placeholders = ids.map(() => "?").join(",");
+    const rows = await this.#db.prepare(`SELECT * FROM taxonomy_terms WHERE id IN (${placeholders})`).bind(...ids).all<TermRow>();
+    return rows.results.map(mapTerm);
+  }
   async listTerms(taxonomyId: TaxonomyId): Promise<Term[]> {
     const rows = await this.#db.prepare("SELECT * FROM taxonomy_terms WHERE taxonomy_id=? ORDER BY title").bind(taxonomyId).all<TermRow>();
     return rows.results.map(mapTerm);
@@ -1105,6 +1321,12 @@ export class D1BlogStore implements BlogStore {
   async setRevisionTaxonomyValue(value: RevisionTaxonomyValue): Promise<void> {
     await this.#db.prepare("INSERT INTO revision_taxonomy_values(revision_id,taxonomy_id,term_ids_json) VALUES(?,?,?) ON CONFLICT(revision_id,taxonomy_id) DO UPDATE SET term_ids_json=excluded.term_ids_json")
       .bind(value.revisionId, value.taxonomyId, JSON.stringify(value.termIds)).run();
+  }
+  async setRevisionTaxonomyValues(values: RevisionTaxonomyValue[]): Promise<void> {
+    if (!values.length) return;
+    await this.#db.batch(values.map((value) => this.#db
+      .prepare("INSERT INTO revision_taxonomy_values(revision_id,taxonomy_id,term_ids_json) VALUES(?,?,?) ON CONFLICT(revision_id,taxonomy_id) DO UPDATE SET term_ids_json=excluded.term_ids_json")
+      .bind(value.revisionId, value.taxonomyId, JSON.stringify(value.termIds))));
   }
   async getRevisionTaxonomyValue(revisionId: RevisionId, taxonomyId: TaxonomyId): Promise<RevisionTaxonomyValue | null> {
     const row = await this.#db.prepare("SELECT * FROM revision_taxonomy_values WHERE revision_id=? AND taxonomy_id=?").bind(revisionId, taxonomyId).first<RevisionTaxonomyValueRow>();
@@ -1214,6 +1436,75 @@ export class D1PreviewStore implements PreviewStore {
     const row = await this.#db.prepare("SELECT * FROM preview_sessions WHERE id=?").bind(id).first<PreviewRow>();
     return row ? mapPreview(row) : null;
   }
+  async resolve(id: PreviewSessionId): Promise<ResolvedPreview | null> {
+    const row = await this.#db.prepare(
+      `SELECT
+         json_object(
+           'id',p.id,'workspace_id',p.workspace_id,'site_id',p.site_id,
+           'content_item_id',p.content_item_id,'revision_id',p.revision_id,
+           'revision_hash',p.revision_hash,'theme_release',p.theme_release,
+           'token_version',p.token_version,'created_by',p.created_by,
+           'created_at',p.created_at,'expires_at',p.expires_at,
+           'revoked_at',p.revoked_at,'last_accessed_at',p.last_accessed_at
+         ) AS preview_json,
+         json_object(
+           'id',i.id,'workspace_id',i.workspace_id,'site_id',i.site_id,
+           'content_type_key',i.content_type_key,'working_revision_id',i.working_revision_id,
+           'published_revision_id',i.published_revision_id,'lock_version',i.lock_version,
+           'state',i.state,'created_by',i.created_by,'created_at',i.created_at,'updated_at',i.updated_at
+         ) AS item_json,
+         json_object(
+           'id',n.id,'site_id',n.site_id,'content_item_id',n.content_item_id,
+           'parent_id',n.parent_id,'slug',n.slug,'sort_key',n.sort_key,
+           'cached_path',n.cached_path,'tree_version',n.tree_version,
+           'created_at',n.created_at,'updated_at',n.updated_at
+         ) AS node_json,
+         json_object(
+           'id',ro.id,'site_id',ro.site_id,'content_item_id',ro.content_item_id,
+           'hostname',ro.hostname,'path',ro.path,'route_type',ro.route_type,
+           'is_canonical',ro.is_canonical,'active',ro.active,
+           'activated_at',ro.activated_at,'deactivated_at',ro.deactivated_at
+         ) AS route_json,
+         json_object(
+           'id',cr.id,'content_item_id',cr.content_item_id,'revision_number',cr.revision_number,
+           'based_on_revision_id',cr.based_on_revision_id,'fields_json',cr.fields_json,
+           'content_hash',cr.content_hash,'created_by',cr.created_by,'agent_run_id',cr.agent_run_id,
+           'change_summary',cr.change_summary,'created_at',cr.created_at,'document_json',rd.document_json
+         ) AS revision_json,
+         json_object(
+           'id',s.id,'workspace_id',s.workspace_id,'name',s.name,'hostname',s.hostname,
+           'locale',s.locale,'state',s.state,'created_at',s.created_at,'updated_at',s.updated_at
+         ) AS site_json
+       FROM preview_sessions p
+       INNER JOIN content_items i ON i.id=p.content_item_id AND i.site_id=p.site_id
+       INNER JOIN content_nodes n ON n.content_item_id=i.id
+       INNER JOIN routes ro ON ro.id=(
+         SELECT id FROM routes
+         WHERE content_item_id=i.id AND active=1 AND is_canonical=1
+         ORDER BY activated_at DESC LIMIT 1
+       )
+       INNER JOIN content_revisions cr ON cr.id=p.revision_id AND cr.content_item_id=i.id
+       INNER JOIN revision_documents rd ON rd.revision_id=cr.id
+       INNER JOIN sites s ON s.id=p.site_id
+       WHERE p.id=?`,
+    ).bind(id).first<PreviewProjectionRow>();
+    if (!row) return null;
+    const session = mapPreview(json<PreviewRow>(row.preview_json));
+    const item = mapItem(json<ItemRow>(row.item_json));
+    const revision = mapRevision(json<RevisionRow>(row.revision_json));
+    return {
+      session,
+      revision,
+      site: mapSite(json<SiteRow>(row.site_json)),
+      snapshot: {
+        item,
+        node: mapNode(json<NodeRow>(row.node_json)),
+        route: mapRoute(json<RouteRow>(row.route_json)),
+        workingRevision: item.workingRevisionId === revision.id ? revision : null,
+        publishedRevision: item.publishedRevisionId === revision.id ? revision : null,
+      },
+    };
+  }
   async revoke(id: PreviewSessionId, now: number): Promise<PreviewSession> {
     await this.#db.prepare("UPDATE preview_sessions SET revoked_at=? WHERE id=? AND revoked_at IS NULL").bind(now, id).run();
     const session = await this.get(id);
@@ -1276,6 +1567,14 @@ type AssetRow = {id:string;workspace_id:string;object_key:string;original_filena
 type UploadSessionRow = {id:string;asset_id:string;workspace_id:string;object_key:string;media_type:string;maximum_bytes:number;state:UploadSession["state"];created_by:string;created_at:number;expires_at:number;completed_at:number|null;failure_reason:string|null};
 type PublishedAssetReferenceRow={revision_id:string;asset_id:string;block_id:string|null;field_path:string;usage:"image"|"gallery"|"download";content_item_id:string;site_id:string;cached_path:string};
 type PreviewRow = {id:string;workspace_id:string;site_id:string;content_item_id:string;revision_id:string;revision_hash:string;theme_release:string;token_version:number;created_by:string;created_at:number;expires_at:number;revoked_at:number|null;last_accessed_at:number|null};
+type PreviewProjectionRow = {
+  preview_json: string;
+  item_json: string;
+  node_json: string;
+  route_json: string;
+  revision_json: string;
+  site_json: string;
+};
 function mapAsset(r:AssetRow):Asset{return{id:asAssetId(r.id),workspaceId:r.workspace_id as WorkspaceId,objectKey:r.object_key,originalFilename:r.original_filename,mediaType:r.media_type,byteSize:r.byte_size,checksum:r.checksum,width:r.width,height:r.height,state:r.state,ownerPrincipalId:asPrincipalId(r.owner_principal_id),createdAt:r.created_at,updatedAt:r.updated_at,deletedAt:r.deleted_at};}
 function mapUploadSession(r:UploadSessionRow):UploadSession{return{id:asUploadSessionId(r.id),assetId:asAssetId(r.asset_id),workspaceId:r.workspace_id as WorkspaceId,objectKey:r.object_key,mediaType:r.media_type,maximumBytes:r.maximum_bytes,state:r.state,createdBy:asPrincipalId(r.created_by),createdAt:r.created_at,expiresAt:r.expires_at,completedAt:r.completed_at,failureReason:r.failure_reason};}
 function mapPreview(r:PreviewRow):PreviewSession{return{id:asPreviewSessionId(r.id),workspaceId:r.workspace_id as WorkspaceId,siteId:asSiteId(r.site_id),contentItemId:asContentItemId(r.content_item_id),revisionId:asRevisionId(r.revision_id),revisionHash:r.revision_hash,themeRelease:r.theme_release,tokenVersion:r.token_version,createdBy:asPrincipalId(r.created_by),createdAt:r.created_at,expiresAt:r.expires_at,revokedAt:r.revoked_at,lastAccessedAt:r.last_accessed_at};}
@@ -1286,6 +1585,17 @@ interface BlogArticleRow { collection_id:string; content_item_id:string; posted_
 interface TaxonomyRow { id:string; collection_id:string; taxonomy_key:string; title:string; kind:"category"|"tag"; hierarchical:number; state:"active"|"disabled"; created_at:number; updated_at:number; }
 interface TermRow { id:string; taxonomy_id:string; parent_id:string|null; slug:string; title:string; state:"active"|"disabled"; created_at:number; updated_at:number; }
 interface RevisionTaxonomyValueRow { revision_id:string; taxonomy_id:string; term_ids_json:string; }
+interface PublishedArticleProjectionRow {
+  collection_id: string;
+  posted_at: number;
+  author_principal_id: string;
+  created_at: number;
+  item_json: string;
+  node_json: string;
+  route_json: string;
+  revision_json: string;
+}
+interface PublishedArticleTermRow extends TermRow { root_revision_id: string; }
 function mapBlogCollection(row: BlogCollectionRow): BlogCollection { return { id:asCollectionId(row.id), workspaceId:row.workspace_id as WorkspaceId, siteId:asSiteId(row.site_id), contentItemId:asContentItemId(row.content_item_id), pageSize:row.page_size, feedSize:row.feed_size, sortDirection:row.sort_direction, state:row.state, createdAt:row.created_at, updatedAt:row.updated_at }; }
 function mapBlogArticle(row: BlogArticleRow): BlogArticleRecord { return { collectionId:asCollectionId(row.collection_id), contentItemId:asContentItemId(row.content_item_id), postedAt:row.posted_at, authorPrincipalId:asPrincipalId(row.author_principal_id), createdAt:row.created_at }; }
 function mapTaxonomy(row: TaxonomyRow): Taxonomy { return { id:asTaxonomyId(row.id), collectionId:asCollectionId(row.collection_id), key:row.taxonomy_key, title:row.title, kind:row.kind, hierarchical:Boolean(row.hierarchical), state:row.state, createdAt:row.created_at, updatedAt:row.updated_at }; }

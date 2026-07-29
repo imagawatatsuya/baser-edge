@@ -89,6 +89,29 @@ npm run enable-media:cloudflare
 
 - 管理画面の静的ファイルは **API Worker** の `STATIC_ASSETS`（`/console/`）。修正後は `npm run build:admin-web` のあと **API Worker を再デプロイ**する。
 - アップロード PUT でブラウザの `fetch` に **`Content-Length` ヘッダを付けない**（禁止ヘッダのため `Failed to fetch` になる）。実装は `apps/admin-web` 側で除去済み。
+- 管理画面の一覧・画像選択は原寸ではなく、ブラウザが生成する最大256pxのWebP派生画像を使う。既存画像は初回だけ原寸へfallbackし、表示後に派生画像を補完する。
+- 認証済み原寸と派生画像は共有CDNへ公開せず、`private`なブラウザキャッシュを使う。派生画像がまだないfallback応答は`no-store`とし、補完後の次回表示を妨げない。
+
+```yaml
+cloudflare_assumptions:
+  checked_at: 2026-07-30
+  target_plan: both
+  official_pages:
+    - https://developers.cloudflare.com/workers/runtime-apis/cache/
+    - https://developers.cloudflare.com/r2/api/workers/workers-api-reference/
+  relevant_limits:
+    cpu: "クライアント側で縮小するためWorker画像変換CPUは追加しない"
+    memory: "派生画像の入力上限256KiB"
+    bundle: "小規模な管理画面ユーティリティのみ"
+    subrequests: "派生画像取得は原寸取得と同数。既存画像の初回fallbackのみobject lookupが1回増える"
+  design_margin: "通常表示は最大256px WebP。画像GET連打時のsession last_seen更新は5分に1回"
+```
+
+Cloudflare Cache APIはデータセンター間で自動複製されず、認証Cookieを含む管理資産を共有キャッシュへ載せないため、本経路ではブラウザのprivate cacheを採用する。
+
+### 既存D1 inlineサイトの更新
+
+`0012_asset_thumbnail_blobs.sql`は既存の原寸BLOB表を変更せず、派生画像専用表を追加するexpand-only migrationである。旧Workerは追加表を参照しないためmigration後も動作し、新Workerはmigration適用後にサムネイルを生成する。Workerだけを旧版へ戻しても原寸配信は継続し、未使用の派生表は残る（削除migrationは行わない）。
 
 ---
 

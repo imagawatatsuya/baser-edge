@@ -116,7 +116,7 @@ export function ContentEditPage() {
     setContentEditorCache(contentId, payload);
   }
 
-  useEffect(() => { void load({ fresh: true }); }, [load]);
+  useEffect(() => { void load(); }, [load]);
 
   function editorValidationError(): string | null {
     return validateEditorBlocks(blocks);
@@ -240,6 +240,11 @@ export function ContentEditPage() {
       setStatus("下書きリビジョンがありません。ページを再読み込みしてください。");
       return;
     }
+    const previewTab = openNamedBrowserTab("about:blank", PUBLIC_PREVIEW_TAB);
+    if (previewTab) {
+      previewTab.document.title = "下書きプレビューを準備中";
+      previewTab.document.body.textContent = "下書きプレビューを準備しています…";
+    }
     setBusy(true);
     setStatus("プレビュー準備中…");
     try {
@@ -260,10 +265,20 @@ export function ContentEditPage() {
           previewBaseUrl: resolvePublicSiteOrigin(session),
         },
       });
-      openNamedBrowserTab(result.previewUrl, PUBLIC_PREVIEW_TAB);
+      if (previewTab && !previewTab.closed) {
+        previewTab.location.replace(result.previewUrl);
+        previewTab.focus();
+      } else {
+        openNamedBrowserTab(result.previewUrl, PUBLIC_PREVIEW_TAB);
+      }
       setStatus(dirty ? "入力内容を保存し、下書きプレビューを開きました。" : "下書きプレビューを開きました。");
     } catch (error) {
-      setStatus(error instanceof Error ? error.message : String(error));
+      const message = error instanceof Error ? error.message : String(error);
+      setStatus(message);
+      if (previewTab && !previewTab.closed) {
+        previewTab.document.title = "下書きプレビューを開けませんでした";
+        previewTab.document.body.textContent = `下書きプレビューを開けませんでした: ${message}`;
+      }
     } finally {
       setBusy(false);
     }
@@ -419,10 +434,9 @@ export function ContentEditPage() {
                     method: "PATCH",
                     json: { postedAt: parseDatetimeLocalValue(postedAtLocal) },
                   })
-                    .then(async (meta) => {
+                    .then((meta) => {
                       setArticleMeta(meta);
                       setPostedAtLocal(toDatetimeLocalValue(meta.postedAt));
-                      await reloadContentTree();
                     })
                     .catch((e) => setStatus(e instanceof Error ? e.message : String(e)));
                 }}

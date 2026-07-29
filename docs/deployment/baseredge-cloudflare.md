@@ -95,10 +95,12 @@ npm run deploy:cloudflare -- --bootstrap
 
 | コンポーネント | Wrangler 名 | 備考 |
 |----------------|-------------|------|
-| API + 管理 UI | `baser-edge-api` | `/v1/*`、Passkey、`/console/*`（`apps/admin-web/dist` を Static Assets） |
+| API + 管理 UI | `baser-edge-api` | `/v1/*`、Passkey、`/console/*`（root `index.html` + `/console/assets/*`をStatic Assetsから直接配信） |
 | 公開サイト | `baser-edge-public` | `SITE_ID` が必要（bootstrap 後） |
 | D1 | `baser-edge` | `migrations/` |
 | R2 | `baser-edge-assets` | メディア配信時（自動お試し+R2 / `enable-media:cloudflare` / `BASER_CF_FULL_STACK=1`）。binding `R2` |
+
+公開Workerは公開GETにD1 Sessions APIを使います。Read Replicationを有効にしたD1では近傍replicaを利用でき、複数queryは同一session内で逐次整合になります。公開HTML・一覧・Feed・Redirectはレスポンスの`Cache-Control`に従ってWorkers Cache APIへ保存され、`x-baser-edge-cache: HIT|MISS|BYPASS`と`Server-Timing: baser`で確認できます。クエリ付き管理ビューとPreviewは必ずbypassします。
 
 ## 本番前チェックリスト
 
