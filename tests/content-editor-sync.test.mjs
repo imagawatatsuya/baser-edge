@@ -34,6 +34,16 @@ test("ContentEditPage blocks leave when live site is out of sync", () => {
   assert.match(source, /EditorLeaveDialog/);
 });
 
+test("ContentEditPage explains the public cache propagation delay before and after publish", () => {
+  const source = readAdmin("pages/ContentEditPage.tsx");
+  const css = readAdmin("layout/admin.css");
+  assert.match(source, /公開処理が完了しました。訪問者向けページはキャッシュのため、反映まで1分程度かかる場合があります。/);
+  assert.match(source, /className="editor-publication-delay-notice" role="note"/);
+  assert.match(source, /公開ページへの反映について/);
+  assert.match(source, /公開直後の内容は「公開を確認（バナー付き）」で確認できます。/);
+  assert.match(css, /\.editor-publication-delay-notice/);
+});
+
 test("CustomEntryEditPage blocks leave when live site is out of sync", () => {
   const source = readAdmin("pages/CustomEntryPages.tsx");
   assert.match(source, /useEditorLeaveGuard/);

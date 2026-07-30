@@ -163,7 +163,7 @@ export function ContentEditPage() {
       const publishedSnap = await publishContent(contentId, fresh, session.credentialId);
       flushSync(() => syncEditorFromSnapshot(publishedSnap));
       await reloadContentTree();
-      setStatus("サイトに反映しました。");
+      setStatus("公開処理が完了しました。訪問者向けページはキャッシュのため、反映まで1分程度かかる場合があります。");
       return true;
     } catch (error) {
       setStatus(error instanceof Error ? error.message : String(error));
@@ -388,6 +388,15 @@ export function ContentEditPage() {
             <Button variant="link" disabled={busy} onClick={() => void onPreviewDraft()}>下書きを確認</Button>
           ) : null}
         </p>
+      ) : null}
+      {editable ? (
+        <div className="editor-publication-delay-notice" role="note">
+          <strong>公開ページへの反映について</strong>
+          <span>
+            「公開」「サイトに反映」の完了後も、訪問者向けページはキャッシュのため反映まで1分程度かかる場合があります。
+            公開直後の内容は「公開を確認（バナー付き）」で確認できます。
+          </span>
+        </div>
       ) : null}
       {editable ? (
         <p className="status editor-hint">

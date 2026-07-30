@@ -17,7 +17,10 @@ const root = join(fileURLToPath(new URL(".", import.meta.url)), "..");
 function trialNoR2InSubprocess(env = {}) {
   const r = spawnSync(
     process.execPath,
-    ["-e", "import { isTrialNoR2 } from './scripts/cloudflare/stack.mjs'; console.log(isTrialNoR2())"],
+    [
+      "-e",
+      "import { isTrialNoR2 } from './scripts/cloudflare/stack.mjs'; process.stdout.write(String(isTrialNoR2()))",
+    ],
     { cwd: root, encoding: "utf8", env: { ...process.env, ...env } },
   );
   assert.equal(r.status, 0, r.stderr);

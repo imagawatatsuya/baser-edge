@@ -7,7 +7,7 @@ Update this table when adding or changing admin mutations.
 | Surface | Mutation | API / helper | View sync | Tests |
 |---------|----------|--------------|-----------|-------|
 | Content tree | Create page/folder/blog/article | `POST /v1/pages` etc. | `ContentLayout` → `reload()` | Golden path (article); layout static |
-| Content tree | Reorder / drag move | `treeMove` | API snapshotを`applyReorderToContentTree`で共有tree cacheへ反映（全tree再取得なし） | Kernel / API worker / static |
+| Content tree | Reorder / drag move | `treeMove` | API snapshotを`applyReorderToContentTree`で共有tree cacheへ反映（全tree再取得なし）。drop位置、保存中、成功位置、undoを表示し、Articleの別Blog dropはAPI前に拒否 | Kernel / API worker / static feedback + undo |
 | Content tree | Move dialog / copy | `TreeModals` | `reload()` | Kernel / API worker |
 | Content tree | Trash (tree menu) | `trashContent` | `reload()` + `invalidateSiteContentViews` | Static + golden path |
 | Content tree | Trash (editor) | `trashContent` | `reloadContentTree()` + invalidate | Static |

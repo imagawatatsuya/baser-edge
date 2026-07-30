@@ -604,6 +604,43 @@ test("API tree mutations return 409 for stale expectedTreeVersion", async () => 
     }),
   }), {});
   const page = await pageResponse.json();
+  const staleReorder = await localWorker.fetch(new Request(`https://api.test/v1/content/${page.item.id}/reorder`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({
+      targetParentId: null,
+      insertAfterContentItemId: folder.item.id,
+      expectedTreeVersion: page.node.treeVersion - 1,
+    }),
+  }), {});
+  assert.equal(staleReorder.status, 409);
+  assert.equal((await staleReorder.json()).error?.code, "TREE_CONFLICT");
+
+  const invalidAnchor = await localWorker.fetch(new Request(`https://api.test/v1/content/${page.item.id}/reorder`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({
+      targetParentId: null,
+      insertAfterContentItemId: page.item.id,
+      expectedTreeVersion: page.node.treeVersion,
+    }),
+  }), {});
+  assert.equal(invalidAnchor.status, 422);
+  assert.equal((await invalidAnchor.json()).error?.code, "INSERT_AFTER_NOT_FOUND");
+
+  const reorderedResponse = await localWorker.fetch(new Request(`https://api.test/v1/content/${page.item.id}/reorder`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({
+      targetParentId: null,
+      insertAfterContentItemId: folder.item.id,
+      expectedTreeVersion: page.node.treeVersion,
+    }),
+  }), {});
+  assert.equal(reorderedResponse.status, 200);
+  const reordered = await reorderedResponse.json();
+  assert.equal(reordered.node.treeVersion, page.node.treeVersion + 1);
+
   const staleMove = await localWorker.fetch(new Request(`https://api.test/v1/content/${page.item.id}/move`, {
     method: "POST",
     headers,
@@ -619,7 +656,7 @@ test("API tree mutations return 409 for stale expectedTreeVersion", async () => 
   const trashed = await localWorker.fetch(new Request(`https://api.test/v1/content/${page.item.id}/trash`, {
     method: "POST",
     headers,
-    body: JSON.stringify({ expectedTreeVersion: page.node.treeVersion }),
+    body: JSON.stringify({ expectedTreeVersion: reordered.node.treeVersion }),
   }), {});
   assert.equal(trashed.status, 200);
   const trashedSnapshot = await localWorker.fetch(new Request(`https://api.test/v1/content/${page.item.id}`, { headers }), {});

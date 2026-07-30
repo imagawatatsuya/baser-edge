@@ -69,6 +69,31 @@ npm run plan:cloudflare
 BASER_CF_PROVE=1 npm run prove:cloudflare
 ```
 
+### 既存のOAuthお試しインスタンスを更新する
+
+既存の `baser-edge-api-trial` / `baser-edge-public-trial` を、現在のローカルチェックアウトで更新する場合は、リポジトリ直下のコマンドプロンプト（CMD）で次を実行します。
+
+```cmd
+npm run refresh:oauth-trial -- --yes
+```
+
+別のディレクトリから実行する場合は、リポジトリへ移動する処理を含む次のワンライナーを使えます。
+
+```cmd
+cd /d "C:\path\to\baser-edge" && npm run refresh:oauth-trial -- --yes
+```
+
+`C:\path\to\baser-edge`は実際の配置先へ置き換えてください。文書やIssueへコマンド例を記録するときは、個人のユーザー名やローカル固有のディレクトリ構成を含む絶対パスではなく、環境変数または一般化したプレースホルダーを使います。
+
+実行前に次を確認してください。
+
+- Wranglerが対象インスタンスを所有するCloudflareアカウントへログイン済みであること（`npx wrangler whoami`）。
+- `deploy/cloudflare-state.trial.json` が更新対象の既存trialインスタンスに対応していること。
+- `git status --short` でデプロイ対象を確認したこと。コミット済みかどうかにかかわらず、現在の作業ツリーにある変更がすべてビルド・デプロイされます。
+- `--yes` は、D1 migration、Worker Secretの反映、API Worker・公開Workerの再デプロイを許可する指定であること。
+
+このコマンドは管理画面をビルドしてAPI WorkerのStatic Assetsへ含め、D1 migrationを適用し、API Workerと公開Workerを更新します。一般利用者が自分のサイトを更新するためのコマンドではなく、開発者・メンテナが既存のOAuth trialを更新するための経路です。
+
 既定のお試し構成はR2なしです。R2を含む構成は`BASER_CF_FULL_STACK=1`を指定します。詳しいBinding、Secret、片付け方法は次を参照してください。
 
 - [Cloudflareデプロイ](deployment/baseredge-cloudflare.md)

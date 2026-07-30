@@ -91,6 +91,7 @@ Living inventory of **existing** `/v1/*` routes against [validation-policy.md](.
 | `/v1/content/:id/agent-proposals` | POST | Y | Y | Y | OK | `blockOperationsField`; rejection tests in `api-worker.test.mjs` |
 | `/v1/content/:id/move-impact` | POST | Y | Y | Y | OK | `newSlug` via domain; INVALID_SLUG in `api-validation.test.mjs` |
 | `/v1/content/:id/move` | POST | Y | Y | Y | OK | `expectedTreeVersion`; stale → 409 in `api-worker.test.mjs` |
+| `/v1/content/:id/reorder` | POST | Y | Y | Y | OK | Success + stale `expectedTreeVersion` + invalid sibling anchor in `api-worker.test.mjs`; Article cross-Blog move stays 409 in `blog.test.mjs` |
 | `/v1/content/:id/copy` | POST | Y | Y | Y | OK | Happy path + INVALID_SLUG + stale tree in tests |
 | `/v1/content/:id/trash` | POST | Y | Y | Y | OK | Stale tree → 409; ALREADY_TRASHED in `api-worker.test.mjs` |
 | `/v1/content/:id/restore` | POST | Y | Y | Y | OK | Stale tree → 409 in `api-worker.test.mjs` |

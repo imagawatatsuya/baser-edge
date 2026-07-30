@@ -13,6 +13,8 @@ export function TreeRowMenu({
   canMoveUp,
   canMoveDown,
   canMoveToParent,
+  moveUnavailableReason,
+  disabled = false,
   onMove,
   onCopy,
   onTrash,
@@ -26,6 +28,8 @@ export function TreeRowMenu({
   canMoveUp: boolean;
   canMoveDown: boolean;
   canMoveToParent: boolean;
+  moveUnavailableReason?: string;
+  disabled?: boolean;
   onMove: () => void;
   onCopy: () => void;
   onTrash: () => void;
@@ -117,6 +121,7 @@ export function TreeRowMenu({
         aria-label={`${title}の操作`}
         aria-expanded={open}
         aria-haspopup="menu"
+        disabled={disabled}
         onClick={(e) => {
           e.stopPropagation();
           toggle();
@@ -142,10 +147,18 @@ export function TreeRowMenu({
                     <button type="button" role="menuitem" onClick={() => runAction(onAddFolder)}>フォルダを追加</button>
                   </>
                 ) : null}
-                <button type="button" role="menuitem" disabled={!canMoveUp} onClick={() => runAction(onMoveUp)}>一つ上へ移動</button>
-                <button type="button" role="menuitem" disabled={!canMoveDown} onClick={() => runAction(onMoveDown)}>一つ下へ移動</button>
-                <button type="button" role="menuitem" disabled={!canMoveToParent} onClick={() => runAction(onMoveToParent)}>親階層へ移動</button>
-                <button type="button" role="menuitem" onClick={() => runAction(onMove)}>移動先を選ぶ…</button>
+                <button type="button" role="menuitem" disabled={!canMoveUp || disabled} onClick={() => runAction(onMoveUp)}>一つ上へ移動</button>
+                <button type="button" role="menuitem" disabled={!canMoveDown || disabled} onClick={() => runAction(onMoveDown)}>一つ下へ移動</button>
+                <button type="button" role="menuitem" disabled={!canMoveToParent || disabled} onClick={() => runAction(onMoveToParent)}>親階層へ移動</button>
+                <button
+                  type="button"
+                  role="menuitem"
+                  disabled={Boolean(moveUnavailableReason) || disabled}
+                  title={moveUnavailableReason}
+                  onClick={() => runAction(onMove)}
+                >
+                  {moveUnavailableReason ? "別のブログへ移動（現在利用できません）" : "移動先を選ぶ…"}
+                </button>
                 <button type="button" role="menuitem" onClick={() => runAction(onCopy)}>コピー…</button>
                 <button type="button" role="menuitem" className="tree-menu-danger" onClick={() => runAction(onTrash)}>削除（ゴミ箱へ）</button>
               </div>

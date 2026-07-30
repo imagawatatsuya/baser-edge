@@ -183,6 +183,34 @@ test("ContentLayout applies reorder results locally instead of reloading the ful
   assert.doesNotMatch(reorderBlock, /reload\(\)/);
 });
 
+test("ContentLayout explains, previews, confirms and can undo tree reorders", () => {
+  const source = readAdmin("pages/ContentLayout.tsx");
+  const menu = readAdmin("components/tree/TreeRowMenu.tsx");
+  const css = readAdmin("layout/admin.css");
+
+  assert.match(source, /buildRowDropIntent/);
+  assert.match(source, /before \? "before" : "after"/);
+  assert.match(source, /tree-drop-feedback/);
+  assert.match(source, /並べ替えを保存しています/);
+  assert.match(source, /successfulReorderMessage/);
+  assert.match(source, /changedContentItemId/);
+  assert.match(source, /undoLastReorder/);
+  assert.match(source, />元に戻す</);
+  assert.match(source, /aria-live="polite"/);
+  assert.match(css, /\.tree-drop-before::before/);
+  assert.match(css, /\.tree-drop-after::after/);
+  assert.match(css, /\.tree-row-updated/);
+
+  assert.match(source, /ARTICLE_CROSS_BLOG_MOVE_NOT_IMPLEMENTED/);
+  assert.match(source, /記事は現在のブログ内でのみ並べ替えられます/);
+  assert.match(source, /position: reason \? "invalid"/);
+  assert.match(menu, /別のブログへ移動（現在利用できません）/);
+  assert.match(source, /tree-status-error/);
+
+  assert.match(source, /管理ツリー内の表示順です/);
+  assert.match(source, /投稿日時とブログ設定の表示順/);
+});
+
 test("TrashPage reloads trash list after restore", () => {
   const source = readAdmin("pages/TrashPage.tsx");
   assert.match(source, /await restoreContent\(entry\.snapshot\)/);

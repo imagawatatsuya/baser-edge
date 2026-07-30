@@ -1,76 +1,78 @@
 # baserEdge
 
-**baserEdge** は、Cloudflare 上で動くサイトツリー型CMSです。固定ページ、フォルダ、ブログ、メールフォーム、カスタムコンテンツなどを一つのツリーで管理し、編集・承認・公開までをブラウザで行えます。
-
-> **現在はプレビュー版です。** サイトの開設は[お試し開始ページ](https://baser-edge-trial-host.papehiko.workers.dev/start/)から行い、管理画面では **Cloudflare でログイン**します（開設したアカウントの本人のみ）。
+**baserEdge** は、Cloudflare 上で動くサイトツリー型CMSです。固定ページ、フォルダ、ブログ、メールフォーム、カスタムコンテンツを一つのツリーで管理し、編集・承認・公開までをブラウザで行えます。
 
 [ブラウザで試す](https://baser-edge-trial-host.papehiko.workers.dev/start/) · [利用ガイド](docs/user-guide.md) · [ドキュメント一覧](docs/README.md)
 
-## ブラウザで試す
+> **現在は v0.9 Preview です。** お試しサイトは自分のCloudflareアカウント内に作られます。通常のお試しにGitHubアカウント、コマンド操作、npm、Wrangler、APIトークンは必要ありません。重要なデータを置く前に、バックアップとCloudflare側の利用状況を確認してください。
 
-必要なのはCloudflareアカウントだけです。GitHubアカウント、コマンド操作、npm、Wrangler、APIトークンの貼り付けは、通常のお試し手順では必要ありません。
+## まず試す
+
+必要なのはCloudflareアカウントだけです。
 
 1. [お試し開始ページ](https://baser-edge-trial-host.papehiko.workers.dev/start/)を開く
 2. **Cloudflareでログインしてサイトを開設**を押す
-3. Cloudflareで対象アカウントと権限を確認し、許可する
+3. Cloudflareでアカウントと権限を確認し、**Authorize（許可する）**を押す
 4. 開設が完了するまで画面を閉じずに待つ
-5. 表示された**管理画面URL**を開き、**Cloudflare でログイン**する
+5. 表示された**管理画面URL**を開き、開設時と同じCloudflareアカウントでログインする
 
-完了画面には次の2つのURLが表示されます。
+完了画面には2つのURLが表示されます。
 
 | URL | 用途 |
 |---|---|
-| 管理画面URL（末尾が `/console/`） | ページの作成、編集、承認、公開 |
-| 公開サイトURL | 訪問者が見るサイト。最初は公開済みの `/home` が用意されます |
+| 管理画面URL（末尾が`/console/`） | ページの作成、編集、承認、公開 |
+| 公開サイトURL | 訪問者が見るサイト。最初から公開済みの`/home`があります |
 
-作成されるWorkerとD1は、利用者自身のCloudflareアカウント内に置かれます。開設の詳しい流れ、画像利用、削除、トラブル対応は[利用ガイド](docs/user-guide.md)を参照してください。
+## Cloudflareの確認画面で迷ったら
 
-## できること
+Cloudflareの確認画面は、異常やエラーではありません。baserEdgeとの連携内容を本人に確認するための標準画面です。`dash.cloudflare.com`であること、ログイン中のアカウント、表示された権限を確認してから許可してください。
 
-- Page、Folder、Alias、Blog、Mail Form、Custom Contentを同じサイトツリーで管理
-- 下書きRevision、承認依頼、承認後の公開
-- ページの移動、コピー、ゴミ箱、復元と旧URLからのリダイレクト
-- ブログ記事、カテゴリ、タグ、RSS
-- カスタム項目・テーブル・エントリー
-- メールフォームの確認画面、送信、通知
-- Theme Releaseを使った表示切り替えとプレビュー
-- メディアのアップロードと利用状況に応じた削除制御
-- Human、Agent、Service、Pluginに共通する権限・監査モデル
+| 直前の操作 | 確認画面の目的 |
+|---|---|
+| お試しサイトを開設 | 利用者のアカウント内にWorkerとD1を作る |
+| 管理画面へログイン | 本人と所属アカウントを確認する。`User Details Read`と`Memberships Read`の読み取り2権限だけ |
+| **お試しをやめる** | 作成済みの`trial`環境を削除する。削除後は復元不可 |
 
-AI Agentは変更案と承認依頼を作成できますが、既定のポリシーでは直接公開できません。公開は人間による承認を通ります。
+管理画面ログインでは、現在のプレビュー用OAuthアプリ名として `baser-edge-ops-teardown` と表示される場合があります。管理画面URLから進み、権限が上記の読み取り2件だけなら、WorkerやD1の変更・削除は行いません。削除は開始ページで自分から**お試しをやめる**を選んだ場合だけ始まります。
 
-## 基本的な使い方
+![Cloudflare連携確認画面の見方](docs/images/cloudflare-oauth-login-guide-ja.png)
 
-1. 管理画面の**コンテンツ**でページやフォルダを作る
-2. 編集画面でタイトルと本文を保存する
-3. 公開の承認を行う
-4. 公開サイトURLで表示を確認する
+<details>
+<summary>実際の英語表示例を見る</summary>
 
-初期状態では「ホーム」という公開済みページがあります。管理画面から編集して、最初のサイト内容として利用できます。
+![Cloudflare連携確認画面の英語表示例](docs/images/cloudflare-oauth-login-example-en.png)
 
-## 現在の制約
+</details>
 
-- お試し開設では **Cloudflare アカウントでログイン**して管理に入ります（開設した本人のみ）。高リスク操作は追加の step-up が必要です。
-- R2を有効にしていないお試し環境では、管理画面でメディアを試せますが、ユーザーがアップロードした画像の公開サイト配信は利用できません。初期ホームに含まれる組み込みのサンプル写真だけは、R2なしでも表示されます。
-- Pluginの基盤とAPIはありますが、第三者Pluginのインストールや権限同意を完結させる管理画面は未完成です。
+内容に問題がなければ **Authorize** を押すと管理画面へ戻ります。連携はCloudflareの **My Profile → Access Management → Connected Applications** からいつでも取り消せます。
+
+## 最初のページを編集する
+
+1. 管理画面で**コンテンツ**を開く
+2. サイトツリーの**ホーム**を選ぶ
+3. タイトルや本文を編集して保存する
+4. 承認・公開し、公開サイトURLで確認する
+
+保存しただけでは公開中の内容は変わりません。編集内容はRevisionとして分けて保持され、承認・公開した内容だけが公開サイトへ反映されます。
+
+## お試し前に知っておくこと
+
+- 標準のお試しはR2なしです。ページや管理画面は試せますが、アップロード画像を公開サイトで配信するにはR2が必要です。
+- AI Agentは変更案と承認依頼を作れますが、既定のポリシーでは直接公開できません。
+- 不要になった環境は、開始ページの**お試しをやめる**から削除できます。削除対象は`trial`環境に限定され、削除後は復元できません。
 - baserCMS 5のPHP実行環境や自動移行機能は含みません。詳しくは[baserCMSとの関係](docs/compatibility/relationship-to-basercms.md)を参照してください。
-- プレビュー版のため、重要なデータを置く前にバックアップとCloudflare側の利用状況を確認してください。
 
-お試し環境が不要になった場合は、開始ページの**お試しをやめる**から削除できます。対象は`trial`のお試し環境で、削除後は復元できません。
-
-## ドキュメント
+## 詳しい情報
 
 | 読む人 | 文書 |
 |---|---|
 | 初めて試す方 | [利用ガイド](docs/user-guide.md) |
 | 製品の範囲を知りたい方 | [製品要件 v0.4](docs/requirements/product-requirements-v0.4.md) |
-| baserCMSとの違いを知りたい方 | [baserCMSとの関係](docs/compatibility/relationship-to-basercms.md) |
 | 開発・コントリビュートする方 | [開発者向けガイド](docs/developer-guide.md) |
 | すべての文書を探す方 | [ドキュメント一覧](docs/README.md) |
 
-版ごとの実装経緯、ADR、過去の計画はREADMEではなく、[ドキュメント一覧](docs/README.md)から参照できます。
-
-## 開発者向けクイックスタート
+<details>
+<summary>開発者向けクイックスタート</summary>
 
 必要環境はNode.js 22以降です。
 
@@ -80,22 +82,10 @@ npm run check
 npm run dev:stack
 ```
 
-起動後、ターミナルに表示される **管理画面 URL**（通常は `http://localhost:8787/console/`。8787/8788 が使用中なら別ポート）を開きます。公開サイトはログの `公開サイト:` 行（例: `http://localhost:8788/home`）を参照してください。主要コマンド、ローカル構成、Cloudflareへの開発者向けデプロイは[開発者向けガイド](docs/developer-guide.md)にまとめています。
+起動後、ターミナルに表示される管理画面URL（通常は`http://localhost:8787/console/`）を開きます。主要コマンドとCloudflareへの開発者向けデプロイは[開発者向けガイド](docs/developer-guide.md)を参照してください。
 
-## 製品の位置づけ
+</details>
 
-- 製品名: **baserEdge**
-- 現行バージョン: **v0.9 Preview**
-- 人間向け管理UI: `apps/admin-web`（`/console/`）
-- 実行基盤: Cloudflare Workers、D1、任意のR2
-- 製品モデル: サイトツリー中心のCMS
+## ライセンス
 
-baserEdgeはbaserCMSプロジェクトの後継や互換実装を宣言するものではありません。運用上わかりやすい用語とサイトツリーの考え方を参考にした、別のCloudflare向けCMSです。
-
-## ライセンスと商用利用
-
-baserEdgeは [MIT License](./LICENSE) で提供します。MIT Licenseの条件に従う限り、個人・法人を問わず、商用利用、改変、再配布、サブライセンス、販売、SaaS、マネージドサービス、OEM、ホワイトラベルでの利用が可能です。別途の商用ライセンスは必要ありません。
-
-導入支援、移行、独自テーマ・機能開発、保守、マネージド運用、優先サポート、SLAなどは、有償サービスとして提供する場合があります。詳しくは [COMMERCIAL.md](./COMMERCIAL.md) を参照してください。
-
-第三者コンポーネントの条件は [THIRD_PARTY_NOTICES.md](./THIRD_PARTY_NOTICES.md) と各依存物の表示を参照してください。ソフトウェアライセンスは、名称・ロゴ等の商標利用を自動的に許諾するものではありません。
+[MIT License](LICENSE)です。個人・法人を問わず商用利用できます。導入支援、独自開発、保守などについては[商用利用と有償サービス](COMMERCIAL.md)を参照してください。

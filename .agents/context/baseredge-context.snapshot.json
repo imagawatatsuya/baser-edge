@@ -1,6 +1,6 @@
 {
   "contextSchemaVersion": 1,
-  "generatedAt": "2026-07-29T13:43:27.760Z",
+  "generatedAt": "2026-07-30T00:19:18.845Z",
   "repository": {
     "name": "baser-edge",
     "version": "0.9.0"
@@ -167,7 +167,7 @@
           "linked-authority"
         ],
         "exists": true,
-        "sha256": "58295e1f0e59b21fbee172bf738e69c98f1ba92f5ec40407a523be4c445de257"
+        "sha256": "efc346b00be201d17ad9759d8a489759e03efd24c08bad09dde1151fd72653bf"
       },
       {
         "path": "docs/deployment/cloudflare-teardown.md",
@@ -221,7 +221,7 @@
           "developer-guide"
         ],
         "exists": true,
-        "sha256": "fb9e91b835ba253bc3e6621a97225885f6b4c4ffc298d6ae97de00c5740fb013"
+        "sha256": "9ed419416cae668cecf8f62bb614c88eefc4ae99a7515ac84c748e0353f3242d"
       },
       {
         "path": "docs/engineering/api-validation-audit.md",
@@ -230,7 +230,7 @@
           "linked-authority"
         ],
         "exists": true,
-        "sha256": "069b9d8df091c64c5effa64f7baf8cb4501a84673d9708cb7d6f95b99ca581ae"
+        "sha256": "b0047ac33ddcd2b3593d6ccebd6e2f9322839187e748a6fca37b5bcbfa7aaf53"
       },
       {
         "path": "docs/engineering/validation-policy.md",
@@ -329,7 +329,7 @@
           "implementation-status"
         ],
         "exists": true,
-        "sha256": "353438197a855b809e1be5a567356565b3504a6afd55fde8a3c464ea45ef2ebf"
+        "sha256": "e82c7ae76e7bbade4a43b2a43de663cf6dccc99774f59d1a40095ca09b8c5232"
       },
       {
         "path": "package.json",
@@ -338,7 +338,7 @@
           "root-package"
         ],
         "exists": true,
-        "sha256": "bf4d48675f425abb94e2b3af26d208886b2d88d9817ad066157620c1494fc2fb"
+        "sha256": "d5fd4548ca859479abe3d23c1dd4986341e6943a8210ca33518e7afe9ee5cebd"
       },
       {
         "path": "README.md",
@@ -347,7 +347,7 @@
           "linked-authority"
         ],
         "exists": true,
-        "sha256": "c0080a0ebcb9d2d6ab7868acd3d9881cecadcae8dcbb47b7b0898e29a7c0e127"
+        "sha256": "c40b0ba3a063528baa4ee597c3aa2b5ef0777f0fa01aa3d51c02b0349f6e8566"
       },
       {
         "path": "THIRD_PARTY_NOTICES.md",
@@ -396,6 +396,9 @@
   },
   "workspace": {
     "rootScripts": [
+      "benchmark:admin",
+      "benchmark:admin-content",
+      "benchmark:d1-performance",
       "bind:cloudflare-owner",
       "browser:cms-login",
       "build",
@@ -932,12 +935,16 @@
     {
       "path": "migrations/0011_asset_object_blobs.sql",
       "sha256": "2a9afb86c79f62c1792a8f12613fee59a261137eb1e01aec6df69def5e8600ca"
+    },
+    {
+      "path": "migrations/0012_asset_thumbnail_blobs.sql",
+      "sha256": "1e2dab8e62254f354611fa39ad5eaf09151971376176a3078e1b8d99c74e2861"
     }
   ],
   "tests": [
     {
       "path": "release/public-snapshot-test/tests/admin-console-browser-smoke.test.mjs",
-      "sha256": "ce4e225075300e20e54d0dc0f4da25970456dc438f57ad7c46b0e1568eb949e0"
+      "sha256": "43b39bdf2fe42b1cb1273cfe98ccd34a2360e94a9672dbcd1e06bfb56dead281"
     },
     {
       "path": "release/public-snapshot-test/tests/admin-router-policy.test.mjs",
@@ -948,12 +955,16 @@
       "sha256": "4e3f8224867a7ca13ce5276261e86dc54fef4c7520a666a1c57365e28a8cfd59"
     },
     {
+      "path": "release/public-snapshot-test/tests/admin-web-build-output.test.mjs",
+      "sha256": "bcdb24db168989c7a8748e22023c237ee409f3d8a61206974a447fc8842743bc"
+    },
+    {
       "path": "release/public-snapshot-test/tests/api-validation.test.mjs",
       "sha256": "36f332b6aea083bc4d092d78a6796dea3a9372c7ef913009d4817e8235438448"
     },
     {
       "path": "release/public-snapshot-test/tests/api-worker.test.mjs",
-      "sha256": "35b217758ab0056eb570e02c89379345be8bfb661096d1321c789eff6f7ee592"
+      "sha256": "083fcf9e09d12df138184446ba7d81e0e4f620bf2ef17e0d20e28fc44bb1b43e"
     },
     {
       "path": "release/public-snapshot-test/tests/apply-d1-migrations.test.mjs",
@@ -961,11 +972,11 @@
     },
     {
       "path": "release/public-snapshot-test/tests/assets-preview.test.mjs",
-      "sha256": "16b76b8f5f1e4e319149dafbf20bdebbfeaab1da69f88b664ffcc9cd5336f363"
+      "sha256": "c672a01c181f1100e457483db07f10da60dfee3a07772a3920661c0fd8128d3b"
     },
     {
       "path": "release/public-snapshot-test/tests/auth.test.mjs",
-      "sha256": "48408c874b7a22f7e5ed8b1e1bdfbdc49e20f99dc0fa0321582b69ea294e6b7b"
+      "sha256": "3c622c708c21af8d68eef7bcf4b6d53fdfe3dfcd85c56eb72686a8188ca00c2d"
     },
     {
       "path": "release/public-snapshot-test/tests/baser-domain.test.mjs",
@@ -973,7 +984,7 @@
     },
     {
       "path": "release/public-snapshot-test/tests/blog.test.mjs",
-      "sha256": "d3e6cc7bfc3b971108b2303b9c6eb9909c98a803ab4e4c3af468e1c81cc206f4"
+      "sha256": "84fdc784b18299727e0c7e82f6ee3cd1c6a22fbce414ee783909f58544e271d1"
     },
     {
       "path": "release/public-snapshot-test/tests/burger-importer.test.mjs",
@@ -1013,7 +1024,7 @@
     },
     {
       "path": "release/public-snapshot-test/tests/console-mutation-sync-ui.test.mjs",
-      "sha256": "95366b6f894b9e532c4919d061ac38fca5f764f39295bbb9edc8a5614a72cdf2"
+      "sha256": "6e8ee378a7ec50e1c01e15ebebdf4cae5ba6c2ce134b19bb2d281913175ee3fe"
     },
     {
       "path": "release/public-snapshot-test/tests/console-static-path.test.mjs",
@@ -1025,7 +1036,7 @@
     },
     {
       "path": "release/public-snapshot-test/tests/content-editor-sync.test.mjs",
-      "sha256": "9020916034287daaf06756cc0142f87b8a3476cc04cdb75c8ae6bbfd97c9d3de"
+      "sha256": "e569087f0fe88c46b4c5afc4296b3e59a4a3e92ecd79ad8ecfcf7b8323667435"
     },
     {
       "path": "release/public-snapshot-test/tests/content-flow.test.mjs",
@@ -1045,11 +1056,11 @@
     },
     {
       "path": "release/public-snapshot-test/tests/d1-adapter.test.mjs",
-      "sha256": "7c75bfbea202f22de329919c9ada2defd519544b400bee9a775adcd3a1ef7dfc"
+      "sha256": "91e77b41899c2568a73a0546791cca157ab41f1356e5586b450f35aefdf817d4"
     },
     {
       "path": "release/public-snapshot-test/tests/fixtures/admin-console-smoke-fixtures.mjs",
-      "sha256": "75a50cdfd61cb8422855f8cce38fe18efc3390858aa1607cd632dce393bc1c70"
+      "sha256": "9e1e097045d47bd8f1ad9974a601a277fa693ce84b154505082129cdb3ac950e"
     },
     {
       "path": "release/public-snapshot-test/tests/format-asset-delete-error.test.mjs",
@@ -1057,7 +1068,7 @@
     },
     {
       "path": "release/public-snapshot-test/tests/helpers/admin-console-smoke-harness.mjs",
-      "sha256": "12ee9ec345e4e025b435532aa5d7c3a20c76918b7df55c2deaf9884b79d26531"
+      "sha256": "40d8e38cd7f194da659fcabe53a58e254b48dc9ce031d1f1e2874561c707ebb0"
     },
     {
       "path": "release/public-snapshot-test/tests/mail-form.test.mjs",
@@ -1069,7 +1080,7 @@
     },
     {
       "path": "release/public-snapshot-test/tests/onboarding-safety.test.mjs",
-      "sha256": "63ec2c487fc38dd615dc13238ddfd5fcf7b9c13b21ea85de3e9e5e7ef81a8ee2"
+      "sha256": "35cf10bcfd93a169ab7e3632910bfef2f4bb79441a2e70d5fd8982c8e0fc947e"
     },
     {
       "path": "release/public-snapshot-test/tests/parse-d1-id.test.mjs",
@@ -1121,7 +1132,7 @@
     },
     {
       "path": "release/public-snapshot-test/tests/trial-inline-assets.test.mjs",
-      "sha256": "3529f8bdf8a91d9778490e5cb9e1df1fa043f62bf028e63a5ba497a5dd684ed5"
+      "sha256": "5d4a86e9699f9eaef80ef4ffcf0392216c53aca17774bd71f8e1cfb2f9fdab75"
     },
     {
       "path": "release/public-snapshot-test/tests/trial-worker-vars.test.mjs",
@@ -1237,7 +1248,7 @@
     },
     {
       "path": "tests/admin-console-browser-smoke.test.mjs",
-      "sha256": "ce4e225075300e20e54d0dc0f4da25970456dc438f57ad7c46b0e1568eb949e0"
+      "sha256": "43b39bdf2fe42b1cb1273cfe98ccd34a2360e94a9672dbcd1e06bfb56dead281"
     },
     {
       "path": "tests/admin-router-policy.test.mjs",
@@ -1248,12 +1259,16 @@
       "sha256": "4e3f8224867a7ca13ce5276261e86dc54fef4c7520a666a1c57365e28a8cfd59"
     },
     {
+      "path": "tests/admin-web-build-output.test.mjs",
+      "sha256": "bcdb24db168989c7a8748e22023c237ee409f3d8a61206974a447fc8842743bc"
+    },
+    {
       "path": "tests/api-validation.test.mjs",
       "sha256": "36f332b6aea083bc4d092d78a6796dea3a9372c7ef913009d4817e8235438448"
     },
     {
       "path": "tests/api-worker.test.mjs",
-      "sha256": "35b217758ab0056eb570e02c89379345be8bfb661096d1321c789eff6f7ee592"
+      "sha256": "083fcf9e09d12df138184446ba7d81e0e4f620bf2ef17e0d20e28fc44bb1b43e"
     },
     {
       "path": "tests/apply-d1-migrations.test.mjs",
@@ -1261,11 +1276,11 @@
     },
     {
       "path": "tests/assets-preview.test.mjs",
-      "sha256": "16b76b8f5f1e4e319149dafbf20bdebbfeaab1da69f88b664ffcc9cd5336f363"
+      "sha256": "c672a01c181f1100e457483db07f10da60dfee3a07772a3920661c0fd8128d3b"
     },
     {
       "path": "tests/auth.test.mjs",
-      "sha256": "48408c874b7a22f7e5ed8b1e1bdfbdc49e20f99dc0fa0321582b69ea294e6b7b"
+      "sha256": "3c622c708c21af8d68eef7bcf4b6d53fdfe3dfcd85c56eb72686a8188ca00c2d"
     },
     {
       "path": "tests/baser-domain.test.mjs",
@@ -1273,7 +1288,7 @@
     },
     {
       "path": "tests/blog.test.mjs",
-      "sha256": "d3e6cc7bfc3b971108b2303b9c6eb9909c98a803ab4e4c3af468e1c81cc206f4"
+      "sha256": "84fdc784b18299727e0c7e82f6ee3cd1c6a22fbce414ee783909f58544e271d1"
     },
     {
       "path": "tests/burger-importer.test.mjs",
@@ -1313,7 +1328,7 @@
     },
     {
       "path": "tests/console-mutation-sync-ui.test.mjs",
-      "sha256": "95366b6f894b9e532c4919d061ac38fca5f764f39295bbb9edc8a5614a72cdf2"
+      "sha256": "6e8ee378a7ec50e1c01e15ebebdf4cae5ba6c2ce134b19bb2d281913175ee3fe"
     },
     {
       "path": "tests/console-static-path.test.mjs",
@@ -1325,7 +1340,7 @@
     },
     {
       "path": "tests/content-editor-sync.test.mjs",
-      "sha256": "9020916034287daaf06756cc0142f87b8a3476cc04cdb75c8ae6bbfd97c9d3de"
+      "sha256": "e569087f0fe88c46b4c5afc4296b3e59a4a3e92ecd79ad8ecfcf7b8323667435"
     },
     {
       "path": "tests/content-flow.test.mjs",
@@ -1345,11 +1360,15 @@
     },
     {
       "path": "tests/d1-adapter.test.mjs",
-      "sha256": "7c75bfbea202f22de329919c9ada2defd519544b400bee9a775adcd3a1ef7dfc"
+      "sha256": "91e77b41899c2568a73a0546791cca157ab41f1356e5586b450f35aefdf817d4"
+    },
+    {
+      "path": "tests/documentation-privacy.test.mjs",
+      "sha256": "b5dc1a57c7380e9d2eaa0b21b804e593c668f3a45fffbc52471031c56898dad1"
     },
     {
       "path": "tests/fixtures/admin-console-smoke-fixtures.mjs",
-      "sha256": "75a50cdfd61cb8422855f8cce38fe18efc3390858aa1607cd632dce393bc1c70"
+      "sha256": "9e1e097045d47bd8f1ad9974a601a277fa693ce84b154505082129cdb3ac950e"
     },
     {
       "path": "tests/format-asset-delete-error.test.mjs",
@@ -1357,7 +1376,7 @@
     },
     {
       "path": "tests/helpers/admin-console-smoke-harness.mjs",
-      "sha256": "12ee9ec345e4e025b435532aa5d7c3a20c76918b7df55c2deaf9884b79d26531"
+      "sha256": "40d8e38cd7f194da659fcabe53a58e254b48dc9ce031d1f1e2874561c707ebb0"
     },
     {
       "path": "tests/mail-form.test.mjs",
@@ -1369,7 +1388,7 @@
     },
     {
       "path": "tests/onboarding-safety.test.mjs",
-      "sha256": "63ec2c487fc38dd615dc13238ddfd5fcf7b9c13b21ea85de3e9e5e7ef81a8ee2"
+      "sha256": "35cf10bcfd93a169ab7e3632910bfef2f4bb79441a2e70d5fd8982c8e0fc947e"
     },
     {
       "path": "tests/parse-d1-id.test.mjs",
@@ -1421,7 +1440,7 @@
     },
     {
       "path": "tests/trial-inline-assets.test.mjs",
-      "sha256": "3529f8bdf8a91d9778490e5cb9e1df1fa043f62bf028e63a5ba497a5dd684ed5"
+      "sha256": "5d4a86e9699f9eaef80ef4ffcf0392216c53aca17774bd71f8e1cfb2f9fdab75"
     },
     {
       "path": "tests/trial-worker-vars.test.mjs",
@@ -1505,5 +1524,6 @@
       "path": ".agents/skills/baseredge-theme-development/SKILL.md",
       "sha256": "b304575609438b8364ac3f3f41647d9ebc79e18f1f181930a077943b5b615e6a"
     }
-  ]
+  ],
+  "reviewReason": "reviewed admin workflow and developer documentation changes"
 }
